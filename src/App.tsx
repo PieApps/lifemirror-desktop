@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { 
-  ShieldAlert, Sparkles, BookOpen, Brain, 
+  ShieldAlert, Sparkles, BookOpen, 
   Settings as SettingsIcon, RefreshCw 
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode } from "./components/SCurveTimeline";
@@ -157,9 +157,11 @@ function App() {
       {/* Top Header */}
       <header className="sticky top-0 z-40 glass border-b border-zinc-800/80 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-            <Brain className="w-5 h-5 text-gray-100" />
-          </div>
+          <img 
+            src="/icon.png" 
+            className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
+            alt="LifeMirror Logo" 
+          />
           <div>
             <h1 className="text-base font-bold tracking-tight text-white leading-none">LifeMirror</h1>
             <span className="text-[10px] text-gray-400 font-medium tracking-wide">PRIVACY-FIRST REFLECTION</span>
