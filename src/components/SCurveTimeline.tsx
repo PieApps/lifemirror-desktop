@@ -25,6 +25,21 @@ const VSCodeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
+const GenericCodeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg viewBox="0 0 24 24" className={props.className} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="24" height="24" rx="6" fill="url(#code-editor-grad)"/>
+    <path d="M8 8L4 12L8 16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M16 8L20 12L16 16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M14 6L10 18" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <defs>
+      <linearGradient id="code-editor-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#a855f7"/>
+        <stop offset="1" stopColor="#6366f1"/>
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
 const FigmaIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg viewBox="0 0 38 57" fill="none" className={props.className} xmlns="http://www.w3.org/2000/svg">
     <path d="M19 0C13.75 0 9.5 4.25 9.5 9.5C9.5 14.75 13.75 19 19 19H28.5V9.5C28.5 4.25 24.25 0 19 0Z" fill="#F24E1E"/>
@@ -133,14 +148,31 @@ const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, source, classN
   } else {
     // Check known desktop apps
     if (
-      nameLower.includes("code") || 
+      nameLower === "code" ||
+      nameLower === "code-oss" ||
+      nameLower.includes("vscode") ||
+      nameLower.includes("visual-studio-code") ||
+      nameLower.includes("visual studio code")
+    ) {
+      mainIcon = <VSCodeIcon className="w-full h-full" />;
+    } else if (
       nameLower.includes("cursor") || 
       nameLower.includes("antigravity") || 
       nameLower.includes("windsurf") || 
       nameLower.includes("intellij") || 
-      nameLower.includes("sublime")
+      nameLower.includes("sublime") ||
+      nameLower.includes("studio") ||
+      nameLower.includes("eclipse") ||
+      nameLower.includes("atom") ||
+      nameLower.includes("neovim") ||
+      nameLower.includes("vim") ||
+      nameLower.includes("emacs") ||
+      nameLower.includes("clion") ||
+      nameLower.includes("webstorm") ||
+      nameLower.includes("pycharm") ||
+      nameLower.includes("rider")
     ) {
-      mainIcon = <VSCodeIcon className="w-full h-full" />;
+      mainIcon = <GenericCodeIcon className="w-full h-full" />;
     } else if (
       nameLower.includes("terminal") || 
       nameLower.includes("bash") || 

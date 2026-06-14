@@ -282,7 +282,7 @@ function App() {
             )}
             
             <SCurveTimeline 
-              activities={activities} 
+              activities={[...activities].reverse()} 
               onAddJournal={(node) => setSelectedActivity(node)} 
             />
           </div>
