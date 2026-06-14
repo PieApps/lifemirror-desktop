@@ -1,9 +1,0 @@
-[Desktop Entry]
-Categories=
-Comment=A Tauri App
-Exec=lifemirror
-StartupWMClass=lifemirror
-Icon=lifemirror
-Name=LifeMirror
-Terminal=false
-Type=Application
