@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories={{categories}}
+Comment={{comment}}
+Exec={{exec}}
+Icon={{icon}}
+Name=LifeMirror
+Terminal={{terminal}}
+Type=Application
