@@ -2,11 +2,27 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { 
   ShieldAlert, Sparkles, BookOpen, 
-  Settings as SettingsIcon, RefreshCw, Sun, Moon 
+  Settings as SettingsIcon, RefreshCw, Sun, Moon,
+  Calendar, Clock, Grid
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { WeeklyView } from "./components/WeeklyView";
+import { MonthlyView } from "./components/MonthlyView";
+
+export interface DailySummary {
+  date: string;
+  app_name: string;
+  source: string;
+  total_duration: number;
+}
+
+export interface HourlyMetric {
+  day_of_week: number;
+  hour: number;
+  total_duration: number;
+}
 
 function App() {
   const [activities, setActivities] = useState<ActivityNode[]>([]);
@@ -31,6 +47,46 @@ function App() {
 
   // Duration Filter configuration
   const [minDurationFilter, setMinDurationFilterState] = useState(0);
+
+  // Local Date and Range Helper functions
+  const getLocalDateString = (d: Date = new Date()) => {
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - offset * 60 * 1000);
+    return local.toISOString().split("T")[0];
+  };
+
+  const getWeekRange = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const day = d.getDay(); // 0 = Sun, 1 = Mon ...
+    const sunday = new Date(d);
+    sunday.setDate(d.getDate() - day);
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    return {
+      start: sunday.toISOString().split("T")[0],
+      end: saturday.toISOString().split("T")[0],
+    };
+  };
+
+  const getMonthRange = (dateStr: string) => {
+    const parts = dateStr.split("-");
+    const year = parts[0];
+    const month = parts[1];
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    const lastDay = new Date(y, m, 0).getDate();
+    return {
+      start: `${year}-${month}-01`,
+      end: `${year}-${month}-${String(lastDay).padStart(2, "0")}`,
+    };
+  };
+
+  // View state variables
+  const [viewMode, setViewMode] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
+  const [weeklySummaries, setWeeklySummaries] = useState<DailySummary[]>([]);
+  const [monthlySummaries, setMonthlySummaries] = useState<DailySummary[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HourlyMetric[]>([]);
 
   // Apply theme class and data attribute
   useEffect(() => {
@@ -105,34 +161,106 @@ function App() {
 
   const [activeActivity, setActiveActivity] = useState<ActivityNode | null>(null);
 
+  // Navigation and Period Label helper functions
+  const getPeriodLabel = () => {
+    const d = new Date(selectedDate);
+    if (viewMode === "daily") {
+      return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    } else if (viewMode === "weekly") {
+      const range = getWeekRange(selectedDate);
+      const startD = new Date(range.start);
+      const endD = new Date(range.end);
+      return `${startD.toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${endD.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } else {
+      return d.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    }
+  };
+
+  const handlePrevPeriod = () => {
+    const d = new Date(selectedDate);
+    if (viewMode === "daily") {
+      d.setDate(d.getDate() - 1);
+    } else if (viewMode === "weekly") {
+      d.setDate(d.getDate() - 7);
+    } else {
+      d.setMonth(d.getMonth() - 1);
+    }
+    setSelectedDate(getLocalDateString(d));
+  };
+
+  const handleNextPeriod = () => {
+    const d = new Date(selectedDate);
+    const today = new Date();
+    if (viewMode === "daily") {
+      d.setDate(d.getDate() + 1);
+    } else if (viewMode === "weekly") {
+      d.setDate(d.getDate() + 7);
+    } else {
+      d.setMonth(d.getMonth() + 1);
+    }
+    if (d > today) {
+      setSelectedDate(getLocalDateString(today));
+    } else {
+      setSelectedDate(getLocalDateString(d));
+    }
+  };
+
+  const isNextDisabled = () => {
+    const today = getLocalDateString();
+    if (viewMode === "daily") {
+      return selectedDate >= today;
+    } else if (viewMode === "weekly") {
+      const currentWeek = getWeekRange(today);
+      const selectedWeek = getWeekRange(selectedDate);
+      return selectedWeek.start >= currentWeek.start;
+    } else {
+      const [tYear, tMonth] = today.split("-");
+      const [sYear, sMonth] = selectedDate.split("-");
+      return sYear > tYear || (sYear === tYear && sMonth >= tMonth);
+    }
+  };
+
   // Poll database records
   const loadData = async () => {
     try {
-      const dbActivities = await invoke<ActivityNode[]>("get_activities", { limit: 30 });
+      const todayStr = getLocalDateString();
       const currentActive = await invoke<ActivityNode | null>("get_current_activity");
-      
-      let mergedActivities = [...dbActivities];
-      if (currentActive && trackingActive && !isIncognito) {
-        const isAlreadyLogged = dbActivities.some(node => node.start_time === currentActive.start_time);
-        if (!isAlreadyLogged) {
-          mergedActivities = [currentActive, ...dbActivities];
-          setActiveActivity(currentActive);
+
+      if (viewMode === "daily") {
+        const dbActivities = await invoke<ActivityNode[]>("get_daily_activities", { date: selectedDate });
+        let mergedActivities = [...dbActivities];
+        
+        const isToday = selectedDate === todayStr;
+        if (isToday && currentActive && trackingActive && !isIncognito) {
+          const isAlreadyLogged = dbActivities.some(node => node.start_time === currentActive.start_time);
+          if (!isAlreadyLogged) {
+            mergedActivities = [currentActive, ...dbActivities];
+            setActiveActivity(currentActive);
+          } else {
+            setActiveActivity(null);
+          }
         } else {
           setActiveActivity(null);
         }
-      } else {
-        setActiveActivity(null);
+        
+        let filteredActivities = mergedActivities;
+        if (minDurationFilter > 0) {
+          filteredActivities = mergedActivities.filter(node => 
+            node.duration >= minDurationFilter || (currentActive && node.start_time === currentActive.start_time && isToday)
+          );
+        }
+        setActivities(filteredActivities);
+      } else if (viewMode === "weekly") {
+        const range = getWeekRange(selectedDate);
+        const summaries = await invoke<DailySummary[]>("get_weekly_summary", { startDate: range.start, endDate: range.end });
+        const heat = await invoke<HourlyMetric[]>("get_hourly_heatmap", { startDate: range.start, endDate: range.end });
+        setWeeklySummaries(summaries);
+        setHeatmapData(heat);
+      } else if (viewMode === "monthly") {
+        const range = getMonthRange(selectedDate);
+        const summaries = await invoke<DailySummary[]>("get_monthly_summary", { startDate: range.start, endDate: range.end });
+        setMonthlySummaries(summaries);
       }
-      
-      // Filter out activities below minimum duration threshold
-      // We always show the active ticking node so the user has immediate visual feedback that tracking is active.
-      let filteredActivities = mergedActivities;
-      if (minDurationFilter > 0) {
-        filteredActivities = mergedActivities.filter(node => 
-          node.duration >= minDurationFilter || (currentActive && node.start_time === currentActive.start_time)
-        );
-      }
-      setActivities(filteredActivities);
       
       const dbJournals = await invoke<any[]>("get_journals", { limit: 10 });
       setJournals(dbJournals);
@@ -153,12 +281,12 @@ function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [trackingActive, isIncognito, minDurationFilter]);
+  }, [trackingActive, isIncognito, minDurationFilter, viewMode, selectedDate]);
 
   // Local active session ticking for smooth real-time visual updates
   useEffect(() => {
     const ticker = setInterval(() => {
-      if (activeActivity && trackingActive && !isIncognito) {
+      if (activeActivity && trackingActive && !isIncognito && selectedDate === getLocalDateString()) {
         const startMs = new Date(activeActivity.start_time).getTime();
         const elapsedSecs = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
         
@@ -171,7 +299,7 @@ function App() {
       }
     }, 1000);
     return () => clearInterval(ticker);
-  }, [activeActivity, trackingActive, isIncognito]);
+  }, [activeActivity, trackingActive, isIncognito, selectedDate]);
 
   const handleToggleIncognito = async () => {
     try {
@@ -317,11 +445,65 @@ function App() {
       {/* Main Grid Layout */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* S-Curve Timeline column */}
+        {/* Main infographic/timeline column */}
         <div className="lg:col-span-2 relative min-h-[500px] bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-[var(--border-color)] flex justify-between items-center">
-            <h2 className="text-sm font-semibold tracking-wider text-[var(--text-muted)] uppercase">Continuous Infographic</h2>
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+          <div className="p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* View Mode switcher */}
+            <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] w-fit">
+              <button
+                onClick={() => setViewMode("daily")}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                  viewMode === "daily"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Day</span>
+              </button>
+              <button
+                onClick={() => setViewMode("weekly")}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                  viewMode === "weekly"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Grid className="w-3.5 h-3.5" />
+                <span>Week</span>
+              </button>
+              <button
+                onClick={() => setViewMode("monthly")}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                  viewMode === "monthly"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Month</span>
+              </button>
+            </div>
+
+            {/* Date Scrubber */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrevPeriod}
+                className="p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all"
+              >
+                &larr;
+              </button>
+              <span className="text-xs font-bold text-[var(--text-color)] min-w-[120px] text-center font-mono">
+                {getPeriodLabel()}
+              </span>
+              <button
+                onClick={handleNextPeriod}
+                disabled={isNextDisabled()}
+                className="p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                &rarr;
+              </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto relative">
@@ -342,10 +524,28 @@ function App() {
               </div>
             )}
             
-            <SCurveTimeline 
-              activities={[...activities].reverse()} 
-              onAddJournal={(node) => setSelectedActivity(node)} 
-            />
+            {viewMode === "daily" ? (
+              <SCurveTimeline 
+                activities={[...activities].reverse()} 
+                onAddJournal={(node) => setSelectedActivity(node)} 
+              />
+            ) : viewMode === "weekly" ? (
+              <div className="p-6">
+                <WeeklyView
+                  startDate={getWeekRange(selectedDate).start}
+                  endDate={getWeekRange(selectedDate).end}
+                  summaryData={weeklySummaries}
+                  heatmapData={heatmapData}
+                />
+              </div>
+            ) : (
+              <div className="p-6">
+                <MonthlyView
+                  yearMonth={selectedDate.substring(0, 7)}
+                  summaryData={monthlySummaries}
+                />
+              </div>
+            )}
           </div>
         </div>
 

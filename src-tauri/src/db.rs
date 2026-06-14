@@ -23,6 +23,21 @@ pub struct JournalEntry {
     pub notes: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DailySummary {
+    pub date: String,
+    pub app_name: String,
+    pub source: String,
+    pub total_duration: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct HourlyMetric {
+    pub day_of_week: i32,
+    pub hour: i32,
+    pub total_duration: i64,
+}
+
 pub struct DbState {
     pub conn: Mutex<Connection>,
 }
@@ -117,6 +132,20 @@ impl DbState {
         // Indexes for performance
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_activity_logs_start_time ON activity_logs (start_time);",
+            [],
+        )?;
+
+        // Create aggregated_daily_metrics table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS aggregated_daily_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                app_name TEXT NOT NULL,
+                source TEXT NOT NULL,
+                total_duration INTEGER NOT NULL,
+                session_count INTEGER NOT NULL,
+                UNIQUE(date, app_name)
+            );",
             [],
         )?;
 
@@ -224,5 +253,113 @@ impl DbState {
             entries.push(entry?);
         }
         Ok(entries)
+    }
+
+    pub fn run_daily_rollup(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO aggregated_daily_metrics (date, app_name, source, total_duration, session_count)
+             SELECT 
+                date(start_time, 'localtime') as local_date, 
+                app_name, 
+                source, 
+                SUM(duration) as total_duration, 
+                COUNT(*) as session_count
+             FROM activity_logs
+             WHERE date(start_time, 'localtime') < date('now', 'localtime')
+             GROUP BY local_date, app_name, source;",
+            [],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_aggregated_metrics_range(&self, start_date: &str, end_date: &str) -> Result<Vec<DailySummary>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT date, app_name, source, total_duration FROM aggregated_daily_metrics 
+             WHERE date >= ?1 AND date <= ?2
+             UNION ALL
+             SELECT 
+                date(start_time, 'localtime') as date, 
+                app_name, 
+                source, 
+                SUM(duration) as total_duration 
+             FROM activity_logs 
+             WHERE date(start_time, 'localtime') = date('now', 'localtime') 
+               AND date(start_time, 'localtime') >= ?1 
+               AND date(start_time, 'localtime') <= ?2
+             GROUP BY date, app_name, source"
+        )?;
+
+        let rows_iter = stmt.query_map(params![start_date, end_date], |row| {
+            Ok(DailySummary {
+                date: row.get(0)?,
+                app_name: row.get(1)?,
+                source: row.get(2)?,
+                total_duration: row.get(3)?,
+            })
+        })?;
+
+        let mut summaries = Vec::new();
+        for r in rows_iter {
+            summaries.push(r?);
+        }
+        Ok(summaries)
+    }
+
+    pub fn get_hourly_heatmap_metrics(&self, start_date: &str, end_date: &str) -> Result<Vec<HourlyMetric>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT 
+                cast(strftime('%w', start_time, 'localtime') as integer) as day_of_week,
+                cast(strftime('%H', start_time, 'localtime') as integer) as hour,
+                SUM(duration) as total_duration
+             FROM activity_logs
+             WHERE date(start_time, 'localtime') >= ?1 AND date(start_time, 'localtime') <= ?2
+             GROUP BY day_of_week, hour;"
+        )?;
+
+        let rows_iter = stmt.query_map(params![start_date, end_date], |row| {
+            Ok(HourlyMetric {
+                day_of_week: row.get(0)?,
+                hour: row.get(1)?,
+                total_duration: row.get(2)?,
+            })
+        })?;
+
+        let mut metrics = Vec::new();
+        for r in rows_iter {
+            metrics.push(r?);
+        }
+        Ok(metrics)
+    }
+
+    pub fn get_raw_activities_for_day(&self, date: &str) -> Result<Vec<ActivityLog>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url
+             FROM activity_logs
+             WHERE date(start_time, 'localtime') = ?1
+             ORDER BY start_time DESC;"
+        )?;
+
+        let log_iter = stmt.query_map([date], |row| {
+            Ok(ActivityLog {
+                id: Some(row.get(0)?),
+                app_name: row.get(1)?,
+                window_title: row.get(2)?,
+                start_time: row.get(3)?,
+                duration: row.get(4)?,
+                source: row.get(5)?,
+                url: row.get(6)?,
+                icon_url: row.get(7)?,
+            })
+        })?;
+
+        let mut logs = Vec::new();
+        for log in log_iter {
+            logs.push(log?);
+        }
+        Ok(logs)
     }
 }

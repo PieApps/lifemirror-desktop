@@ -6,7 +6,7 @@ pub mod ai;
 use std::sync::Arc;
 use std::path::PathBuf;
 use tauri::State;
-use db::{DbState, ActivityLog, JournalEntry};
+use db::{DbState, ActivityLog, JournalEntry, DailySummary, HourlyMetric};
 
 fn get_db_path() -> PathBuf {
     let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
@@ -92,6 +92,26 @@ fn get_current_activity(
     Ok(active.clone())
 }
 
+#[tauri::command]
+fn get_daily_activities(state: State<'_, Arc<DbState>>, date: String) -> Result<Vec<ActivityLog>, String> {
+    state.get_raw_activities_for_day(&date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_weekly_summary(state: State<'_, Arc<DbState>>, start_date: String, end_date: String) -> Result<Vec<DailySummary>, String> {
+    state.get_aggregated_metrics_range(&start_date, &end_date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_monthly_summary(state: State<'_, Arc<DbState>>, start_date: String, end_date: String) -> Result<Vec<DailySummary>, String> {
+    state.get_aggregated_metrics_range(&start_date, &end_date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_hourly_heatmap(state: State<'_, Arc<DbState>>, start_date: String, end_date: String) -> Result<Vec<HourlyMetric>, String> {
+    state.get_hourly_heatmap_metrics(&start_date, &end_date).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -108,7 +128,15 @@ pub fn run() {
     // Route 2: Graphical desktop application execution mode
     let db_state = DbState::new(db_path);
     let db_arc = Arc::new(db_state);
-    
+
+    // Run DB daily rollup on startup
+    let db_rollup_clone = db_arc.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = db_rollup_clone.run_daily_rollup() {
+            eprintln!("Failed to run daily rollup: {:?}", e);
+        }
+    });
+
     // Load initial tracking state
     let initial_tracking = db_arc.get_setting("tracking_active").unwrap_or_else(|_| "true".to_string()) == "true";
     let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
@@ -136,7 +164,11 @@ pub fn run() {
             set_db_setting,
             toggle_tracking,
             is_tracking_active,
-            get_current_activity
+            get_current_activity,
+            get_daily_activities,
+            get_weekly_summary,
+            get_monthly_summary,
+            get_hourly_heatmap
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
