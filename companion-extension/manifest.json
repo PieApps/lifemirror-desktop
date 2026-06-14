@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "LifeMirror Companion Tracker",
+  "version": "1.0.0",
+  "description": "Pipes browser active tab events securely to the LifeMirror local SQLite engine.",
+  "permissions": [
+    "nativeMessaging",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

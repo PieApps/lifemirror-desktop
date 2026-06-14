@@ -1,0 +1,23 @@
+# LifeMirror Desktop Rules & Instructions
+
+You are an expert AI software agent developing on LifeMirror Desktop. Before proposing or implementing any changes, refactoring, or new features, you MUST read and follow the step-by-step change workflow guide:
+
+👉 Location: docs/WORKFLOW.md (file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md)
+
+## Key Project Guardrails
+
+1. **Local-First & Data Isolation:**
+   - 100% offline flight compatibility. No external Cloud APIs or tracking hooks.
+   - Database operations use page-level SQLCipher encryption (`PRAGMA key`).
+   - Settings are stored in the SQLite `settings` table to keep Tauri core processes and Chrome native messaging hosts synchronized.
+
+2. **Incognito Skip Check:**
+   - Always query the `settings` table for `incognito = 'true'`.
+   - If incognito is enabled, skip database writes in both `tracker.rs` (OS poller) and `native_msg.rs` (browser bridge).
+
+3. **Surgical Precision (Karpathy Guidelines):**
+   - Touch only files and lines directly relevant to the feature.
+   - Run compilation and tests before, during, and after implementing changes:
+     - `npm run build`
+     - `cargo check --manifest-path src-tauri/Cargo.toml`
+     - `cargo test --manifest-path src-tauri/Cargo.toml`

@@ -1,0 +1,13 @@
+# LifeMirror Desktop Rules & Instructions
+
+Before proposing or implementing any changes, refactoring, or new features in this repository, you MUST read and follow the step-by-step change workflow guide:
+
+👉 Location: docs/WORKFLOW.md (file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md)
+
+## Core Guardrails:
+1. **Local-First:** No external Cloud APIs or tracking hooks. Enforce SQLCipher page-level encryption.
+2. **Incognito:** Query the database settings table. If `incognito` is `true`, skip all logging transactions.
+3. **Compile & Test Verification:**
+   - `npm run build`
+   - `cargo check --manifest-path src-tauri/Cargo.toml`
+   - `cargo test --manifest-path src-tauri/Cargo.toml`
