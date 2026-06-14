@@ -1,6 +1,6 @@
 use std::thread;
 use std::time::Duration;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use crate::db::{DbState, ActivityLog};
 use chrono::Utc;
 
@@ -13,6 +13,28 @@ fn is_browser_app(app: &str) -> bool {
     app_lower.contains("opera") || 
     app_lower.contains("chromium") || 
     app_lower.contains("edge")
+}
+
+fn extract_domain(url: &str) -> String {
+    let without_protocol = if let Some(stripped) = url.strip_prefix("https://") {
+        stripped
+    } else if let Some(stripped) = url.strip_prefix("http://") {
+        stripped
+    } else {
+        url
+    };
+    
+    let end = without_protocol.find('/')
+        .or_else(|| without_protocol.find('?'))
+        .or_else(|| without_protocol.find(':'))
+        .unwrap_or(without_protocol.len());
+        
+    let host = &without_protocol[..end];
+    if let Some(stripped) = host.strip_prefix("www.") {
+        stripped.to_string()
+    } else {
+        host.to_string()
+    }
 }
 
 fn resolve_current_activity(db: &DbState) -> (String, String, Option<String>, Option<String>, String) {
@@ -43,7 +65,11 @@ fn resolve_current_activity(db: &DbState) -> (String, String, Option<String>, Op
     (app, title, None, None, "OS".to_string())
 }
 
-pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::atomic::AtomicBool>) {
+pub fn start_window_tracker(
+    db: Arc<DbState>,
+    tracking_active: Arc<std::sync::atomic::AtomicBool>,
+    active_activity: Arc<Mutex<Option<ActivityLog>>>,
+) {
     thread::spawn(move || {
         let mut parent_app = String::new();
         let mut parent_title = String::new();
@@ -91,6 +117,12 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                 temp_title.clear();
                 temp_url = None;
                 temp_icon_url = None;
+
+                // Clear the shared active activity state
+                {
+                    let mut active_lock = active_activity.lock().unwrap();
+                    *active_lock = None;
+                }
                 continue;
             }
 
@@ -123,6 +155,12 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                 temp_title.clear();
                 temp_url = None;
                 temp_icon_url = None;
+
+                // Clear the shared active activity state immediately (incognito security control)
+                {
+                    let mut active_lock = active_activity.lock().unwrap();
+                    *active_lock = None;
+                }
                 continue;
             }
 
@@ -139,11 +177,28 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                 parent_source = source.clone();
                 parent_start_time = Utc::now();
                 parent_duration = 1;
+
+                // Update the shared active activity state
+                {
+                    let mut active_lock = active_activity.lock().unwrap();
+                    *active_lock = Some(ActivityLog {
+                        id: None,
+                        app_name: parent_app.clone(),
+                        window_title: parent_title.clone(),
+                        start_time: parent_start_time.to_rfc3339(),
+                        duration: parent_duration,
+                        source: parent_source.clone(),
+                        url: parent_url.clone(),
+                        icon_url: parent_icon_url.clone(),
+                    });
+                }
                 continue;
             }
 
             // A focus change is detected if the app changes OR if the active tab URL changes for a browser
-            let is_same_focus = app == parent_app && (source != "Browser" || url == parent_url);
+            let is_same_focus = app == parent_app 
+                && (source != "Browser" 
+                    || extract_domain(url.as_deref().unwrap_or("")) == extract_domain(parent_url.as_deref().unwrap_or("")));
 
             if is_same_focus {
                 // If we returned to the parent focus, fold in any temporary session durations under 120 seconds
@@ -163,7 +218,9 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                 }
             } else {
                 // We are in a different focus
-                let is_same_temp = app == temp_app && (source != "Browser" || url == temp_url);
+                let is_same_temp = app == temp_app 
+                    && (source != "Browser" 
+                        || extract_domain(url.as_deref().unwrap_or("")) == extract_domain(temp_url.as_deref().unwrap_or("")));
 
                 if is_same_temp {
                     temp_duration += 1;
@@ -202,9 +259,34 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                     }
                 } else {
                     // User switched to a new/different temporary focus!
-                    // Merge the previous temporary focus into the parent if it was < 120 seconds
-                    if temp_duration > 0 && temp_duration < 120 {
-                        parent_duration += temp_duration;
+                    // This means they did NOT return to the parent focus from the previous temp focus.
+                    // Commit the previous parent session to DB immediately if it was significant.
+                    if parent_duration >= 2 && !parent_app.is_empty() {
+                        let log = ActivityLog {
+                            id: None,
+                            app_name: parent_app.clone(),
+                            window_title: parent_title.clone(),
+                            start_time: parent_start_time.to_rfc3339(),
+                            duration: parent_duration,
+                            source: parent_source.clone(),
+                            url: parent_url.clone(),
+                            icon_url: parent_icon_url.clone(),
+                        };
+                        let _ = db.insert_activity_log(&log);
+                    }
+
+                    // Promote the completed temporary focus to the new parent
+                    if temp_duration > 0 && !temp_app.is_empty() {
+                        parent_app = temp_app.clone();
+                        parent_title = temp_title.clone();
+                        parent_url = temp_url.clone();
+                        parent_icon_url = temp_icon_url.clone();
+                        parent_source = temp_source.clone();
+                        parent_start_time = temp_start_time;
+                        parent_duration = temp_duration;
+                    } else {
+                        parent_app.clear();
+                        parent_duration = 0;
                     }
                     
                     // Initialize new temporary focus tracking
@@ -215,6 +297,25 @@ pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::at
                     temp_source = source.clone();
                     temp_start_time = Utc::now();
                     temp_duration = 1;
+                }
+            }
+
+            // Update the shared active activity state every second
+            {
+                let mut active_lock = active_activity.lock().unwrap();
+                if parent_duration > 0 && !parent_app.is_empty() {
+                    *active_lock = Some(ActivityLog {
+                        id: None,
+                        app_name: parent_app.clone(),
+                        window_title: parent_title.clone(),
+                        start_time: parent_start_time.to_rfc3339(),
+                        duration: parent_duration,
+                        source: parent_source.clone(),
+                        url: parent_url.clone(),
+                        icon_url: parent_icon_url.clone(),
+                    });
+                } else {
+                    *active_lock = None;
                 }
             }
         }

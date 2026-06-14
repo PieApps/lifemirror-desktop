@@ -98,12 +98,24 @@ The background window poller thread must support clean cancellation. Rather than
 - Tauri commands `toggle_tracking` and `is_tracking_active` coordinate frontend clicks with this atomic flag.
 - The tracking loop polls the atomic flag every 1 second. If disabled, it flushes the active parent session, clears memory buffers, and pauses (sleeps).
 
-### Browser-Window URL Extraction
+### Browser-Window URL Extraction & Domain-Level Aggregation
 Under Linux compositor polling (`hyprctl activewindow`, `swaymsg get_tree`, or `xdotool`), the OS only exposes window titles (e.g. `"GitHub - Google Chrome"`). To enrich this data:
 1. The tracker identifies if the foreground app is a browser (via `is_browser_app`).
 2. If active, it reads `active_tab_title`, `active_tab_url`, and `active_tab_favicon` settings from the SQLite settings table.
 3. If the compositor window title contains the active tab title, the activity log is populated with `source: "Browser"`, `url: Some(url)`, and `icon_url: Some(favicon)`.
-4. Browser tab URL switches trigger distinct focus transitions (`url != parent_url`), logging tab-level time slices and durations accurately.
+4. Browser tab focus matches are resolved at the **domain name level** using the `extract_domain` utility. It strips protocols (`http://`, `https://`) and prefixes (`www.`) but preserves subdomains (e.g., matching `youtube.com/watch?v=A` and `youtube.com/watch?v=B` as the same continuous `youtube.com` focus node).
+
+### Micro-Task Aggregation & Focus Transition Logic
+To avoid timeline fragmentation while accurately tracking user attention:
+- **Brief Diversions**: Switching to a temporary focus (e.g., Slack) for less than 120 seconds and then returning back to the parent focus (e.g., VS Code) folds the temporary duration into the parent session.
+- **Diversion Logging**: If the user switches to a third distinct task (e.g., Slack -> Spotify -> GitHub) without returning to the parent, the tracker immediately commits the matured parent session to the database, promotes the previous temporary diversion to the active parent, and initiates a new temporary focus.
+
+### Real-Time UI Active Focus Tracking
+To display the current active session on the timeline in real time without writing to the database every second:
+1. A thread-safe shared state `active_activity: Arc<std::sync::Mutex<Option<ActivityLog>>>` is managed by the Tauri host.
+2. The background tracking thread updates this state every second with the current active parent session.
+3. If **Incognito Mode** is activated, this shared state is immediately cleared to `None` to prevent memory leaks of sensitive browsing titles or URLs.
+4. The Tauri command `get_current_activity` exposes this state to the React frontend, which prepends it to the timeline and increments the duration smoothly on the client side using local timestamp offsets.
 
 ---
 

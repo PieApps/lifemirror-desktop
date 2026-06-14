@@ -84,6 +84,14 @@ fn is_tracking_active(
     Ok(tracking_active.load(std::sync::atomic::Ordering::SeqCst))
 }
 
+#[tauri::command]
+fn get_current_activity(
+    active_activity: State<'_, Arc<std::sync::Mutex<Option<ActivityLog>>>>,
+) -> Result<Option<ActivityLog>, String> {
+    let active = active_activity.lock().unwrap();
+    Ok(active.clone())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -104,9 +112,10 @@ pub fn run() {
     // Load initial tracking state
     let initial_tracking = db_arc.get_setting("tracking_active").unwrap_or_else(|_| "true".to_string()) == "true";
     let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
+    let active_activity = Arc::new(std::sync::Mutex::new(None));
 
     // Spawn OS window focus tracker background loop
-    tracker::start_window_tracker(db_arc.clone(), tracking_active.clone());
+    tracker::start_window_tracker(db_arc.clone(), tracking_active.clone(), active_activity.clone());
 
     // Spawn background idle state AI daily reflection builder
     ai::start_idle_ai_summarizer(db_arc.clone());
@@ -116,6 +125,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(db_arc)
         .manage(tracking_active)
+        .manage(active_activity)
         .invoke_handler(tauri::generate_handler![
             get_activities,
             get_journals,
@@ -125,7 +135,8 @@ pub fn run() {
             get_db_setting,
             set_db_setting,
             toggle_tracking,
-            is_tracking_active
+            is_tracking_active,
+            get_current_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

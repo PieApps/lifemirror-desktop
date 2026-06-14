@@ -85,11 +85,27 @@ function App() {
     }
   };
 
+  const [activeActivity, setActiveActivity] = useState<ActivityNode | null>(null);
+
   // Poll database records
   const loadData = async () => {
     try {
       const dbActivities = await invoke<ActivityNode[]>("get_activities", { limit: 30 });
-      setActivities(dbActivities);
+      const currentActive = await invoke<ActivityNode | null>("get_current_activity");
+      
+      let mergedActivities = [...dbActivities];
+      if (currentActive && trackingActive && !isIncognito) {
+        const isAlreadyLogged = dbActivities.some(node => node.start_time === currentActive.start_time);
+        if (!isAlreadyLogged) {
+          mergedActivities = [currentActive, ...dbActivities];
+          setActiveActivity(currentActive);
+        } else {
+          setActiveActivity(null);
+        }
+      } else {
+        setActiveActivity(null);
+      }
+      setActivities(mergedActivities);
       
       const dbJournals = await invoke<any[]>("get_journals", { limit: 10 });
       setJournals(dbJournals);
@@ -111,6 +127,24 @@ function App() {
     }, 3000);
     return () => clearInterval(interval);
   }, [trackingActive, isIncognito]);
+
+  // Local active session ticking for smooth real-time visual updates
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      if (activeActivity && trackingActive && !isIncognito) {
+        const startMs = new Date(activeActivity.start_time).getTime();
+        const elapsedSecs = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+        
+        setActivities(prev => prev.map(node => {
+          if (node.start_time === activeActivity.start_time) {
+            return { ...node, duration: elapsedSecs };
+          }
+          return node;
+        }));
+      }
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [activeActivity, trackingActive, isIncognito]);
 
   const handleToggleIncognito = async () => {
     try {
