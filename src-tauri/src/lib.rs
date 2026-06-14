@@ -26,23 +26,23 @@ fn get_db_path() -> PathBuf {
 }
 
 #[tauri::command]
-fn get_activities(state: State<'_, DbState>, limit: i64) -> Result<Vec<ActivityLog>, String> {
+fn get_activities(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<ActivityLog>, String> {
     state.get_activity_logs(limit).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn get_journals(state: State<'_, DbState>, limit: i64) -> Result<Vec<JournalEntry>, String> {
+fn get_journals(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<JournalEntry>, String> {
     state.get_journal_entries(limit).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn add_journal(state: State<'_, DbState>, notes: String) -> Result<i64, String> {
+fn add_journal(state: State<'_, Arc<DbState>>, notes: String) -> Result<i64, String> {
     let timestamp = chrono::Utc::now().to_rfc3339();
     state.insert_journal_entry(&timestamp, &notes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn toggle_incognito(state: State<'_, DbState>) -> Result<bool, String> {
+fn toggle_incognito(state: State<'_, Arc<DbState>>) -> Result<bool, String> {
     let current = state.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
     let new_state = !current;
     state.set_setting("incognito", if new_state { "true" } else { "false" }).map_err(|e| e.to_string())?;
@@ -50,18 +50,18 @@ fn toggle_incognito(state: State<'_, DbState>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn is_incognito(state: State<'_, DbState>) -> Result<bool, String> {
+fn is_incognito(state: State<'_, Arc<DbState>>) -> Result<bool, String> {
     let current = state.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
     Ok(current)
 }
 
 #[tauri::command]
-fn get_db_setting(state: State<'_, DbState>, key: String) -> Result<String, String> {
+fn get_db_setting(state: State<'_, Arc<DbState>>, key: String) -> Result<String, String> {
     state.get_setting(&key).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn set_db_setting(state: State<'_, DbState>, key: String, value: String) -> Result<(), String> {
+fn set_db_setting(state: State<'_, Arc<DbState>>, key: String, value: String) -> Result<(), String> {
     state.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
@@ -91,7 +91,7 @@ pub fn run() {
     // Build and run the Tauri app
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(Arc::try_unwrap(db_arc).ok().expect("Failed to get DB State ownership"))
+        .manage(db_arc)
         .invoke_handler(tauri::generate_handler![
             get_activities,
             get_journals,

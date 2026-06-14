@@ -36,7 +36,7 @@ impl DbState {
             .unwrap_or_else(|_| "lifemirror_default_secure_vault_passphrase_256".to_string());
         
         // SQLCipher PRAGMA key configuration
-        conn.execute(&format!("PRAGMA key = '{}';", encryption_key), [])
+        conn.pragma_update(None, "key", &encryption_key)
             .expect("Failed to set SQLCipher database encryption key");
 
         // Verify connection by performing a simple query
