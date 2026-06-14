@@ -248,7 +248,7 @@ Execution is divided among five specialized AI subagents coordinated concurrentl
 * **QA & Security Agent:** Inspects database skip behaviors during Incognito Mode and runs offline audits.
 * **Project Documenter Agent:** Compiles Developer and User documentation.
 
-### 2. Google Antigravity SDK Integration
+### 2. Google Antigravity SDK Integration & Skills Behavior
 Specialized instructions are loaded into each subagent's execution state via local skills in the [skills/](file:///var/www/pieapps/lifemirror-desktop/skills) directory:
 ```python
 # scripts/orchestrate_agents.py
@@ -259,6 +259,21 @@ config = LocalAgentConfig(
 )
 ```
 Each skill file (`SKILL.md`) specifies capabilities, dependencies, and operational safety rules matching the agent's target area.
+
+#### Skill Invocation Behavior
+* **Automatic Detection:** The Antigravity AI assistant automatically scans, selects, and activates relevant skills based on the active file types, user request, or task context. The developer does **not** need to manually select or enable skills during a session.
+* **Manual Override:** Developers can explicitly prompt the assistant to trigger a specific skill or adhere to one of the custom skills by name (e.g., "Use the `qa_security` skill to audit this file").
+
+#### Skill Matrix (When & How to Use)
+The following table outlines the purpose of each skill in the `skills/` directory and when it is utilized:
+
+| Skill Directory | Skill Name | Primary Use Case & Triggers | Key Instructions |
+| :--- | :--- | :--- | :--- |
+| [`rust_tauri_core`](file:///var/www/pieapps/lifemirror-desktop/skills/rust_tauri_core) | `rust_tauri_core` | Modifying Tauri backend code, active window focus tracking (`tracker.rs`), or Native Messaging communication (`native_msg.rs`). | Read native-endian browser frames, check session type (Wayland/X11), enforce thread-safe Incognito checks. |
+| [`frontend_ui_web`](file:///var/www/pieapps/lifemirror-desktop/skills/frontend_ui_web) | `frontend_ui_web` | Working on React dashboard UI, SVG S-curve coordinate maths, styling/glassmorphism, or browser-side Ollama hooks. | Winding S-curve geometry formulas, violet/dark aesthetics, call local Ollama completion endpoints. |
+| [`local_ai_data`](file:///var/www/pieapps/lifemirror-desktop/skills/local_ai_data) | `local_ai_data` | Modifying database schemas (`db.rs`), SQLCipher page-level encryption, database migrations, or Ollama prompt templates. | SQLCipher encryption setup, database key initialization (`PRAGMA key`), two-sentence reflection summaries. |
+| [`qa_security`](file:///var/www/pieapps/lifemirror-desktop/skills/qa_security) | `qa_security` | Auditing local privacy behavior, checking for potential port leaks, or validating data isolation. | Ensure zero remote telemetry, confirm no local listening sockets (exclusive stdio messaging), assert zero database writes in incognito. |
+| [`project_documenter`](file:///var/www/pieapps/lifemirror-desktop/skills/project_documenter) | `project_documenter` | Drafting, styling, or updating markdown developer documentation or user setup instructions. | Maintain architectural accuracy in `DEVELOPER.md`, update setup instructions in `USER.md`, document workflows. |
 
 ### 3. Redundancy & Build Lock Mitigation
 To prevent agents running concurrently from triggering duplicate compilations (which causes resource exhaustion and target write locks on build artifacts), the pipeline enforces a **Delegated Build Architecture**:
