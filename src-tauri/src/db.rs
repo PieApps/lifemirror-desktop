@@ -13,6 +13,7 @@ pub struct ActivityLog {
     pub duration: i64,
     pub source: String,
     pub url: Option<String>,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -28,25 +29,37 @@ pub struct DbState {
 
 impl DbState {
     pub fn new<P: AsRef<Path>>(db_path: P) -> Self {
-        let conn = Connection::open(db_path).expect("Failed to open SQLite database");
-        
-        // Execute SQLCipher encryption key setup
-        // In a production app, this key would be derived from the OS Keychain/Credential Manager.
+        let path_ref = db_path.as_ref();
         let encryption_key = std::env::var("LIFEMIRROR_DB_KEY")
             .unwrap_or_else(|_| "lifemirror_default_secure_vault_passphrase_256".to_string());
         
-        // SQLCipher PRAGMA key configuration
-        conn.pragma_update(None, "key", &encryption_key)
-            .expect("Failed to set SQLCipher database encryption key");
-
-        // Verify connection by performing a simple query
-        let _: Result<u32> = conn.query_row("PRAGMA user_version;", [], |row| row.get(0));
+        let conn = match Self::open_and_verify(path_ref, &encryption_key) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Database verification failed: {:?}. Backing up and resetting DB...", e);
+                if path_ref.exists() {
+                    let mut backup_path = path_ref.to_path_buf();
+                    backup_path.set_extension("db.bak");
+                    let _ = std::fs::rename(path_ref, backup_path);
+                }
+                Self::open_and_verify(path_ref, &encryption_key)
+                    .expect("Failed to create a fresh SQLite database after reset")
+            }
+        };
 
         let state = DbState {
             conn: Mutex::new(conn),
         };
         state.run_migrations().expect("Database migration failed");
         state
+    }
+
+    fn open_and_verify(db_path: &Path, encryption_key: &str) -> Result<Connection> {
+        let conn = Connection::open(db_path)?;
+        conn.pragma_update(None, "key", &encryption_key)?;
+        // Verify key by running a test query
+        let _: u32 = conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
+        Ok(conn)
     }
 
     fn run_migrations(&self) -> Result<()> {
@@ -61,10 +74,14 @@ impl DbState {
                 start_time TEXT NOT NULL,
                 duration INTEGER NOT NULL,
                 source TEXT NOT NULL,
-                url TEXT
+                url TEXT,
+                icon_url TEXT
             );",
             [],
         )?;
+
+        // Ensure icon_url column is present for backward compatibility
+        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN icon_url TEXT;", []);
 
         // Create journal_entries table
         conn.execute(
@@ -88,6 +105,12 @@ impl DbState {
         // Seed default incognito setting
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('incognito', 'false');",
+            [],
+        )?;
+
+        // Seed default tracking state
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('tracking_active', 'true');",
             [],
         )?;
 
@@ -120,17 +143,24 @@ impl DbState {
     }
 
     pub fn insert_activity_log(&self, log: &ActivityLog) -> Result<i64> {
+        // Guardrail: check if tracking is active
+        let tracking_active = self.get_setting("tracking_active").unwrap_or_else(|_| "true".to_string()) == "true";
+        if !tracking_active {
+            return Ok(0); // Ignore insertion silently
+        }
+
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url, icon_url)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 log.app_name,
                 log.window_title,
                 log.start_time,
                 log.duration,
                 log.source,
-                log.url
+                log.url,
+                log.icon_url
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -148,7 +178,7 @@ impl DbState {
     pub fn get_activity_logs(&self, limit: i64) -> Result<Vec<ActivityLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, app_name, window_title, start_time, duration, source, url 
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url 
              FROM activity_logs 
              ORDER BY start_time DESC 
              LIMIT ?1",
@@ -162,6 +192,7 @@ impl DbState {
                 duration: row.get(4)?,
                 source: row.get(5)?,
                 url: row.get(6)?,
+                icon_url: row.get(7)?,
             })
         })?;
 

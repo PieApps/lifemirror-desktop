@@ -3,20 +3,96 @@ use std::time::Duration;
 use std::sync::Arc;
 use crate::db::{DbState, ActivityLog};
 use chrono::Utc;
-pub fn start_window_tracker(db: Arc<DbState>) {
+
+fn is_browser_app(app: &str) -> bool {
+    let app_lower = app.to_lowercase();
+    app_lower.contains("chrome") || 
+    app_lower.contains("firefox") || 
+    app_lower.contains("brave") || 
+    app_lower.contains("safari") || 
+    app_lower.contains("opera") || 
+    app_lower.contains("chromium") || 
+    app_lower.contains("edge")
+}
+
+fn resolve_current_activity(db: &DbState) -> (String, String, Option<String>, Option<String>, String) {
+    let (app, title) = get_active_window();
+    if app.is_empty() && title.is_empty() {
+        return (String::new(), String::new(), None, None, "OS".to_string());
+    }
+    
+    if is_browser_app(&app) {
+        let active_title = db.get_setting("active_tab_title").unwrap_or_default();
+        let active_url = db.get_setting("active_tab_url").unwrap_or_default();
+        let active_favicon = db.get_setting("active_tab_favicon").unwrap_or_default();
+        
+        let title_lower = title.to_lowercase();
+        let active_title_lower = active_title.to_lowercase();
+        
+        if !active_url.is_empty() && (active_title.is_empty() || title_lower.contains(&active_title_lower) || active_title_lower.contains(&title_lower)) {
+            return (
+                app,
+                active_title,
+                Some(active_url),
+                if active_favicon.is_empty() { None } else { Some(active_favicon) },
+                "Browser".to_string()
+            );
+        }
+    }
+    
+    (app, title, None, None, "OS".to_string())
+}
+
+pub fn start_window_tracker(db: Arc<DbState>, tracking_active: Arc<std::sync::atomic::AtomicBool>) {
     thread::spawn(move || {
         let mut parent_app = String::new();
         let mut parent_title = String::new();
         let mut parent_start_time = Utc::now();
         let mut parent_duration = 0;
+        let mut parent_source = "OS".to_string();
+        let mut parent_url: Option<String> = None;
+        let mut parent_icon_url: Option<String> = None;
 
         let mut temp_app = String::new();
         let mut temp_title = String::new();
         let mut temp_start_time = Utc::now();
         let mut temp_duration = 0;
+        let mut temp_source = "OS".to_string();
+        let mut temp_url: Option<String> = None;
+        let mut temp_icon_url: Option<String> = None;
 
         loop {
             thread::sleep(Duration::from_secs(1));
+
+            // Check if background tracking was toggled off (Atomic Cancellation)
+            if !tracking_active.load(std::sync::atomic::Ordering::SeqCst) {
+                if parent_duration > 0 {
+                    if parent_duration >= 2 && !parent_app.is_empty() {
+                        let log = ActivityLog {
+                            id: None,
+                            app_name: parent_app.clone(),
+                            window_title: parent_title.clone(),
+                            start_time: parent_start_time.to_rfc3339(),
+                            duration: parent_duration,
+                            source: parent_source.clone(),
+                            url: parent_url.clone(),
+                            icon_url: parent_icon_url.clone(),
+                        };
+                        let _ = db.insert_activity_log(&log);
+                    }
+                    parent_duration = 0;
+                    parent_app.clear();
+                    parent_title.clear();
+                    parent_url = None;
+                    parent_icon_url = None;
+                }
+                temp_duration = 0;
+                temp_app.clear();
+                temp_title.clear();
+                temp_url = None;
+                temp_icon_url = None;
+                continue;
+            }
 
             // Check if incognito mode is active; if so, clear active trace and skip DB writes
             let is_incognito = db.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
@@ -30,22 +106,27 @@ pub fn start_window_tracker(db: Arc<DbState>) {
                             window_title: parent_title.clone(),
                             start_time: parent_start_time.to_rfc3339(),
                             duration: parent_duration,
-                            source: "OS".to_string(),
-                            url: None,
+                            source: parent_source.clone(),
+                            url: parent_url.clone(),
+                            icon_url: parent_icon_url.clone(),
                         };
                         let _ = db.insert_activity_log(&log);
                     }
                     parent_duration = 0;
                     parent_app.clear();
                     parent_title.clear();
+                    parent_url = None;
+                    parent_icon_url = None;
                 }
                 temp_duration = 0;
                 temp_app.clear();
                 temp_title.clear();
+                temp_url = None;
+                temp_icon_url = None;
                 continue;
             }
 
-            let (app, title) = get_active_window();
+            let (app, title, url, icon_url, source) = resolve_current_activity(&db);
             if app.is_empty() && title.is_empty() {
                 continue;
             }
@@ -53,13 +134,19 @@ pub fn start_window_tracker(db: Arc<DbState>) {
             if parent_app.is_empty() {
                 parent_app = app.clone();
                 parent_title = title.clone();
+                parent_url = url.clone();
+                parent_icon_url = icon_url.clone();
+                parent_source = source.clone();
                 parent_start_time = Utc::now();
                 parent_duration = 1;
                 continue;
             }
 
-            if app == parent_app {
-                // If we returned to the parent app, fold in any temporary session durations under 120 seconds
+            // A focus change is detected if the app changes OR if the active tab URL changes for a browser
+            let is_same_focus = app == parent_app && (source != "Browser" || url == parent_url);
+
+            if is_same_focus {
+                // If we returned to the parent focus, fold in any temporary session durations under 120 seconds
                 if temp_duration > 0 {
                     if temp_duration < 120 {
                         parent_duration += temp_duration + 1;
@@ -68,13 +155,17 @@ pub fn start_window_tracker(db: Arc<DbState>) {
                     }
                     temp_app.clear();
                     temp_title.clear();
+                    temp_url = None;
+                    temp_icon_url = None;
                     temp_duration = 0;
                 } else {
                     parent_duration += 1;
                 }
             } else {
-                // We are in a different app focus
-                if app == temp_app {
+                // We are in a different focus
+                let is_same_temp = app == temp_app && (source != "Browser" || url == temp_url);
+
+                if is_same_temp {
                     temp_duration += 1;
                     if temp_duration >= 120 {
                         // The temporary focus matured into a major session (>= 2 minutes)!
@@ -86,8 +177,9 @@ pub fn start_window_tracker(db: Arc<DbState>) {
                                 window_title: parent_title.clone(),
                                 start_time: parent_start_time.to_rfc3339(),
                                 duration: parent_duration,
-                                source: "OS".to_string(),
-                                url: None,
+                                source: parent_source.clone(),
+                                url: parent_url.clone(),
+                                icon_url: parent_icon_url.clone(),
                             };
                             let _ = db.insert_activity_log(&log);
                         }
@@ -95,16 +187,21 @@ pub fn start_window_tracker(db: Arc<DbState>) {
                         // Promote the temp session to parent
                         parent_app = temp_app.clone();
                         parent_title = temp_title.clone();
+                        parent_url = temp_url.clone();
+                        parent_icon_url = temp_icon_url.clone();
+                        parent_source = temp_source.clone();
                         parent_start_time = temp_start_time;
                         parent_duration = temp_duration;
                         
                         // Clear temp focus variables
                         temp_app.clear();
                         temp_title.clear();
+                        temp_url = None;
+                        temp_icon_url = None;
                         temp_duration = 0;
                     }
                 } else {
-                    // User switched to a new/different temporary app focus!
+                    // User switched to a new/different temporary focus!
                     // Merge the previous temporary focus into the parent if it was < 120 seconds
                     if temp_duration > 0 && temp_duration < 120 {
                         parent_duration += temp_duration;
@@ -113,6 +210,9 @@ pub fn start_window_tracker(db: Arc<DbState>) {
                     // Initialize new temporary focus tracking
                     temp_app = app.clone();
                     temp_title = title.clone();
+                    temp_url = url.clone();
+                    temp_icon_url = icon_url.clone();
+                    temp_source = source.clone();
                     temp_start_time = Utc::now();
                     temp_duration = 1;
                 }

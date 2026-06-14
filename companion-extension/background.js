@@ -38,6 +38,7 @@ function reportTabActivity(tabId, changeInfo, tab) {
       event: "tab_activity",
       url: tab.url,
       title: tab.title || "Untitled Tab",
+      favIconUrl: tab.favIconUrl || "",
       timestamp: Date.now()
     };
     try {

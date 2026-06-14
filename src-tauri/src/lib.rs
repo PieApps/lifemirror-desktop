@@ -65,6 +65,25 @@ fn set_db_setting(state: State<'_, Arc<DbState>>, key: String, value: String) ->
     state.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn toggle_tracking(
+    state: State<'_, Arc<DbState>>,
+    tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<bool, String> {
+    let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
+    let new_state = !current;
+    state.set_setting("tracking_active", if new_state { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    tracking_active.store(new_state, std::sync::atomic::Ordering::SeqCst);
+    Ok(new_state)
+}
+
+#[tauri::command]
+fn is_tracking_active(
+    tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<bool, String> {
+    Ok(tracking_active.load(std::sync::atomic::Ordering::SeqCst))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -82,8 +101,12 @@ pub fn run() {
     let db_state = DbState::new(db_path);
     let db_arc = Arc::new(db_state);
     
+    // Load initial tracking state
+    let initial_tracking = db_arc.get_setting("tracking_active").unwrap_or_else(|_| "true".to_string()) == "true";
+    let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
+
     // Spawn OS window focus tracker background loop
-    tracker::start_window_tracker(db_arc.clone());
+    tracker::start_window_tracker(db_arc.clone(), tracking_active.clone());
 
     // Spawn background idle state AI daily reflection builder
     ai::start_idle_ai_summarizer(db_arc.clone());
@@ -92,6 +115,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(db_arc)
+        .manage(tracking_active)
         .invoke_handler(tauri::generate_handler![
             get_activities,
             get_journals,
@@ -99,7 +123,9 @@ pub fn run() {
             toggle_incognito,
             is_incognito,
             get_db_setting,
-            set_db_setting
+            set_db_setting,
+            toggle_tracking,
+            is_tracking_active
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

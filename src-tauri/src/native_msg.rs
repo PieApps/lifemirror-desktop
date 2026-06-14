@@ -5,10 +5,12 @@ use chrono::Utc;
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
 pub struct TabPayload {
     pub event: String,
     pub url: String,
     pub title: String,
+    pub favIconUrl: Option<String>,
     pub timestamp: u64,
 }
 
@@ -36,6 +38,11 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             let is_incognito = db.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
             
             if !is_incognito {
+                // Update local settings with active tab info
+                let _ = db.set_setting("active_tab_url", &payload.url);
+                let _ = db.set_setting("active_tab_title", &payload.title);
+                let _ = db.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
+
                 let log = ActivityLog {
                     id: None,
                     app_name: "Chrome".to_string(),
@@ -44,6 +51,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     duration: 1, // Will be aggregated in database queries
                     source: "Browser".to_string(),
                     url: Some(payload.url),
+                    icon_url: payload.favIconUrl,
                 };
                 
                 // Insert tab activity log

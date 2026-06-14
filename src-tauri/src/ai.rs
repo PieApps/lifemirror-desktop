@@ -83,6 +83,11 @@ fn trigger_background_reflection(db: Arc<DbState>) {
         let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
         let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
+        if ollama_model.is_empty() || ollama_model == "false" || ollama_url.is_empty() || ollama_url == "false" {
+            println!("[Background AI] Ollama config is disabled or empty. Skipping reflection card generation.");
+            return;
+        }
+
         // Prepare JSON payload
         let payload = serde_json::json!({
             "model": ollama_model,

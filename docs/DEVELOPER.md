@@ -54,17 +54,21 @@ Stores time-slice focus events captured natively or piped from browser extension
 * `duration`: `INTEGER NOT NULL` (Session duration in seconds)
 * `source`: `TEXT NOT NULL` (`"OS"` or `"Browser"`)
 * `url`: `TEXT` (Nullable, populated for browser events)
+* `icon_url`: `TEXT` (Nullable, stores website favicon URLs)
 
 ### Table 2: `settings`
 Persistent configuration store shared across processes (Tauri GUI and CLI Native Messaging Hosts).
 * `key`: `TEXT PRIMARY KEY`
 * `value`: `TEXT NOT NULL`
+* Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, and `active_tab_favicon`.
 
-### Table 3: `journal_entries`
-Stores user-written reflections.
-* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
-* `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
-* `notes`: `TEXT NOT NULL`
+### Resilient SQLCipher Initialization & Fail-Soft Recovery
+On startup, `DbState::new` opens the database and runs a verification query (`SELECT count(*) FROM sqlite_master;`) immediately after applying `PRAGMA key`. If the query fails (due to decryption key changes, file corruption, or database format issues):
+1. The connection is cleanly dropped.
+2. The corrupt database file is renamed and backed up to `<name>.db.bak`.
+3. A fresh, clean database is initialized with the secure credentials, avoiding runtime panic crashes on application boot.
+
+Additionally, a database-level write guardrail is implemented inside `insert_activity_log` to reject insertions immediately if `tracking_active` is `"false"`.
 
 ---
 
@@ -78,33 +82,45 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
     "event": "tab_activity",
     "url": "https://github.com/...",
     "title": "Tauri Repository",
+    "favIconUrl": "https://github.com/favicon.ico",
     "timestamp": 1718330000
   }
   ```
-* **Security & Incognito:** Before executing `INSERT` statements, the headless native messaging CLI loops query the `settings` database table. If `incognito` is `"true"`, all writes are immediately discarded to prevent data leaks.
+* **Active Tab Caching:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event, which are then read by the background OS focus poller to map active tab URLs to the OS-level window focus state.
 
 ---
 
-## 4. Linux Wayland active window focus check (`tracker.rs`)
+## 4. Active Window Focus Poller & State-Sync (`tracker.rs`, `lib.rs`)
 
-Under Linux systems running Wayland, standard X11 focus queries (such as `xdotool` or `active-win-pos-rs` native X11 connections) fail due to window isolation sandboxing. To resolve this, the tracker identifies the compositor framework and falls back to compositor CLI utilities:
+### Atomic State Synchronization
+The background window poller thread must support clean cancellation. Rather than creating orphan "zombie" threads when tracking is disabled from the UI config panel:
+- We pass a thread-safe atomic cancellation flag (`Arc<std::sync::atomic::AtomicBool>`) to the loop.
+- Tauri commands `toggle_tracking` and `is_tracking_active` coordinate frontend clicks with this atomic flag.
+- The tracking loop polls the atomic flag every 1 second. If disabled, it flushes the active parent session, clears memory buffers, and pauses (sleeps).
 
-1. **Hyprland:** Spawns `hyprctl activewindow -j` and parses the output JSON:
-   ```json
-   {
-     "class": "code",
-     "title": "main.rs - lifemirror",
-     ...
-   }
-   ```
-2. **Sway:** Spawns `swaymsg -t get_tree` and performs a Depth-First Search (DFS) to locate the node containing `"focused": true` and extracts its `"app_id"` and `"name"`.
-3. **X11 Fallback:** If not on Wayland, uses `active-win-pos-rs` with shell execution fallbacks to `xdotool`.
+### Browser-Window URL Extraction
+Under Linux compositor polling (`hyprctl activewindow`, `swaymsg get_tree`, or `xdotool`), the OS only exposes window titles (e.g. `"GitHub - Google Chrome"`). To enrich this data:
+1. The tracker identifies if the foreground app is a browser (via `is_browser_app`).
+2. If active, it reads `active_tab_title`, `active_tab_url`, and `active_tab_favicon` settings from the SQLite settings table.
+3. If the compositor window title contains the active tab title, the activity log is populated with `source: "Browser"`, `url: Some(url)`, and `icon_url: Some(favicon)`.
+4. Browser tab URL switches trigger distinct focus transitions (`url != parent_url`), logging tab-level time slices and durations accurately.
 
 ---
 
-## 5. Responsive S-Curve Geometry (`SCurveTimeline.tsx`)
+## 5. UI Layout, Custom Themes & Brand Icons (`SCurveTimeline.tsx`, `App.tsx`)
 
-The dashboard timeline is represented as an S-shaped serpentine path generated programmatically in the React SVG container.
+### Dynamic Frosted-Glass Themes
+The application supports dynamic switching between Dark and Light mode themes via CSS custom variables defined in `src/index.css`.
+- **Dark Theme (`[data-theme="dark"]`)**: Deep-space background (`#0d0d11`), dark frosted glass card overlays, and high-visibility neon-purple drop shadows.
+- **Light Theme (`[data-theme="light"]`)**: Frosted-white glass cards with high backdrop blur (`blur(12px)`), soft shadows, and clean slate-gray borders.
+
+The frontend uses `localStorage` to persist user theme preferences and sets the root `data-theme` attribute on boot.
+
+### Brand Icons
+To show app-specific logos on timeline curves and activity cards, `AppIcon` maps active processes and websites dynamically:
+1. **Websites**: If the source is `"Browser"`, it renders the dynamic site favicon (using `icon_url` or falling back to the Google Favicons API).
+2. **Desktop Apps**: Matches keywords in `app_name` (e.g., `"code"`, `"terminal"`, `"spotify"`, `"slack"`, `"figma"`, `"zoom"`) to load beautiful brand-colored vector SVG icons.
+3. **Fallback**: Standard generic Monitor/Globe icons.
 
 ### Bézier Path Formula
 For each activity index `i` (representing an item in the chronological log), a cubic Bézier curve segment is generated from `yStart = i * rowHeight` to `yEnd = (i + 1) * rowHeight` centered around `width = 800`.
