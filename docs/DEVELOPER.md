@@ -87,7 +87,7 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
 
 ## 4. Linux Wayland active window focus check (`tracker.rs`)
 
-Under Linux systems runningWayland, standard X11 focus queries (such as `xdotool` or `active-win-pos-rs` native X11 connections) fail due to window isolation sandboxing. To resolve this, the tracker identifies the compositor framework and falls back to compositor CLI utilities:
+Under Linux systems running Wayland, standard X11 focus queries (such as `xdotool` or `active-win-pos-rs` native X11 connections) fail due to window isolation sandboxing. To resolve this, the tracker identifies the compositor framework and falls back to compositor CLI utilities:
 
 1. **Hyprland:** Spawns `hyprctl activewindow -j` and parses the output JSON:
    ```json
@@ -233,6 +233,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+```
 
 ---
 
@@ -269,11 +270,11 @@ The following table outlines the purpose of each skill in the `skills/` director
 
 | Skill Directory | Skill Name | Primary Use Case & Triggers | Key Instructions |
 | :--- | :--- | :--- | :--- |
-| [`rust_tauri_core`](file:///var/www/pieapps/lifemirror-desktop/skills/rust_tauri_core) | `rust_tauri_core` | Modifying Tauri backend code, active window focus tracking (`tracker.rs`), or Native Messaging communication (`native_msg.rs`). | Read native-endian browser frames, check session type (Wayland/X11), enforce thread-safe Incognito checks. |
-| [`frontend_ui_web`](file:///var/www/pieapps/lifemirror-desktop/skills/frontend_ui_web) | `frontend_ui_web` | Working on React dashboard UI, SVG S-curve coordinate maths, styling/glassmorphism, or browser-side Ollama hooks. | Winding S-curve geometry formulas, violet/dark aesthetics, call local Ollama completion endpoints. |
-| [`local_ai_data`](file:///var/www/pieapps/lifemirror-desktop/skills/local_ai_data) | `local_ai_data` | Modifying database schemas (`db.rs`), SQLCipher page-level encryption, database migrations, or Ollama prompt templates. | SQLCipher encryption setup, database key initialization (`PRAGMA key`), two-sentence reflection summaries. |
-| [`qa_security`](file:///var/www/pieapps/lifemirror-desktop/skills/qa_security) | `qa_security` | Auditing local privacy behavior, checking for potential port leaks, or validating data isolation. | Ensure zero remote telemetry, confirm no local listening sockets (exclusive stdio messaging), assert zero database writes in incognito. |
-| [`project_documenter`](file:///var/www/pieapps/lifemirror-desktop/skills/project_documenter) | `project_documenter` | Drafting, styling, or updating markdown developer documentation or user setup instructions. | Maintain architectural accuracy in `DEVELOPER.md`, update setup instructions in `USER.md`, document workflows. |
+| [rust_tauri_core](file:///var/www/pieapps/lifemirror-desktop/skills/rust_tauri_core) | `rust_tauri_core` | Modifying Tauri backend code, active window focus tracking (`tracker.rs`), or Native Messaging communication (`native_msg.rs`). | Read native-endian browser frames, check session type (Wayland/X11), enforce thread-safe Incognito checks. |
+| [frontend_ui_web](file:///var/www/pieapps/lifemirror-desktop/skills/frontend_ui_web) | `frontend_ui_web` | Working on React dashboard UI, SVG S-curve coordinate maths, styling/glassmorphism, or browser-side Ollama hooks. | Winding S-curve geometry formulas, violet/dark aesthetics, call local Ollama completion endpoints. |
+| [local_ai_data](file:///var/www/pieapps/lifemirror-desktop/skills/local_ai_data) | `local_ai_data` | Modifying database schemas (`db.rs`), SQLCipher page-level encryption, database migrations, or Ollama prompt templates. | SQLCipher encryption setup, database key initialization (`PRAGMA key`), two-sentence reflection summaries. |
+| [qa_security](file:///var/www/pieapps/lifemirror-desktop/skills/qa_security) | `qa_security` | Auditing local privacy behavior, checking for potential port leaks, or validating data isolation. | Ensure zero remote telemetry, confirm no local listening sockets (exclusive stdio messaging), assert zero database writes in incognito. |
+| [project_documenter](file:///var/www/pieapps/lifemirror-desktop/skills/project_documenter) | `project_documenter` | Drafting, styling, or updating markdown developer documentation or user setup instructions. | Maintain architectural accuracy in `DEVELOPER.md`, update setup instructions in `USER.md`, document workflows. |
 
 ### 3. Redundancy & Build Lock Mitigation
 To prevent agents running concurrently from triggering duplicate compilations (which causes resource exhaustion and target write locks on build artifacts), the pipeline enforces a **Delegated Build Architecture**:
@@ -283,5 +284,4 @@ To prevent agents running concurrently from triggering duplicate compilations (w
   * The Rust Tauri Core agent is *only* allowed to execute `cargo check` and `cargo test`.
   * Other subagents (Data, QA, Documenter) skip build executions.
 * **Integration compilation:** The Orchestrator runs the final combined validation loop after all specialist tasks finish.
-```
 
