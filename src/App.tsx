@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { 
   ShieldAlert, Sparkles, BookOpen, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
-  Calendar, Clock, Grid, Send, Trash2, RotateCcw, MessageSquare
+  Calendar, Clock, Grid, Send, Trash2, MessageSquare
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
