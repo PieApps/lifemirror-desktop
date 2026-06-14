@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { 
   ShieldAlert, Sparkles, BookOpen, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
-  Calendar, Clock, Grid
+  Calendar, Clock, Grid, Send, Trash2, RotateCcw, MessageSquare
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
@@ -22,6 +22,14 @@ export interface HourlyMetric {
   day_of_week: number;
   hour: number;
   total_duration: number;
+}
+
+export interface ChatMessage {
+  id?: number;
+  date: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: string;
 }
 
 function App() {
@@ -47,6 +55,15 @@ function App() {
 
   // Duration Filter configuration
   const [minDurationFilter, setMinDurationFilterState] = useState(0);
+
+  // AI Chat states
+  const [activeAiTab, setActiveAiTab] = useState<"reflection" | "chat">("reflection");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [volatileChatHistory, setVolatileChatHistory] = useState<ChatMessage[]>([]); // For Incognito mode
+
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Local Date and Range Helper functions
   const getLocalDateString = (d: Date = new Date()) => {
@@ -87,6 +104,84 @@ function App() {
   const [weeklySummaries, setWeeklySummaries] = useState<DailySummary[]>([]);
   const [monthlySummaries, setMonthlySummaries] = useState<DailySummary[]>([]);
   const [heatmapData, setHeatmapData] = useState<HourlyMetric[]>([]);
+
+  const compileContextRollup = (): string => {
+    if (viewMode === "daily") {
+      if (activities.length === 0) {
+        return "No activity logs recorded for this day.";
+      }
+
+      // Group by app_name for total durations
+      const appDurations: Record<string, number> = {};
+      activities.forEach((node) => {
+        appDurations[node.app_name] = (appDurations[node.app_name] || 0) + node.duration;
+      });
+
+      const topApps = Object.entries(appDurations)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .join("\n");
+
+      // Last 5 window focus transitions for micro-context
+      const recentFocus = activities
+        .slice(0, 5)
+        .map((node) => `- ${node.app_name}: "${node.window_title}" (Spent ${Math.round(node.duration)}s)`)
+        .join("\n");
+
+      return `Selected Date: ${selectedDate}\n\nTop Applications by Duration:\n${topApps}\n\nRecent Focus Events:\n${recentFocus}`;
+    } else if (viewMode === "weekly") {
+      if (weeklySummaries.length === 0) {
+        return "No activity summary recorded for this week.";
+      }
+      const appDurations: Record<string, number> = {};
+      weeklySummaries.forEach((sum) => {
+        appDurations[sum.app_name] = (appDurations[sum.app_name] || 0) + sum.total_duration;
+      });
+      const topApps = Object.entries(appDurations)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .join("\n");
+      return `Selected Period: Week of ${selectedDate}\n\nTop Applications by Duration:\n${topApps}`;
+    } else {
+      if (monthlySummaries.length === 0) {
+        return "No activity summary recorded for this month.";
+      }
+      const appDurations: Record<string, number> = {};
+      monthlySummaries.forEach((sum) => {
+        appDurations[sum.app_name] = (appDurations[sum.app_name] || 0) + sum.total_duration;
+      });
+      const topApps = Object.entries(appDurations)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .join("\n");
+      return `Selected Period: Month of ${selectedDate.substring(0, 7)}\n\nTop Applications by Duration:\n${topApps}`;
+    }
+  };
+
+  const compileMessagesForOllama = (history: ChatMessage[]): { role: string; content: string }[] => {
+    const systemContent = `You are a helpful local productivity AI companion for the LifeMirror desktop application.
+You have access to the user's activity log summary for the currently selected period.
+Use these logs to answer user questions about their focus, time spent, or productivity if relevant. If they ask about unrelated topics, answer them normally.
+Always be concise, supportive, and friendly.
+
+${compileContextRollup()}`;
+
+    const systemMessage = {
+      role: "system",
+      content: systemContent,
+    };
+
+    // Extract last 6 messages to avoid context token overflow
+    const slidingWindow = history.slice(-6).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+
+    return [systemMessage, ...slidingWindow];
+  };
 
   // Apply theme class and data attribute
   useEffect(() => {
@@ -267,6 +362,15 @@ function App() {
 
       const incognitoState = await invoke<boolean>("is_incognito");
       setIsIncognito(incognitoState);
+
+      if (!incognitoState) {
+        try {
+          const history = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
+          setChatMessages(history);
+        } catch (err) {
+          console.error("Failed to load chat history:", err);
+        }
+      }
     } catch (e) {
       console.error("Failed to load Tauri DB data:", e);
     }
@@ -300,6 +404,14 @@ function App() {
     }, 1000);
     return () => clearInterval(ticker);
   }, [activeActivity, trackingActive, isIncognito, selectedDate]);
+
+  // Reset chat input, loading and volatile history on date/incognito change
+  useEffect(() => {
+    abortControllerRef.current?.abort();
+    setVolatileChatHistory([]);
+    setChatInput("");
+    setChatLoading(false);
+  }, [selectedDate, isIncognito]);
 
   const handleToggleIncognito = async () => {
     try {
@@ -385,6 +497,217 @@ function App() {
       setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Ollama is running locally (${ollamaUrl}) and that you ran 'ollama pull ${ollamaModel}' first.`);
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      const container = document.getElementById("chat-messages-container");
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 50);
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatMessages, volatileChatHistory]);
+
+  const handleSendChat = async (overrideText?: string) => {
+    const textToSend = (overrideText || chatInput).trim();
+    if (!textToSend || chatLoading) return;
+
+    if (!ollamaUrl || ollamaUrl === "false" || !ollamaModel || ollamaModel === "false") {
+      const errMsg = "Ollama is disabled or configuration is incomplete.";
+      if (isIncognito) {
+        setVolatileChatHistory(prev => [
+          ...prev, 
+          { date: selectedDate, role: "user", content: textToSend, timestamp: new Date().toISOString() },
+          { date: selectedDate, role: "assistant", content: errMsg, timestamp: new Date().toISOString() }
+        ]);
+      } else {
+        setChatMessages(prev => [
+          ...prev, 
+          { date: selectedDate, role: "user", content: textToSend, timestamp: new Date().toISOString() },
+          { date: selectedDate, role: "assistant", content: errMsg, timestamp: new Date().toISOString() }
+        ]);
+      }
+      return;
+    }
+
+    setChatLoading(true);
+    setChatInput("");
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    const timestamp = new Date().toISOString();
+    let currentHistory: ChatMessage[] = [];
+
+    if (isIncognito) {
+      const updatedHistory: ChatMessage[] = [
+        ...volatileChatHistory,
+        { date: selectedDate, role: "user", content: textToSend, timestamp }
+      ];
+      setVolatileChatHistory([
+        ...updatedHistory,
+        { date: selectedDate, role: "assistant", content: "", timestamp: new Date().toISOString() }
+      ]);
+      currentHistory = updatedHistory;
+    } else {
+      try {
+        await invoke("add_chat_message", { date: selectedDate, role: "user", content: textToSend });
+        const history = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
+        setChatMessages([
+          ...history,
+          { date: selectedDate, role: "assistant", content: "", timestamp: new Date().toISOString() }
+        ]);
+        currentHistory = history;
+      } catch (err: any) {
+        console.error(err);
+        setChatLoading(false);
+        return;
+      }
+    }
+
+    scrollToBottom();
+
+    try {
+      const systemContext = compileMessagesForOllama(currentHistory);
+
+      const response = await fetch(`${ollamaUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: ollamaModel,
+          messages: systemContext,
+          stream: true,
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        let errorMsg = `HTTP status ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errorMsg = errData.error;
+          }
+        } catch (_) {}
+        throw new Error(errorMsg);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body received from Ollama server.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulatedResponse = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.trim() === "") continue;
+          try {
+            const parsed = JSON.parse(line);
+            const textChunk = parsed.message?.content || "";
+            accumulatedResponse += textChunk;
+
+            if (isIncognito) {
+              setVolatileChatHistory(prev => {
+                const next = [...prev];
+                if (next.length > 0) {
+                  next[next.length - 1] = {
+                    ...next[next.length - 1],
+                    content: accumulatedResponse,
+                  };
+                }
+                return next;
+              });
+            } else {
+              setChatMessages(prev => {
+                const next = [...prev];
+                if (next.length > 0) {
+                  next[next.length - 1] = {
+                    ...next[next.length - 1],
+                    content: accumulatedResponse,
+                  };
+                }
+                return next;
+              });
+            }
+          } catch (jsonErr) {
+            console.warn("Failed to parse stream chunk:", jsonErr);
+          }
+        }
+      }
+
+      // Finalize non-incognito message in SQLite
+      if (!isIncognito) {
+        await invoke("add_chat_message", { date: selectedDate, role: "assistant", content: accumulatedResponse });
+        const finalizedHistory = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
+        setChatMessages(finalizedHistory);
+      }
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.log("Chat stream request aborted.");
+        return;
+      }
+      console.error(err);
+      const errText = `Failed to get response: ${err.message || err}. Ensure Ollama is running at ${ollamaUrl} and '${ollamaModel}' model is pulled.`;
+      
+      if (isIncognito) {
+        setVolatileChatHistory(prev => {
+          const next = [...prev];
+          if (next.length > 0) {
+            next[next.length - 1] = {
+              ...next[next.length - 1],
+              content: errText,
+            };
+          }
+          return next;
+        });
+      } else {
+        setChatMessages(prev => {
+          const next = [...prev];
+          if (next.length > 0) {
+            next[next.length - 1] = {
+              ...next[next.length - 1],
+              content: errText,
+            };
+          }
+          return next;
+        });
+      }
+    } finally {
+      setChatLoading(false);
+      abortControllerRef.current = null;
+      scrollToBottom();
+    }
+  };
+
+  const clearChat = async () => {
+    abortControllerRef.current?.abort();
+    setChatLoading(false);
+    
+    if (isIncognito) {
+      setVolatileChatHistory([]);
+    } else {
+      try {
+        await invoke("clear_chat_history", { date: selectedDate });
+        setChatMessages([]);
+      } catch (err) {
+        console.error("Failed to clear chat history from database:", err);
+      }
     }
   };
 
@@ -565,36 +888,176 @@ function App() {
               setMinDurationFilter={updateMinDurationFilter}
             />
           ) : (
-            /* AI Reflection Module */
-            <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-violet-400" />
-                <h3 className="text-sm font-bold tracking-wider text-[var(--text-muted)] uppercase">Ollama Daily Reflection</h3>
+            /* AI Reflection & Chat Module */
+            <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left min-h-[420px]">
+              {/* Header with Switcher Tabs */}
+              <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+                <div className="flex items-center gap-2">
+                  {activeAiTab === "reflection" ? (
+                    <Sparkles className="w-5 h-5 text-violet-400" />
+                  ) : (
+                    <MessageSquare className="w-5 h-5 text-violet-400" />
+                  )}
+                  <h3 className="text-sm font-bold tracking-wider text-[var(--text-muted)] uppercase">
+                    {activeAiTab === "reflection" ? "Ollama Reflection" : "Ollama Chat"}
+                  </h3>
+                </div>
+                
+                {/* Tabs Toggle buttons */}
+                <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-0.5 rounded-lg border border-[var(--border-color)] text-xs">
+                  <button
+                    onClick={() => setActiveAiTab("reflection")}
+                    className={`px-2.5 py-1 font-semibold rounded-md transition-all cursor-pointer ${
+                      activeAiTab === "reflection"
+                        ? "bg-violet-600 text-white shadow"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    }`}
+                  >
+                    Reflect
+                  </button>
+                  <button
+                    onClick={() => setActiveAiTab("chat")}
+                    className={`px-2.5 py-1 font-semibold rounded-md transition-all cursor-pointer ${
+                      activeAiTab === "chat"
+                        ? "bg-violet-600 text-white shadow"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    }`}
+                  >
+                    Chat
+                  </button>
+                </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-[var(--bg-color)]/30 border border-[var(--border-color)] text-sm leading-relaxed text-[var(--text-color)] min-h-[100px] flex items-center justify-center">
-                {aiLoading ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-[var(--text-muted)]">Querying local Ollama...</span>
+              {activeAiTab === "reflection" ? (
+                /* Reflection Tab Content */
+                <div className="flex flex-col gap-4 flex-1">
+                  <div className="p-4 rounded-xl bg-[var(--bg-color)]/30 border border-[var(--border-color)] text-sm leading-relaxed text-[var(--text-color)] min-h-[150px] flex items-center justify-center flex-1">
+                    {aiLoading ? (
+                      <div className="flex flex-col items-center gap-3">
+                        <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs text-[var(--text-muted)]">Querying local Ollama...</span>
+                      </div>
+                    ) : aiReflection ? (
+                      <p className="italic font-medium">"{aiReflection}"</p>
+                    ) : (
+                      <p className="text-[var(--text-muted)] text-center text-xs">
+                        Click reflect to compile your active log focus nodes into a local AI reflection.
+                      </p>
+                    )}
                   </div>
-                ) : aiReflection ? (
-                  <p className="italic font-medium">"{aiReflection}"</p>
-                ) : (
-                  <p className="text-[var(--text-muted)] text-center">
-                    Click reflect to compile your active log focus nodes into a local AI reflection.
-                  </p>
-                )}
-              </div>
 
-              <button
-                onClick={generateAIReflection}
-                disabled={aiLoading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all disabled:opacity-50 cursor-pointer shadow-lg shadow-violet-500/10"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Reflect with Ollama</span>
-              </button>
+                  <button
+                    onClick={generateAIReflection}
+                    disabled={aiLoading}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all disabled:opacity-50 cursor-pointer shadow-lg shadow-violet-500/10"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Reflect with Ollama</span>
+                  </button>
+                </div>
+              ) : (
+                /* Chat Tab Content */
+                <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-[300px]">
+                  {/* Warning banner for Incognito mode */}
+                  {isIncognito && (
+                    <div className="flex items-start gap-1.5 p-2 rounded-xl bg-amber-950/20 border border-amber-800/30 text-amber-500 text-[10px] leading-tight">
+                      <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span>
+                        Incognito Mode active. Chat history is temporary and will self-destruct if you switch dates, switch tabs, or close the app.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Messages list */}
+                  <div 
+                    id="chat-messages-container"
+                    className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[180px] max-h-[260px] scrollbar-thin"
+                  >
+                    {(isIncognito ? volatileChatHistory : chatMessages).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                        <MessageSquare className="w-8 h-8 text-[var(--text-muted)] opacity-30 mb-2" />
+                        <p className="text-xs text-[var(--text-muted)] mb-3">
+                          Ask anything about your focus logs or productivity today!
+                        </p>
+                        
+                        {/* Suggestion Pills */}
+                        <div className="flex flex-wrap gap-1.5 justify-center max-w-[240px]">
+                          {["Summarize my day", "Where did I waste time?", "How was my focus?"].map((pillText) => (
+                            <button
+                              key={pillText}
+                              disabled={chatLoading}
+                              onClick={() => {
+                                handleSendChat(pillText);
+                              }}
+                              className="text-[10px] px-2 py-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:bg-zinc-500/10 hover:text-[var(--text-color)] text-[var(--text-muted)] font-medium transition-all cursor-pointer"
+                            >
+                              {pillText}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      (isIncognito ? volatileChatHistory : chatMessages).map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex flex-col max-w-[85%] ${
+                            msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
+                          }`}
+                        >
+                          <div
+                            className={`p-3 rounded-2xl text-xs leading-normal font-medium shadow-sm ${
+                              msg.role === "user"
+                                ? "bg-violet-600 text-white rounded-tr-none"
+                                : "bg-[var(--bg-color)]/40 border border-[var(--border-color)] text-[var(--text-color)] rounded-tl-none"
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          </div>
+                          <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
+                            {msg.role === "user" ? "You" : "Ollama"}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Chat input box */}
+                  <div className="flex gap-2 items-center border-t border-[var(--border-color)] pt-3 mt-auto">
+                    <button
+                      onClick={clearChat}
+                      disabled={chatLoading}
+                      title="Clear Chat History"
+                      className="p-2.5 rounded-xl border border-[var(--border-color)] hover:bg-red-500/10 hover:border-red-500/30 text-[var(--text-muted)] hover:text-red-500 cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !chatLoading && chatInput.trim()) {
+                          handleSendChat();
+                        }
+                      }}
+                      disabled={chatLoading}
+                      placeholder={chatLoading ? "Ollama is typing..." : "Ask Ollama..."}
+                      className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 disabled:opacity-50"
+                    />
+                    <button
+                      onClick={() => handleSendChat()}
+                      disabled={chatLoading || !chatInput.trim()}
+                      className="p-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-violet-500/10"
+                    >
+                      {chatLoading ? (
+                        <div className="w-3.5 h-3.5 border border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

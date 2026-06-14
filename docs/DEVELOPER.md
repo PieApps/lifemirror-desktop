@@ -62,6 +62,14 @@ Persistent configuration store shared across processes (Tauri GUI and CLI Native
 * `value`: `TEXT NOT NULL`
 * Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, and `active_tab_favicon`.
 
+### Table 3: `chat_history`
+Stores the multi-turn persistent chat histories keyed by date for normal tracking sessions.
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `date`: `TEXT NOT NULL` (maps conversation turns to specific days, e.g. `"2026-06-15"`)
+* `role`: `TEXT NOT NULL` (`"user"` or `"assistant"`)
+* `content`: `TEXT NOT NULL` (the text content of the message)
+* `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
+
 ### Resilient SQLCipher Initialization & Fail-Soft Recovery
 On startup, `DbState::new` opens the database and runs a verification query (`SELECT count(*) FROM sqlite_master;`) immediately after applying `PRAGMA key`. If the query fails (due to decryption key changes, file corruption, or database format issues):
 1. The connection is cleanly dropped.
@@ -116,6 +124,12 @@ To display the current active session on the timeline in real time without writi
 2. The background tracking thread updates this state every second with the current active parent session.
 3. If **Incognito Mode** is activated, this shared state is immediately cleared to `None` to prevent memory leaks of sensitive browsing titles or URLs.
 4. The Tauri command `get_current_activity` exposes this state to the React frontend, which prepends it to the timeline and increments the duration smoothly on the client side using local timestamp offsets.
+
+### Persistent Chat Tauri Commands
+To interface with the persistent SQLite chat history, three Tauri command endpoints are registered:
+- `get_chat_history(date: String)`: Retrieves a chronological array of messages for the selected date.
+- `add_chat_message(date: String, role: String, content: String)`: Persists a new message turn into the database.
+- `clear_chat_history(date: String)`: Deletes all chat dialogue associated with the selected date.
 
 ---
 

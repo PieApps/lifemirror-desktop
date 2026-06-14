@@ -38,6 +38,15 @@ pub struct HourlyMetric {
     pub total_duration: i64,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatMessage {
+    pub id: Option<i64>,
+    pub date: String,
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+}
+
 pub struct DbState {
     pub conn: Mutex<Connection>,
 }
@@ -146,6 +155,24 @@ impl DbState {
                 session_count INTEGER NOT NULL,
                 UNIQUE(date, app_name)
             );",
+            [],
+        )?;
+
+        // Create chat_history table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            );",
+            [],
+        )?;
+
+        // Index for chat history dates
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_history_date ON chat_history (date);",
             [],
         )?;
 
@@ -361,5 +388,50 @@ impl DbState {
             logs.push(log?);
         }
         Ok(logs)
+    }
+
+    pub fn get_chat_messages_for_day(&self, date: &str) -> Result<Vec<ChatMessage>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, date, role, content, timestamp
+             FROM chat_history
+             WHERE date = ?1
+             ORDER BY timestamp ASC;"
+        )?;
+
+        let chat_iter = stmt.query_map([date], |row| {
+            Ok(ChatMessage {
+                id: Some(row.get(0)?),
+                date: row.get(1)?,
+                role: row.get(2)?,
+                content: row.get(3)?,
+                timestamp: row.get(4)?,
+            })
+        })?;
+
+        let mut messages = Vec::new();
+        for msg in chat_iter {
+            messages.push(msg?);
+        }
+        Ok(messages)
+    }
+
+    pub fn insert_chat_message(&self, date: &str, role: &str, content: &str) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO chat_history (date, role, content, timestamp) VALUES (?1, ?2, ?3, ?4)",
+            params![date, role, content, timestamp],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn clear_chat_messages_for_day(&self, date: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM chat_history WHERE date = ?1",
+            params![date],
+        )?;
+        Ok(())
     }
 }

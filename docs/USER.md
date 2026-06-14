@@ -69,7 +69,9 @@ Ollama runs completely locally on your machine, ensuring your activity logs are 
 3. Open LifeMirror Desktop, click the **Settings** icon (top right), and configure:
    * **Ollama Server Endpoint:** `http://localhost:11434`
    * **Ollama Model:** `llama3.2`
-4. Click **Reflect with Ollama** on the main dashboard to generate your daily reflection card!
+4. Toggle between the **Reflect** and **Chat** modes in the AI panel on the right sidebar:
+   - Click **Reflect with Ollama** to compile your daily focus logs into a 2-sentence mindfulness reflection card.
+   - Select **Chat** to type custom queries and interact with the local AI regarding your log metrics or productivity details!
 
 > For advanced configurations, environment variable setup, and detailed instructions for other operating systems, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
 
@@ -78,9 +80,10 @@ Ollama runs completely locally on your machine, ensuring your activity logs are 
 ## 4. Key Application Features
 
 * **S-Curve Timeline & Real-Time Tracking:** Scroll through a winding serpentine infographic mapping your computer usage. Monitored active OS window sessions sit alongside browser tab events. The timeline dynamically displays your currently active task in real time, with the counter ticking up smoothly second-by-second.
+* **Interactive Local AI Chat:** Ask custom questions about your productivity and desktop focus directly to your local AI model. Ollama receives a token-budgeted daily activity rollup (top apps and recent window switches) to answer questions like *"Where did I spend the most time today?"* with character-by-character real-time streaming.
 * **Timeline App Icons & Favicons:** The timeline automatically displays dynamic website favicons (both for past logs and for the real-time active tracker) and custom brand-specific vector icons (VS Code, Discord, Slack, terminal, Spotify, Figma, etc.) for popular desktop applications.
 * **Domain-Level Tab Consolidation:** Navigating within the same website (e.g. switching between different YouTube videos or navigating within GitHub) is automatically aggregated into a single continuous timeline session, preventing your log history from fragmenting.
 * **Reflective Journaling:** Click "Reflect" on any timeline node to open a notes editor. Save your thoughts directly into the local encrypted SQLCipher database.
-* **Incognito Mode:** Toggle Incognito Mode to temporarily freeze all active focus tracking and browser tab logging. While active, the in-memory active session cache is wiped immediately, and a glassmorphic blur and lock screen overlay are displayed to verify your privacy is isolated.
+* **Incognito Mode:** Toggle Incognito Mode to temporarily freeze all active focus tracking and browser tab logging. While active, the in-memory active session cache is wiped immediately, a glassmorphic blur and lock screen overlay are displayed, and AI Chat routing shifts to a volatile, non-saved memory array.
 * **Background OS Tracking Control:** Turn background window monitoring on or off from the Local-First configurations panel. Toggling it off terminates active tracking loops, clears active state caching, and prevents database insertions.
 * **Theme Selection:** Toggle between a deep neon-glow Dark Mode and a premium frosted-glass Light Mode using the Sun/Moon switcher button in the header. Preferences are automatically persisted across launches.

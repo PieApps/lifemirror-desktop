@@ -3,8 +3,8 @@ import { Monitor, Globe, Clock, Plus, Terminal, MessageSquare, Video } from "luc
 
 export interface ActivityNode {
   id: number;
-  app_name: String;
-  window_title: String;
+  app_name: string;
+  window_title: string;
   start_time: string;
   duration: number;
   source: string;

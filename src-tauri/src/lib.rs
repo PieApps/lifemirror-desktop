@@ -6,7 +6,7 @@ pub mod ai;
 use std::sync::Arc;
 use std::path::PathBuf;
 use tauri::State;
-use db::{DbState, ActivityLog, JournalEntry, DailySummary, HourlyMetric};
+use db::{DbState, ActivityLog, JournalEntry, DailySummary, HourlyMetric, ChatMessage};
 
 fn get_db_path() -> PathBuf {
     let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
@@ -112,6 +112,21 @@ fn get_hourly_heatmap(state: State<'_, Arc<DbState>>, start_date: String, end_da
     state.get_hourly_heatmap_metrics(&start_date, &end_date).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_chat_history(state: State<'_, Arc<DbState>>, date: String) -> Result<Vec<ChatMessage>, String> {
+    state.get_chat_messages_for_day(&date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_chat_message(state: State<'_, Arc<DbState>>, date: String, role: String, content: String) -> Result<i64, String> {
+    state.insert_chat_message(&date, &role, &content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn clear_chat_history(state: State<'_, Arc<DbState>>, date: String) -> Result<(), String> {
+    state.clear_chat_messages_for_day(&date).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -168,7 +183,10 @@ pub fn run() {
             get_daily_activities,
             get_weekly_summary,
             get_monthly_summary,
-            get_hourly_heatmap
+            get_hourly_heatmap,
+            get_chat_history,
+            add_chat_message,
+            clear_chat_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
