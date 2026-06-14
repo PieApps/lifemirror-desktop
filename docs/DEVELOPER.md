@@ -93,7 +93,7 @@ Under Linux systems running Wayland, standard X11 focus queries (such as `xdotoo
    ```json
    {
      "class": "code",
-     "title": "main.rs - tauri-app",
+     "title": "main.rs - lifemirror",
      ...
    }
    ```

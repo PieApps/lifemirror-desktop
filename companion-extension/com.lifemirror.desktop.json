@@ -1,7 +1,7 @@
 {
   "name": "com.lifemirror.desktop",
   "description": "LifeMirror Native Messaging Bridge",
-  "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/tauri-app",
+  "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://aagbofmjdgfcceidclhmdhmgmbpgeifn/" 

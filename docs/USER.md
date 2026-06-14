@@ -26,7 +26,7 @@ The browser extension syncs active tabs using Chrome's secure **Native Messaging
 
 ### Step A: Configure the Host Manifest
 Edit the descriptor template file: `companion-extension/com.lifemirror.desktop.json`
-* Change `"path"` to point to your compiled `tauri-app` binary (usually `/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/tauri-app`).
+* Change `"path"` to point to your compiled `lifemirror` binary (usually `/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror`).
 * Keep the configuration `"type": "stdio"`.
 
 ### Step B: Load the Extension in Chrome

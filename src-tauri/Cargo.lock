@@ -2120,6 +2120,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "lifemirror"
+version = "0.1.0"
+dependencies = [
+ "active-win-pos-rs",
+ "chrono",
+ "libc",
+ "once_cell",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tokio",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3662,23 +3679,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "active-win-pos-rs",
- "chrono",
- "libc",
- "once_cell",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tokio",
 ]
 
 [[package]]
