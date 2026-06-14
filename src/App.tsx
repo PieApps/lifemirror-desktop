@@ -29,6 +29,9 @@ function App() {
   const [aiReflection, setAiReflection] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Duration Filter configuration
+  const [minDurationFilter, setMinDurationFilterState] = useState(0);
+
   // Apply theme class and data attribute
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -53,6 +56,12 @@ function App() {
           setOllamaModel("llama3.2");
         }
 
+        const minDurationStr = await invoke<string>("get_db_setting", { key: "min_duration_filter" });
+        if (minDurationStr && minDurationStr !== "false" && minDurationStr.trim() !== "") {
+          const parsed = parseInt(minDurationStr, 10);
+          if (!isNaN(parsed)) setMinDurationFilterState(parsed);
+        }
+
         const reflection = await invoke<string>("get_db_setting", { key: "last_ai_reflection" });
         if (reflection && reflection !== "false") setAiReflection(reflection);
 
@@ -64,6 +73,15 @@ function App() {
     };
     loadSettings();
   }, []);
+
+  const updateMinDurationFilter = async (duration: number) => {
+    setMinDurationFilterState(duration);
+    try {
+      await invoke("set_db_setting", { key: "min_duration_filter", value: String(duration) });
+    } catch (e) {
+      console.error("Failed to save min_duration_filter setting:", e);
+    }
+  };
 
   const updateOllamaUrl = async (url: string) => {
     const sanitizedUrl = url.trim() === "" || url.trim() === "false" || url.trim() === "null" ? "false" : url.trim();
@@ -105,7 +123,16 @@ function App() {
       } else {
         setActiveActivity(null);
       }
-      setActivities(mergedActivities);
+      
+      // Filter out activities below minimum duration threshold
+      // We always show the active ticking node so the user has immediate visual feedback that tracking is active.
+      let filteredActivities = mergedActivities;
+      if (minDurationFilter > 0) {
+        filteredActivities = mergedActivities.filter(node => 
+          node.duration >= minDurationFilter || (currentActive && node.start_time === currentActive.start_time)
+        );
+      }
+      setActivities(filteredActivities);
       
       const dbJournals = await invoke<any[]>("get_journals", { limit: 10 });
       setJournals(dbJournals);
@@ -126,7 +153,7 @@ function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [trackingActive, isIncognito]);
+  }, [trackingActive, isIncognito, minDurationFilter]);
 
   // Local active session ticking for smooth real-time visual updates
   useEffect(() => {
@@ -334,6 +361,8 @@ function App() {
               setOllamaModel={updateOllamaModel}
               trackingActive={trackingActive}
               setTrackingActive={handleToggleTracking}
+              minDurationFilter={minDurationFilter}
+              setMinDurationFilter={updateMinDurationFilter}
             />
           ) : (
             /* AI Reflection Module */

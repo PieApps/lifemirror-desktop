@@ -227,6 +227,33 @@ const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, source, classN
   );
 };
 
+const extractDomain = (url?: string): string => {
+  if (!url) return "";
+  try {
+    let host = url;
+    if (url.startsWith("https://")) {
+      host = url.substring(8);
+    } else if (url.startsWith("http://")) {
+      host = url.substring(7);
+    }
+    const end = host.indexOf("/");
+    const query = host.indexOf("?");
+    const colon = host.indexOf(":");
+    let limit = host.length;
+    if (end !== -1) limit = Math.min(limit, end);
+    if (query !== -1) limit = Math.min(limit, query);
+    if (colon !== -1) limit = Math.min(limit, colon);
+    
+    let hostname = host.substring(0, limit);
+    if (hostname.startsWith("www.")) {
+      hostname = hostname.substring(4);
+    }
+    return hostname;
+  } catch {
+    return "";
+  }
+};
+
 export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAddJournal }) => {
   const rowHeight = 160;
   const width = 800;
@@ -368,6 +395,11 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                       }`}>
                         {node.app_name}
                       </span>
+                      {isBrowser && node.url && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full truncate bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/30 max-w-[150px]" title={extractDomain(node.url)}>
+                          {extractDomain(node.url)}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center text-xs text-[var(--text-muted)] gap-1 shrink-0">
                       <Clock className="w-3 h-3 text-violet-400" />

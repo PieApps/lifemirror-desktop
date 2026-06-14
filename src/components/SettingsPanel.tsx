@@ -10,6 +10,8 @@ interface SettingsPanelProps {
   setOllamaModel: (model: string) => void;
   trackingActive: boolean;
   setTrackingActive: (active: boolean) => void;
+  minDurationFilter: number;
+  setMinDurationFilter: (duration: number) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -21,6 +23,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setOllamaModel,
   trackingActive,
   setTrackingActive,
+  minDurationFilter,
+  setMinDurationFilter,
 }) => {
   return (
     <div className="glass rounded-2xl p-6 border border-[var(--border-color)] max-w-md w-full mx-auto text-left">
@@ -73,6 +77,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         <p className="text-xs text-[var(--text-muted)]">
           Entirely skips writing active focus logs to SQLite and displays a locked visual state across dashboard layouts.
+        </p>
+      </div>
+
+      {/* Hide sessions by duration */}
+      <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-sm font-medium text-[var(--text-color)]">Filter Short Sessions</span>
+          </div>
+          <select
+            value={minDurationFilter}
+            onChange={(e) => setMinDurationFilter(Number(e.target.value))}
+            className="bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 cursor-pointer"
+          >
+            <option value={0}>Show all logs</option>
+            <option value={5}>Hide under 5s</option>
+            <option value={10}>Hide under 10s</option>
+            <option value={30}>Hide under 30s</option>
+            <option value={60}>Hide under 1m</option>
+            <option value={120}>Hide under 2m</option>
+            <option value={300}>Hide under 5m</option>
+          </select>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          Hides minor activities and micro-task diversions below this threshold from the S-Curve timeline.
         </p>
       </div>
 
