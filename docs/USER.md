@@ -71,6 +71,8 @@ Ollama runs completely locally on your machine, ensuring your activity logs are 
    * **Ollama Model:** `llama3.2`
 4. Click **Reflect with Ollama** on the main dashboard to generate your daily reflection card!
 
+> For advanced configurations, environment variable setup, and detailed instructions for other operating systems, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
+
 ---
 
 ## 4. Key Application Features

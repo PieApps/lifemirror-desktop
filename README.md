@@ -44,10 +44,12 @@ Browser tab sync operates over a secure, sandboxed stdin/stdout **Native Messagi
    ollama pull llama3.2
    ```
 3. In the LifeMirror app, open settings (top-right cog) and specify the Ollama Host (`http://localhost:11434`) and model name.
+4. For detailed cross-OS setup, environment variables, and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
 
 ---
 
 ## 📖 Documentation Directory
 * [User Guide (`docs/USER.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md): Walks through initial installation, Chrome extension symlinking, and settings configurations.
+* [Ollama Configuration Guide (`docs/OLLAMA_SETUP.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md): Detailed installation, model management, and environment variable configuration instructions for different operating systems.
 * [Developer Documentation (`docs/DEVELOPER.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md): Details database schemas, active Wayland focus hooks, S-curve geometry math, and packaging scripts.
 * [Feature & Change Workflow (`docs/WORKFLOW.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md): Step-by-step instructions for developers and coding assistants to safely implement future changes.

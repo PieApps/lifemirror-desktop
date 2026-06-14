@@ -179,14 +179,21 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to contact local Ollama: status ${response.status}`);
+        let errorMsg = `status ${response.status}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errorMsg = errData.error;
+          }
+        } catch (_) {}
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
       setAiReflection(data.response || "No response received.");
     } catch (err: any) {
       console.error(err);
-      setAiReflection(`Mindfulness engine failed. Check that Ollama is running locally (${ollamaUrl}) and that you ran 'ollama pull ${ollamaModel}' first.`);
+      setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Ollama is running locally (${ollamaUrl}) and that you ran 'ollama pull ${ollamaModel}' first.`);
     } finally {
       setAiLoading(false);
     }
