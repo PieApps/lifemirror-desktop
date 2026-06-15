@@ -14,8 +14,6 @@ interface SettingsPanelProps {
   setMinLogDuration: (duration: number) => void;
   isAutostartEnabled: boolean;
   toggleAutostart: () => Promise<void>;
-  closeMinimizes: boolean;
-  setCloseMinimizes: (val: boolean) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -31,8 +29,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setMinLogDuration,
   isAutostartEnabled,
   toggleAutostart,
-  closeMinimizes,
-  setCloseMinimizes,
 }) => {
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
@@ -179,30 +175,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         )}
       </div>
 
-      {/* Close button minimizes to tray */}
-      <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-[var(--text-muted)]" />
-            <span className="text-sm font-medium text-[var(--text-color)]">Close Minimizes to Tray</span>
-          </div>
-          <button
-            onClick={() => setCloseMinimizes(!closeMinimizes)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-              closeMinimizes ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                closeMinimizes ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
-        </div>
-        <p className="text-xs text-[var(--text-muted)]">
-          Clicking the 'X' window button hides the window to the system status bar, keeping tracking active in the background.
-        </p>
-      </div>
 
       {/* Ollama reflection details */}
       <div className="space-y-4">

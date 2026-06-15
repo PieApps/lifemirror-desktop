@@ -90,10 +90,13 @@ pub fn start_window_tracker(
         loop {
             thread::sleep(Duration::from_secs(1));
 
-            let min_log_duration = db.get_setting("min_log_duration")
+            let mut min_log_duration = db.get_setting("min_log_duration")
                 .unwrap_or_else(|_| "60".to_string())
                 .parse::<i64>()
                 .unwrap_or(60);
+            if min_log_duration < 60 {
+                min_log_duration = 60;
+            }
 
             // Check if background tracking was toggled off (Atomic Cancellation)
             if !tracking_active.load(std::sync::atomic::Ordering::SeqCst) {

@@ -151,8 +151,8 @@ To allow seamless background monitoring and control, the application registers a
 ### Background Hide & Close Behavior
 Standard window close requests are intercepted:
 - **Hook**: Intercepted in `lib.rs` inside the `on_window_event` hook for `WindowEvent::CloseRequested`.
-- **Logic**: If the setting `"close_minimizes"` is set to `"true"`, the handler prevents window destruction (`api.prevent_close()`) and hides the window (`window.hide()`).
-- **Background Notification**: On the very first hide trigger, the backend registers the hide action and triggers a native Linux `notify-send` system notification informing the user that the process continues tracking in the background.
+- **Logic**: The handler always prevents window destruction (`api.prevent_close()`) and hides the window (`window.hide()`) to keep the application running in the background.
+- **Background Notification**: On the very first hide trigger, the backend registers the hide action and triggers a native Linux `notify-send` system notification informing the user that the process continues tracking in the background and that they can quit from the tray icon.
 
 ### Launch on Startup (Autostart)
 Boot integration is managed natively:

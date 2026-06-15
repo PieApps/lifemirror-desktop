@@ -58,7 +58,6 @@ function App() {
   // DB Log Threshold & Windows configurations
   const [minLogDuration, setMinLogDurationState] = useState(60);
   const [isAutostartEnabled, setIsAutostartEnabled] = useState(false);
-  const [closeMinimizes, setCloseMinimizesState] = useState(true);
 
   // AI Chat states
   const [activeAiTab, setActiveAiTab] = useState<"reflection" | "chat">("reflection");
@@ -214,12 +213,7 @@ ${compileContextRollup()}`;
         const minLogDurationStr = await invoke<string>("get_db_setting", { key: "min_log_duration" });
         if (minLogDurationStr && minLogDurationStr !== "false" && minLogDurationStr.trim() !== "") {
           const parsed = parseInt(minLogDurationStr, 10);
-          if (!isNaN(parsed)) setMinLogDurationState(parsed);
-        }
-
-        const closeMinimizesStr = await invoke<string>("get_db_setting", { key: "close_minimizes" });
-        if (closeMinimizesStr && closeMinimizesStr !== "false" && closeMinimizesStr.trim() !== "") {
-          setCloseMinimizesState(closeMinimizesStr === "true");
+          if (!isNaN(parsed)) setMinLogDurationState(Math.max(60, parsed));
         }
 
         try {
@@ -255,20 +249,12 @@ ${compileContextRollup()}`;
   }, []);
 
   const updateMinLogDuration = async (duration: number) => {
-    setMinLogDurationState(duration);
+    const clamped = Math.max(60, duration);
+    setMinLogDurationState(clamped);
     try {
-      await invoke("set_db_setting", { key: "min_log_duration", value: String(duration) });
+      await invoke("set_db_setting", { key: "min_log_duration", value: String(clamped) });
     } catch (e) {
       console.error("Failed to save min_log_duration setting:", e);
-    }
-  };
-
-  const updateCloseMinimizes = async (val: boolean) => {
-    setCloseMinimizesState(val);
-    try {
-      await invoke("set_db_setting", { key: "close_minimizes", value: String(val) });
-    } catch (e) {
-      console.error("Failed to save close_minimizes setting:", e);
     }
   };
 
@@ -936,8 +922,6 @@ ${compileContextRollup()}`;
               setMinLogDuration={updateMinLogDuration}
               isAutostartEnabled={isAutostartEnabled}
               toggleAutostart={toggleAutostart}
-              closeMinimizes={closeMinimizes}
-              setCloseMinimizes={updateCloseMinimizes}
             />
           ) : (
             /* AI Reflection & Chat Module */

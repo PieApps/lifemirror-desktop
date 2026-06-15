@@ -330,22 +330,19 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                window.hide().unwrap();
+                
                 let app = window.app_handle();
                 let db = app.state::<Arc<DbState>>();
-                let close_minimizes = db.get_setting("close_minimizes").unwrap_or_else(|_| "true".to_string()) == "true";
-                if close_minimizes {
-                    api.prevent_close();
-                    window.hide().unwrap();
-                    
-                    let has_shown = db.get_setting("has_shown_close_notification").unwrap_or_default() == "true";
-                    if !has_shown {
-                        let _ = db.set_setting("has_shown_close_notification", "true");
-                        #[cfg(target_os = "linux")]
-                        {
-                            let _ = std::process::Command::new("notify-send")
-                                .args(["LifeMirror", "LifeMirror is still running in the background. You can close it completely from the system tray."])
-                                .status();
-                        }
+                let has_shown = db.get_setting("has_shown_close_notification").unwrap_or_default() == "true";
+                if !has_shown {
+                    let _ = db.set_setting("has_shown_close_notification", "true");
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = std::process::Command::new("notify-send")
+                            .args(["LifeMirror", "LifeMirror is still running in the background. You can quit from the system tray icon."])
+                            .status();
                     }
                 }
             }
