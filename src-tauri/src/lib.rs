@@ -6,7 +6,40 @@ pub mod ai;
 use std::sync::Arc;
 use std::path::PathBuf;
 use tauri::State;
+use tauri::image::Image;
+use tauri::menu::{Menu, MenuItem, CheckMenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri_plugin_autostart::MacosLauncher;
+use tauri::Manager;
+use tauri::Emitter;
 use db::{DbState, ActivityLog, JournalEntry, DailySummary, HourlyMetric, ChatMessage};
+
+pub struct TrayMenuState {
+    pub incognito_item: CheckMenuItem<tauri::Wry>,
+    pub tracking_item: CheckMenuItem<tauri::Wry>,
+}
+
+fn update_tray_icon_by_state(app: &tauri::AppHandle) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let db = app.state::<Arc<DbState>>();
+        let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
+        
+        let is_incog = db.get_setting("incognito").unwrap_or_default() == "true";
+        let is_track = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
+        
+        let icon_bytes = if is_incog {
+            include_bytes!("../icons/32x32_incognito.png").as_ref()
+        } else if !is_track {
+            include_bytes!("../icons/32x32_paused.png").as_ref()
+        } else {
+            include_bytes!("../icons/32x32.png").as_ref()
+        };
+        
+        if let Ok(img) = Image::from_bytes(icon_bytes) {
+            let _ = tray.set_icon(Some(img));
+        }
+    }
+}
 
 fn get_db_path() -> PathBuf {
     let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
@@ -42,10 +75,21 @@ fn add_journal(state: State<'_, Arc<DbState>>, notes: String) -> Result<i64, Str
 }
 
 #[tauri::command]
-fn toggle_incognito(state: State<'_, Arc<DbState>>) -> Result<bool, String> {
+fn toggle_incognito(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<DbState>>,
+    tray_state: State<'_, TrayMenuState>,
+) -> Result<bool, String> {
     let current = state.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
     let new_state = !current;
     state.set_setting("incognito", if new_state { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    
+    // Update tray checkbox
+    let _ = tray_state.incognito_item.set_checked(new_state);
+    
+    // Update tray icon
+    update_tray_icon_by_state(&app);
+    
     Ok(new_state)
 }
 
@@ -67,13 +111,22 @@ fn set_db_setting(state: State<'_, Arc<DbState>>, key: String, value: String) ->
 
 #[tauri::command]
 fn toggle_tracking(
+    app: tauri::AppHandle,
     state: State<'_, Arc<DbState>>,
     tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
+    tray_state: State<'_, TrayMenuState>,
 ) -> Result<bool, String> {
     let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
     let new_state = !current;
     state.set_setting("tracking_active", if new_state { "true" } else { "false" }).map_err(|e| e.to_string())?;
     tracking_active.store(new_state, std::sync::atomic::Ordering::SeqCst);
+    
+    // Update tray checkbox
+    let _ = tray_state.tracking_item.set_checked(new_state);
+    
+    // Update tray icon
+    update_tray_icon_by_state(&app);
+    
     Ok(new_state)
 }
 
@@ -127,6 +180,95 @@ fn clear_chat_history(state: State<'_, Arc<DbState>>, date: String) -> Result<()
     state.clear_chat_messages_for_day(&date).map_err(|e| e.to_string())
 }
 
+fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
+    let open_i = MenuItem::with_id(app, "open", "Open LifeMirror", true, None::<&str>)?;
+    
+    let db = app.state::<Arc<DbState>>();
+    let is_incog = db.get_setting("incognito").unwrap_or_default() == "true";
+    let incog_i = CheckMenuItem::with_id(app, "incognito", "Incognito Mode", true, is_incog, None::<&str>)?;
+    
+    let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
+    let is_track = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
+    let track_i = CheckMenuItem::with_id(app, "tracking", "Tracking Active", true, is_track, None::<&str>)?;
+    
+    let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    
+    let menu = Menu::with_items(app, &[&open_i, &incog_i, &track_i, &quit_i])?;
+
+    let default_icon_bytes = if is_incog {
+        include_bytes!("../icons/32x32_incognito.png").as_ref()
+    } else if !is_track {
+        include_bytes!("../icons/32x32_paused.png").as_ref()
+    } else {
+        include_bytes!("../icons/32x32.png").as_ref()
+    };
+    
+    let icon = Image::from_bytes(default_icon_bytes).unwrap();
+
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .icon(icon)
+        .menu(&menu)
+        .on_menu_event(|app, event| {
+            match event.id().as_ref() {
+                "open" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "incognito" => {
+                    let db = app.state::<Arc<DbState>>();
+                    let current = db.get_setting("incognito").unwrap_or_default() == "true";
+                    let new_state = !current;
+                    let _ = db.set_setting("incognito", if new_state { "true" } else { "false" });
+                    
+                    let tray_state = app.state::<TrayMenuState>();
+                    let _ = tray_state.incognito_item.set_checked(new_state);
+                    
+                    let _ = app.emit("incognito-changed", new_state);
+                    update_tray_icon_by_state(app);
+                }
+                "tracking" => {
+                    let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
+                    let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
+                    let new_state = !current;
+                    tracking_active.store(new_state, std::sync::atomic::Ordering::SeqCst);
+                    
+                    let db = app.state::<Arc<DbState>>();
+                    let _ = db.set_setting("tracking_active", if new_state { "true" } else { "false" });
+                    
+                    let tray_state = app.state::<TrayMenuState>();
+                    let _ = tray_state.tracking_item.set_checked(new_state);
+                    
+                    let _ = app.emit("tracking-changed", new_state);
+                    update_tray_icon_by_state(app);
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|tray, event| {
+            match event {
+                TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => {
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
+            }
+        })
+        .build(app)?;
+
+    Ok(TrayMenuState {
+        incognito_item: incog_i,
+        tracking_item: track_i,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -166,9 +308,49 @@ pub fn run() {
     // Build and run the Tauri app
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(db_arc)
         .manage(tracking_active)
         .manage(active_activity)
+        .setup(|app| {
+            // Setup system tray menu and states
+            let tray_menu_state = setup_system_tray(app)?;
+            app.manage(tray_menu_state);
+            
+            // If the app was not launched with the --hidden flag (autostart boot), show it.
+            let args: Vec<String> = std::env::args().collect();
+            if !args.contains(&"--hidden".to_string()) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                let app = window.app_handle();
+                let db = app.state::<Arc<DbState>>();
+                let close_minimizes = db.get_setting("close_minimizes").unwrap_or_else(|_| "true".to_string()) == "true";
+                if close_minimizes {
+                    api.prevent_close();
+                    window.hide().unwrap();
+                    
+                    let has_shown = db.get_setting("has_shown_close_notification").unwrap_or_default() == "true";
+                    if !has_shown {
+                        let _ = db.set_setting("has_shown_close_notification", "true");
+                        #[cfg(target_os = "linux")]
+                        {
+                            let _ = std::process::Command::new("notify-send")
+                                .args(["LifeMirror", "LifeMirror is still running in the background. You can close it completely from the system tray."])
+                                .status();
+                        }
+                    }
+                }
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
             get_activities,
             get_journals,

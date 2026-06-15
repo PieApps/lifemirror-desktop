@@ -90,10 +90,15 @@ pub fn start_window_tracker(
         loop {
             thread::sleep(Duration::from_secs(1));
 
+            let min_log_duration = db.get_setting("min_log_duration")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse::<i64>()
+                .unwrap_or(60);
+
             // Check if background tracking was toggled off (Atomic Cancellation)
             if !tracking_active.load(std::sync::atomic::Ordering::SeqCst) {
                 if parent_duration > 0 {
-                    if parent_duration >= 2 && !parent_app.is_empty() {
+                    if parent_duration >= min_log_duration && !parent_app.is_empty() {
                         let log = ActivityLog {
                             id: None,
                             app_name: parent_app.clone(),
@@ -131,7 +136,7 @@ pub fn start_window_tracker(
             if is_incognito {
                 if parent_duration > 0 {
                     // Save active parent session if it was significant before incognito toggle
-                    if parent_duration >= 2 && !parent_app.is_empty() {
+                    if parent_duration >= min_log_duration && !parent_app.is_empty() {
                         let log = ActivityLog {
                             id: None,
                             app_name: parent_app.clone(),
@@ -227,7 +232,7 @@ pub fn start_window_tracker(
                     if temp_duration >= 120 {
                         // The temporary focus matured into a major session (>= 2 minutes)!
                         // Save the old parent session
-                        if parent_duration >= 2 && !parent_app.is_empty() {
+                        if parent_duration >= min_log_duration && !parent_app.is_empty() {
                             let log = ActivityLog {
                                 id: None,
                                 app_name: parent_app.clone(),
@@ -261,7 +266,7 @@ pub fn start_window_tracker(
                     // User switched to a new/different temporary focus!
                     // This means they did NOT return to the parent focus from the previous temp focus.
                     // Commit the previous parent session to DB immediately if it was significant.
-                    if parent_duration >= 2 && !parent_app.is_empty() {
+                    if parent_duration >= min_log_duration && !parent_app.is_empty() {
                         let log = ActivityLog {
                             id: None,
                             app_name: parent_app.clone(),

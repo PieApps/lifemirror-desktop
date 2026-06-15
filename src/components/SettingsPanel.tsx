@@ -1,5 +1,5 @@
 import React from "react";
-import { Settings, Shield, Cpu } from "lucide-react";
+import { Settings, Shield, Cpu, Sliders, Power, AlertCircle } from "lucide-react";
 
 interface SettingsPanelProps {
   isIncognito: boolean;
@@ -10,8 +10,12 @@ interface SettingsPanelProps {
   setOllamaModel: (model: string) => void;
   trackingActive: boolean;
   setTrackingActive: (active: boolean) => void;
-  minDurationFilter: number;
-  setMinDurationFilter: (duration: number) => void;
+  minLogDuration: number;
+  setMinLogDuration: (duration: number) => void;
+  isAutostartEnabled: boolean;
+  toggleAutostart: () => Promise<void>;
+  closeMinimizes: boolean;
+  setCloseMinimizes: (val: boolean) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -23,9 +27,38 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setOllamaModel,
   trackingActive,
   setTrackingActive,
-  minDurationFilter,
-  setMinDurationFilter,
+  minLogDuration,
+  setMinLogDuration,
+  isAutostartEnabled,
+  toggleAutostart,
+  closeMinimizes,
+  setCloseMinimizes,
 }) => {
+  const [autostartError, setAutostartError] = React.useState<string | null>(null);
+  const [inputValue, setInputValue] = React.useState(String(minLogDuration));
+
+  React.useEffect(() => {
+    setInputValue(String(minLogDuration));
+  }, [minLogDuration]);
+
+  const handleAutostartToggle = async () => {
+    setAutostartError(null);
+    try {
+      await toggleAutostart();
+    } catch (err) {
+      setAutostartError("System permissions blocked the autostart action.");
+      setTimeout(() => setAutostartError(null), 5000);
+    }
+  };
+
+  const handleMinLogDurationBlur = (val: string) => {
+    let parsed = parseInt(val, 10);
+    if (isNaN(parsed)) parsed = 60;
+    const clamped = Math.max(60, Math.min(300, parsed));
+    setMinLogDuration(clamped);
+    setInputValue(String(clamped));
+  };
+
   return (
     <div className="glass rounded-2xl p-6 border border-[var(--border-color)] max-w-md w-full mx-auto text-left">
       <div className="flex items-center gap-2 mb-6 pb-2 border-b border-[var(--border-color)]">
@@ -80,29 +113,94 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </p>
       </div>
 
-      {/* Hide sessions by duration */}
+      {/* Minimum Session to Log */}
       <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
-        <div className="flex items-center justify-between gap-4 mb-2">
+        <div className="flex items-center justify-between gap-4 mb-3">
           <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-[var(--text-muted)]" />
-            <span className="text-sm font-medium text-[var(--text-color)]">Filter Short Sessions</span>
+            <Sliders className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-sm font-medium text-[var(--text-color)]">Min Session to Log</span>
           </div>
-          <select
-            value={minDurationFilter}
-            onChange={(e) => setMinDurationFilter(Number(e.target.value))}
-            className="bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 cursor-pointer"
-          >
-            <option value={0}>Show all logs</option>
-            <option value={5}>Hide under 5s</option>
-            <option value={10}>Hide under 10s</option>
-            <option value={30}>Hide under 30s</option>
-            <option value={60}>Hide under 1m</option>
-            <option value={120}>Hide under 2m</option>
-            <option value={300}>Hide under 5m</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onBlur={(e) => handleMinLogDurationBlur(e.target.value)}
+              className="w-16 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-2 py-1 text-xs text-[var(--text-color)] text-center focus:outline-none focus:border-violet-500/50"
+              min={60}
+              max={300}
+            />
+            <span className="text-xs text-[var(--text-muted)]">sec</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mb-2">
+          <input
+            type="range"
+            min={60}
+            max={300}
+            value={minLogDuration}
+            onChange={(e) => setMinLogDuration(Number(e.target.value))}
+            className="flex-1 accent-violet-600 cursor-pointer h-1 rounded-lg appearance-none bg-zinc-200 dark:bg-zinc-700"
+          />
         </div>
         <p className="text-xs text-[var(--text-muted)]">
-          Hides minor activities and micro-task diversions below this threshold from the S-Curve timeline.
+          Discards activities shorter than this threshold before writing them to the SQLite database (Minimum: 1 minute).
+        </p>
+      </div>
+
+      {/* Launch on Startup */}
+      <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Power className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-sm font-medium text-[var(--text-color)]">Launch on Startup</span>
+          </div>
+          <button
+            onClick={handleAutostartToggle}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+              isAutostartEnabled ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                isAutostartEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          Registers the application to launch automatically in the background (hidden to tray) when your computer boots up.
+        </p>
+        {autostartError && (
+          <p className="text-[10px] text-red-500 font-medium mt-1.5 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" />
+            <span>{autostartError}</span>
+          </p>
+        )}
+      </div>
+
+      {/* Close button minimizes to tray */}
+      <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-sm font-medium text-[var(--text-color)]">Close Minimizes to Tray</span>
+          </div>
+          <button
+            onClick={() => setCloseMinimizes(!closeMinimizes)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+              closeMinimizes ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                closeMinimizes ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          Clicking the 'X' window button hides the window to the system status bar, keeping tracking active in the background.
         </p>
       </div>
 

@@ -131,6 +131,35 @@ To interface with the persistent SQLite chat history, three Tauri command endpoi
 - `add_chat_message(date: String, role: String, content: String)`: Persists a new message turn into the database.
 - `clear_chat_history(date: String)`: Deletes all chat dialogue associated with the selected date.
 
+### Dynamic Log Duration Threshold Settings
+The threshold for committing activities to SQLite is dynamically read from the database using the `"min_log_duration"` setting:
+- **Default value**: 60 seconds (1 minute).
+- **Configurability**: Configurable from the React settings panel (via a slider and clamped number input between 60 and 300 seconds).
+- **Execution**: The background tracker thread query-checks this setting on every iteration and discards any completed window session whose duration is less than the specified threshold.
+
+### System Tray & Bidirectional State Synchronization
+To allow seamless background monitoring and control, the application registers a system status tray menu:
+1. **Instantiation**: `setup_system_tray` in `lib.rs` constructs the tray icon using the `TrayIconBuilder::with_id("main-tray")` API.
+2. **Interaction**: A single left-click on the tray icon immediately shows and focuses the main window. Right-clicking displays a context menu containing:
+   - **Open LifeMirror**: Shows the main window.
+   - **Incognito Mode**: Programmatic checkbox toggle.
+   - **Tracking Active**: Programmatic checkbox toggle.
+   - **Quit**: Fully exits the application process.
+3. **State Management**: The references to the tray's `CheckMenuItem` checkbox toggles are managed inside a native Tauri state struct (`TrayMenuState`). When the user toggles Incognito or Tracking states from the React frontend, the Tauri commands update the tray checkbox check state and swap the tray icon (Normal, Gray/Paused, or Amber/Incognito) dynamically in Rust.
+4. **Events Sync**: When modified directly from the system tray context menu, the backend updates settings in SQLite, changes the tray icon, and emits global events (`"incognito-changed"` and `"tracking-changed"`) to sync the React UI in real time.
+
+### Background Hide & Close Behavior
+Standard window close requests are intercepted:
+- **Hook**: Intercepted in `lib.rs` inside the `on_window_event` hook for `WindowEvent::CloseRequested`.
+- **Logic**: If the setting `"close_minimizes"` is set to `"true"`, the handler prevents window destruction (`api.prevent_close()`) and hides the window (`window.hide()`).
+- **Background Notification**: On the very first hide trigger, the backend registers the hide action and triggers a native Linux `notify-send` system notification informing the user that the process continues tracking in the background.
+
+### Launch on Startup (Autostart)
+Boot integration is managed natively:
+- **Tauri Plugin**: Registered via `tauri-plugin-autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"]))`.
+- **Boot Visibility**: Passes the `--hidden` flag to the application on OS boot startup.
+- **Initialization**: The Tauri setup hook checks `std::env::args()`. If `"--hidden"` is present, it skips showing the webview window, leaving only the system tray icon active.
+
 ---
 
 ## 5. UI Layout, Custom Themes & Brand Icons (`SCurveTimeline.tsx`, `App.tsx`)

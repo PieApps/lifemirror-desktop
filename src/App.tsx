@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartActive } from "@tauri-apps/plugin-autostart";
 import { 
   ShieldAlert, Sparkles, BookOpen, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
@@ -53,8 +55,10 @@ function App() {
   const [aiReflection, setAiReflection] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  // Duration Filter configuration
-  const [minDurationFilter, setMinDurationFilterState] = useState(0);
+  // DB Log Threshold & Windows configurations
+  const [minLogDuration, setMinLogDurationState] = useState(60);
+  const [isAutostartEnabled, setIsAutostartEnabled] = useState(false);
+  const [closeMinimizes, setCloseMinimizesState] = useState(true);
 
   // AI Chat states
   const [activeAiTab, setActiveAiTab] = useState<"reflection" | "chat">("reflection");
@@ -207,10 +211,22 @@ ${compileContextRollup()}`;
           setOllamaModel("llama3.2");
         }
 
-        const minDurationStr = await invoke<string>("get_db_setting", { key: "min_duration_filter" });
-        if (minDurationStr && minDurationStr !== "false" && minDurationStr.trim() !== "") {
-          const parsed = parseInt(minDurationStr, 10);
-          if (!isNaN(parsed)) setMinDurationFilterState(parsed);
+        const minLogDurationStr = await invoke<string>("get_db_setting", { key: "min_log_duration" });
+        if (minLogDurationStr && minLogDurationStr !== "false" && minLogDurationStr.trim() !== "") {
+          const parsed = parseInt(minLogDurationStr, 10);
+          if (!isNaN(parsed)) setMinLogDurationState(parsed);
+        }
+
+        const closeMinimizesStr = await invoke<string>("get_db_setting", { key: "close_minimizes" });
+        if (closeMinimizesStr && closeMinimizesStr !== "false" && closeMinimizesStr.trim() !== "") {
+          setCloseMinimizesState(closeMinimizesStr === "true");
+        }
+
+        try {
+          const autostartActive = await isAutostartActive();
+          setIsAutostartEnabled(autostartActive);
+        } catch (autostartErr) {
+          console.error("Autostart plugin error:", autostartErr);
         }
 
         const reflection = await invoke<string>("get_db_setting", { key: "last_ai_reflection" });
@@ -223,14 +239,52 @@ ${compileContextRollup()}`;
       }
     };
     loadSettings();
+
+    // Subscribe to system tray status updates
+    const unlistenIncognito = listen<boolean>("incognito-changed", (event) => {
+      setIsIncognito(event.payload);
+    });
+    const unlistenTracking = listen<boolean>("tracking-changed", (event) => {
+      setTrackingActive(event.payload);
+    });
+
+    return () => {
+      unlistenIncognito.then(fn => fn());
+      unlistenTracking.then(fn => fn());
+    };
   }, []);
 
-  const updateMinDurationFilter = async (duration: number) => {
-    setMinDurationFilterState(duration);
+  const updateMinLogDuration = async (duration: number) => {
+    setMinLogDurationState(duration);
     try {
-      await invoke("set_db_setting", { key: "min_duration_filter", value: String(duration) });
+      await invoke("set_db_setting", { key: "min_log_duration", value: String(duration) });
     } catch (e) {
-      console.error("Failed to save min_duration_filter setting:", e);
+      console.error("Failed to save min_log_duration setting:", e);
+    }
+  };
+
+  const updateCloseMinimizes = async (val: boolean) => {
+    setCloseMinimizesState(val);
+    try {
+      await invoke("set_db_setting", { key: "close_minimizes", value: String(val) });
+    } catch (e) {
+      console.error("Failed to save close_minimizes setting:", e);
+    }
+  };
+
+  const toggleAutostart = async () => {
+    const nextState = !isAutostartEnabled;
+    setIsAutostartEnabled(nextState);
+    try {
+      if (nextState) {
+        await enableAutostart();
+      } else {
+        await disableAutostart();
+      }
+    } catch (e) {
+      console.error("Failed to toggle autostart registry:", e);
+      setIsAutostartEnabled(!nextState);
+      throw e;
     }
   };
 
@@ -338,13 +392,7 @@ ${compileContextRollup()}`;
           setActiveActivity(null);
         }
         
-        let filteredActivities = mergedActivities;
-        if (minDurationFilter > 0) {
-          filteredActivities = mergedActivities.filter(node => 
-            node.duration >= minDurationFilter || (currentActive && node.start_time === currentActive.start_time && isToday)
-          );
-        }
-        setActivities(filteredActivities);
+        setActivities(mergedActivities);
       } else if (viewMode === "weekly") {
         const range = getWeekRange(selectedDate);
         const summaries = await invoke<DailySummary[]>("get_weekly_summary", { startDate: range.start, endDate: range.end });
@@ -385,7 +433,7 @@ ${compileContextRollup()}`;
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [trackingActive, isIncognito, minDurationFilter, viewMode, selectedDate]);
+  }, [trackingActive, isIncognito, viewMode, selectedDate]);
 
   // Local active session ticking for smooth real-time visual updates
   useEffect(() => {
@@ -884,8 +932,12 @@ ${compileContextRollup()}`;
               setOllamaModel={updateOllamaModel}
               trackingActive={trackingActive}
               setTrackingActive={handleToggleTracking}
-              minDurationFilter={minDurationFilter}
-              setMinDurationFilter={updateMinDurationFilter}
+              minLogDuration={minLogDuration}
+              setMinLogDuration={updateMinLogDuration}
+              isAutostartEnabled={isAutostartEnabled}
+              toggleAutostart={toggleAutostart}
+              closeMinimizes={closeMinimizes}
+              setCloseMinimizes={updateCloseMinimizes}
             />
           ) : (
             /* AI Reflection & Chat Module */
