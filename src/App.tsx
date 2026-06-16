@@ -474,6 +474,15 @@ ${compileContextRollup()}`;
     }
   };
 
+  const handleDeleteLog = async (id: number) => {
+    try {
+      await invoke("delete_activity_log", { id });
+      await loadData();
+    } catch (e) {
+      console.error("Failed to delete activity log:", e);
+    }
+  };
+
   const generateAIReflection = async () => {
     if (activities.length === 0) {
       setAiReflection("No activity nodes recorded to reflect on.");
@@ -885,6 +894,7 @@ ${compileContextRollup()}`;
               <SCurveTimeline 
                 activities={[...activities].reverse()} 
                 onAddJournal={(node) => setSelectedActivity(node)} 
+                onDeleteLog={handleDeleteLog}
               />
             ) : viewMode === "weekly" ? (
               <div className="p-6">

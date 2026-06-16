@@ -7,6 +7,11 @@ export interface CategoryInfo {
   borderClass: string;
 }
 
+const isDomainName = (value: string) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
+
+const domainMatches = (domain: string, domains: string[]) =>
+  domains.some((candidate) => domain === candidate || domain.endsWith(`.${candidate}`));
+
 export const CATEGORIES: Record<ActivityCategory, CategoryInfo> = {
   development: {
     name: "Development",
@@ -52,6 +57,20 @@ export function mapAppToCategory(
   const app = appName.toLowerCase();
   const title = windowTitle.toLowerCase();
   const urlStr = url ? url.toLowerCase() : "";
+  const isBrowserSummary = urlStr === "browser" || isDomainName(app);
+
+  if (isBrowserSummary && isDomainName(app)) {
+    if (domainMatches(app, ["github.com", "gitlab.com", "bitbucket.org", "stackoverflow.com", "stackexchange.com", "developer.mozilla.org", "docs.rs", "npmjs.com"])) {
+      return "development";
+    }
+    if (domainMatches(app, ["slack.com", "discord.com", "discordapp.com", "teams.microsoft.com", "meet.google.com", "mail.google.com", "outlook.live.com", "web.whatsapp.com", "telegram.org"])) {
+      return "communication";
+    }
+    if (domainMatches(app, ["youtube.com", "youtu.be", "netflix.com", "spotify.com", "twitch.tv", "primevideo.com", "hotstar.com"])) {
+      return "entertainment";
+    }
+    return "browser";
+  }
 
   // Check Development applications
   if (

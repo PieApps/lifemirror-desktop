@@ -1,5 +1,6 @@
 import React from "react";
-import { Monitor, Globe, Clock, Plus, Terminal, MessageSquare, Video } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { Monitor, Globe, Clock, Plus, Terminal, MessageSquare, Trash2, Video } from "lucide-react";
 
 export interface ActivityNode {
   id: number;
@@ -10,11 +11,13 @@ export interface ActivityNode {
   source: string;
   url?: string;
   icon_url?: string;
+  domain_tag?: string;
 }
 
 interface SCurveTimelineProps {
   activities: ActivityNode[];
   onAddJournal: (activity: ActivityNode) => void;
+  onDeleteLog: (id: number) => void;
 }
 
 // Brand SVG Icons
@@ -92,16 +95,38 @@ const BraveIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
+const resolveIconSrc = (src?: string): string => {
+  if (!src) return "";
+  if (/^(https?:|data:|asset:|tauri:)/i.test(src)) return src;
+  if (src.startsWith("/")) return convertFileSrc(src);
+  return src;
+};
+
+const IconImage: React.FC<{ src: string; fallback: React.ReactNode }> = ({ src, fallback }) => {
+  const [failed, setFailed] = React.useState(false);
+  if (failed || !src) return <>{fallback}</>;
+
+  return (
+    <img
+      src={resolveIconSrc(src)}
+      className="w-full h-full rounded object-contain bg-black/5 dark:bg-white/10 p-0.5"
+      onError={() => setFailed(true)}
+      alt=""
+    />
+  );
+};
+
 interface AppIconProps {
   appName: string;
   url?: string;
   iconUrl?: string;
+  domainTag?: string;
   source: string;
   className?: string;
   showBadge?: boolean;
 }
 
-const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, source, className = "w-5 h-5", showBadge = false }) => {
+const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, domainTag, source, className = "w-5 h-5", showBadge = false }) => {
   const isBrowser = source.toLowerCase() === "browser";
   const nameLower = appName.toLowerCase();
 
@@ -122,29 +147,20 @@ const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, source, classN
   // Resolve main icon
   if (isBrowser) {
     let faviconSrc = iconUrl;
-    if (!faviconSrc && url) {
-      try {
-        const domain = new URL(url).hostname;
+    if (!faviconSrc) {
+      const domain = domainTag || (url ? extractDomain(url) : "");
+      if (domain) {
         faviconSrc = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-      } catch {
-        // Fallback
       }
     }
 
-    if (faviconSrc) {
-      mainIcon = (
-        <img
-          src={faviconSrc}
-          className="w-full h-full rounded object-contain bg-black/5 dark:bg-white/10 p-0.5"
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = "none";
-          }}
-          alt=""
-        />
-      );
-    } else {
-      mainIcon = <Globe className="w-full h-full text-blue-400" />;
-    }
+    mainIcon = faviconSrc ? (
+      <IconImage src={faviconSrc} fallback={<Globe className="w-full h-full text-blue-400" />} />
+    ) : (
+      <Globe className="w-full h-full text-blue-400" />
+    );
+  } else if (iconUrl) {
+    mainIcon = <IconImage src={iconUrl} fallback={<Monitor className="w-full h-full text-zinc-400 dark:text-zinc-500" />} />;
   } else {
     // Check known desktop apps
     if (
@@ -254,7 +270,7 @@ const extractDomain = (url?: string): string => {
   }
 };
 
-export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAddJournal }) => {
+export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAddJournal, onDeleteLog }) => {
   const rowHeight = 160;
   const width = 800;
 
@@ -362,6 +378,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                     appName={String(node.app_name)} 
                     url={node.url} 
                     iconUrl={node.icon_url} 
+                    domainTag={node.domain_tag}
                     source={node.source} 
                     className="w-5 h-5" 
                     showBadge={true}
@@ -384,6 +401,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                         appName={String(node.app_name)} 
                         url={node.url} 
                         iconUrl={node.icon_url} 
+                        domainTag={node.domain_tag}
                         source={node.source} 
                         className="w-5 h-5 shrink-0" 
                         showBadge={true}
@@ -393,13 +411,8 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                           ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30' 
                           : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
                       }`}>
-                        {node.app_name}
+                        {isBrowser ? (node.domain_tag || extractDomain(node.url)) : node.app_name}
                       </span>
-                      {isBrowser && node.url && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full truncate bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800/30 max-w-[150px]" title={extractDomain(node.url)}>
-                          {extractDomain(node.url)}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center text-xs text-[var(--text-muted)] gap-1 shrink-0">
                       <Clock className="w-3 h-3 text-violet-400" />
@@ -421,13 +434,27 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                     <span className="text-[10px] text-[var(--text-muted)] font-mono">
                       {getFormatTime(node.start_time)}
                     </span>
-                    <button
-                      onClick={() => onAddJournal(node)}
-                      className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors font-semibold cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Reflect</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          if (node.id && window.confirm("Delete this activity log?")) {
+                            onDeleteLog(node.id);
+                          }
+                        }}
+                        disabled={!node.id}
+                        className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 disabled:text-[var(--text-muted)] disabled:cursor-not-allowed transition-colors font-semibold cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                      <button
+                        onClick={() => onAddJournal(node)}
+                        className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors font-semibold cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Reflect</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </React.Fragment>

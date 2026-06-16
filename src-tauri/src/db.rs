@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{functions::FunctionFlags, params, Connection, Result};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -14,6 +14,7 @@ pub struct ActivityLog {
     pub source: String,
     pub url: Option<String>,
     pub icon_url: Option<String>,
+    pub domain_tag: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -47,6 +48,29 @@ pub struct ChatMessage {
     pub timestamp: String,
 }
 
+pub fn extract_domain(url: &str) -> String {
+    let without_protocol = if let Some(stripped) = url.strip_prefix("https://") {
+        stripped
+    } else if let Some(stripped) = url.strip_prefix("http://") {
+        stripped
+    } else {
+        url
+    };
+
+    let end = without_protocol
+        .find('/')
+        .or_else(|| without_protocol.find('?'))
+        .or_else(|| without_protocol.find(':'))
+        .unwrap_or(without_protocol.len());
+
+    let host = &without_protocol[..end];
+    if let Some(stripped) = host.strip_prefix("www.") {
+        stripped.to_string()
+    } else {
+        host.to_string()
+    }
+}
+
 pub struct DbState {
     pub conn: Mutex<Connection>,
 }
@@ -56,11 +80,14 @@ impl DbState {
         let path_ref = db_path.as_ref();
         let encryption_key = std::env::var("LIFEMIRROR_DB_KEY")
             .unwrap_or_else(|_| "lifemirror_default_secure_vault_passphrase_256".to_string());
-        
+
         let conn = match Self::open_and_verify(path_ref, &encryption_key) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Database verification failed: {:?}. Backing up and resetting DB...", e);
+                eprintln!(
+                    "Database verification failed: {:?}. Backing up and resetting DB...",
+                    e
+                );
                 if path_ref.exists() {
                     let mut backup_path = path_ref.to_path_buf();
                     backup_path.set_extension("db.bak");
@@ -81,6 +108,15 @@ impl DbState {
     fn open_and_verify(db_path: &Path, encryption_key: &str) -> Result<Connection> {
         let conn = Connection::open(db_path)?;
         conn.pragma_update(None, "key", &encryption_key)?;
+        conn.create_scalar_function(
+            "extract_domain",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| {
+                let url: Option<String> = ctx.get(0)?;
+                Ok(url.as_deref().map(extract_domain).unwrap_or_default())
+            },
+        )?;
         // Verify key by running a test query
         let _: u32 = conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
         Ok(conn)
@@ -99,13 +135,15 @@ impl DbState {
                 duration INTEGER NOT NULL,
                 source TEXT NOT NULL,
                 url TEXT,
-                icon_url TEXT
+                icon_url TEXT,
+                domain_tag TEXT
             );",
             [],
         )?;
 
-        // Ensure icon_url column is present for backward compatibility
+        // Ensure newer columns are present for backward compatibility
         let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN icon_url TEXT;", []);
+        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN domain_tag TEXT;", []);
 
         // Create journal_entries table
         conn.execute(
@@ -200,15 +238,18 @@ impl DbState {
 
     pub fn insert_activity_log(&self, log: &ActivityLog) -> Result<i64> {
         // Guardrail: check if tracking is active
-        let tracking_active = self.get_setting("tracking_active").unwrap_or_else(|_| "true".to_string()) == "true";
+        let tracking_active = self
+            .get_setting("tracking_active")
+            .unwrap_or_else(|_| "true".to_string())
+            == "true";
         if !tracking_active {
             return Ok(0); // Ignore insertion silently
         }
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url, icon_url)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url, icon_url, domain_tag)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 log.app_name,
                 log.window_title,
@@ -216,7 +257,8 @@ impl DbState {
                 log.duration,
                 log.source,
                 log.url,
-                log.icon_url
+                log.icon_url,
+                log.domain_tag
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -234,9 +276,9 @@ impl DbState {
     pub fn get_activity_logs(&self, limit: i64) -> Result<Vec<ActivityLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url 
-             FROM activity_logs 
-             ORDER BY start_time DESC 
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag
+             FROM activity_logs
+             ORDER BY start_time DESC
              LIMIT ?1",
         )?;
         let log_iter = stmt.query_map([limit], |row| {
@@ -249,6 +291,7 @@ impl DbState {
                 source: row.get(5)?,
                 url: row.get(6)?,
                 icon_url: row.get(7)?,
+                domain_tag: row.get(8)?,
             })
         })?;
 
@@ -259,12 +302,53 @@ impl DbState {
         Ok(logs)
     }
 
+    pub fn delete_activity_log(&self, id: i64) -> Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let log_date: Option<String> = conn
+            .query_row(
+                "SELECT date(start_time, 'localtime') FROM activity_logs WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        conn.execute("DELETE FROM activity_logs WHERE id = ?1", params![id])?;
+
+        if let Some(date) = log_date {
+            let today: String =
+                conn.query_row("SELECT date('now', 'localtime')", [], |row| row.get(0))?;
+            if date < today {
+                let tx = conn.transaction()?;
+                tx.execute(
+                    "DELETE FROM aggregated_daily_metrics WHERE date = ?1",
+                    params![date],
+                )?;
+                tx.execute(
+                    "INSERT OR REPLACE INTO aggregated_daily_metrics (date, app_name, source, total_duration, session_count)
+                     SELECT
+                        date(start_time, 'localtime') as local_date,
+                        CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END as app_name,
+                        source,
+                        SUM(duration) as total_duration,
+                        COUNT(*) as session_count
+                     FROM activity_logs
+                     WHERE date(start_time, 'localtime') = ?1
+                     GROUP BY local_date, CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END, source",
+                    params![date],
+                )?;
+                tx.commit()?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn get_journal_entries(&self, limit: i64) -> Result<Vec<JournalEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, timestamp, notes 
-             FROM journal_entries 
-             ORDER BY timestamp DESC 
+            "SELECT id, timestamp, notes
+             FROM journal_entries
+             ORDER BY timestamp DESC
              LIMIT ?1",
         )?;
         let entry_iter = stmt.query_map([limit], |row| {
@@ -286,36 +370,40 @@ impl DbState {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO aggregated_daily_metrics (date, app_name, source, total_duration, session_count)
-             SELECT 
-                date(start_time, 'localtime') as local_date, 
-                app_name, 
-                source, 
-                SUM(duration) as total_duration, 
+             SELECT
+                date(start_time, 'localtime') as local_date,
+                CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END as app_name,
+                source,
+                SUM(duration) as total_duration,
                 COUNT(*) as session_count
              FROM activity_logs
              WHERE date(start_time, 'localtime') < date('now', 'localtime')
-             GROUP BY local_date, app_name, source;",
+             GROUP BY local_date, CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END, source;",
             [],
         )?;
         Ok(())
     }
 
-    pub fn get_aggregated_metrics_range(&self, start_date: &str, end_date: &str) -> Result<Vec<DailySummary>> {
+    pub fn get_aggregated_metrics_range(
+        &self,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<DailySummary>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT date, app_name, source, total_duration FROM aggregated_daily_metrics 
+            "SELECT date, app_name, source, total_duration FROM aggregated_daily_metrics
              WHERE date >= ?1 AND date <= ?2
              UNION ALL
-             SELECT 
-                date(start_time, 'localtime') as date, 
-                app_name, 
-                source, 
-                SUM(duration) as total_duration 
-             FROM activity_logs 
-             WHERE date(start_time, 'localtime') = date('now', 'localtime') 
-               AND date(start_time, 'localtime') >= ?1 
+             SELECT
+                date(start_time, 'localtime') as date,
+                CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END as app_name,
+                source,
+                SUM(duration) as total_duration
+             FROM activity_logs
+             WHERE date(start_time, 'localtime') = date('now', 'localtime')
+               AND date(start_time, 'localtime') >= ?1
                AND date(start_time, 'localtime') <= ?2
-             GROUP BY date, app_name, source"
+             GROUP BY date, CASE WHEN source = 'Browser' THEN extract_domain(url) ELSE app_name END, source"
         )?;
 
         let rows_iter = stmt.query_map(params![start_date, end_date], |row| {
@@ -334,16 +422,20 @@ impl DbState {
         Ok(summaries)
     }
 
-    pub fn get_hourly_heatmap_metrics(&self, start_date: &str, end_date: &str) -> Result<Vec<HourlyMetric>> {
+    pub fn get_hourly_heatmap_metrics(
+        &self,
+        start_date: &str,
+        end_date: &str,
+    ) -> Result<Vec<HourlyMetric>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT 
+            "SELECT
                 cast(strftime('%w', start_time, 'localtime') as integer) as day_of_week,
                 cast(strftime('%H', start_time, 'localtime') as integer) as hour,
                 SUM(duration) as total_duration
              FROM activity_logs
              WHERE date(start_time, 'localtime') >= ?1 AND date(start_time, 'localtime') <= ?2
-             GROUP BY day_of_week, hour;"
+             GROUP BY day_of_week, hour;",
         )?;
 
         let rows_iter = stmt.query_map(params![start_date, end_date], |row| {
@@ -364,10 +456,10 @@ impl DbState {
     pub fn get_raw_activities_for_day(&self, date: &str) -> Result<Vec<ActivityLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag
              FROM activity_logs
              WHERE date(start_time, 'localtime') = ?1
-             ORDER BY start_time DESC;"
+             ORDER BY start_time DESC;",
         )?;
 
         let log_iter = stmt.query_map([date], |row| {
@@ -380,6 +472,7 @@ impl DbState {
                 source: row.get(5)?,
                 url: row.get(6)?,
                 icon_url: row.get(7)?,
+                domain_tag: row.get(8)?,
             })
         })?;
 
@@ -396,7 +489,7 @@ impl DbState {
             "SELECT id, date, role, content, timestamp
              FROM chat_history
              WHERE date = ?1
-             ORDER BY timestamp ASC;"
+             ORDER BY timestamp ASC;",
         )?;
 
         let chat_iter = stmt.query_map([date], |row| {
@@ -428,10 +521,7 @@ impl DbState {
 
     pub fn clear_chat_messages_for_day(&self, date: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "DELETE FROM chat_history WHERE date = ?1",
-            params![date],
-        )?;
+        conn.execute("DELETE FROM chat_history WHERE date = ?1", params![date])?;
         Ok(())
     }
 }

@@ -1,68 +1,207 @@
+use crate::db::{extract_domain, ActivityLog, DbState};
+use chrono::Utc;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use crate::db::{DbState, ActivityLog};
-use chrono::Utc;
+
+static ICON_CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+
+fn normalize_icon_key(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn desktop_entry_matches(contents: &str, app_key: &str, process_name: &str) -> bool {
+    for line in contents.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if matches!(key, "Name" | "StartupWMClass" | "Exec") {
+            let value_key = normalize_icon_key(value);
+            if !app_key.is_empty() && value_key.contains(app_key) {
+                return true;
+            }
+            if !process_name.is_empty() && value_key.contains(process_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn extract_desktop_icon_name(contents: &str) -> Option<String> {
+    contents.lines().find_map(|line| {
+        line.strip_prefix("Icon=")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn icon_theme_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        PathBuf::from("/usr/share/icons/hicolor"),
+        PathBuf::from("/usr/share/icons/Adwaita"),
+        PathBuf::from("/usr/share/icons"),
+        PathBuf::from("/usr/share/pixmaps"),
+    ];
+    if let Ok(home) = std::env::var("HOME") {
+        dirs.insert(0, PathBuf::from(home).join(".local/share/icons"));
+    }
+    dirs
+}
+
+fn resolve_icon_file(icon_name: &str) -> Option<String> {
+    let icon_path = Path::new(icon_name);
+    if icon_path.is_absolute() && icon_path.exists() {
+        return Some(icon_name.to_string());
+    }
+
+    let candidates = [
+        format!("{icon_name}.png"),
+        format!("{icon_name}.svg"),
+        format!("{icon_name}.xpm"),
+        icon_name.to_string(),
+    ];
+
+    for root in icon_theme_dirs() {
+        if !root.exists() {
+            continue;
+        }
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+                    if candidates
+                        .iter()
+                        .any(|candidate| file_name.eq_ignore_ascii_case(candidate))
+                    {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn resolve_app_icon(app: &str, process_path: Option<&Path>) -> Option<String> {
+    let app_key = normalize_icon_key(app);
+    let process_name = process_path
+        .and_then(|path| path.file_stem())
+        .and_then(|name| name.to_str())
+        .map(normalize_icon_key)
+        .unwrap_or_default();
+    let cache_key = format!("{app_key}:{process_name}");
+    let cache = ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().unwrap().get(&cache_key).cloned() {
+        return cached;
+    }
+
+    let mut desktop_dirs = vec![PathBuf::from("/usr/share/applications")];
+    if let Ok(home) = std::env::var("HOME") {
+        desktop_dirs.insert(0, PathBuf::from(home).join(".local/share/applications"));
+    }
+
+    for dir in desktop_dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Ok(contents) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let file_key = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .map(normalize_icon_key)
+                .unwrap_or_default();
+            let file_matches = (!app_key.is_empty() && file_key.contains(&app_key))
+                || (!process_name.is_empty() && file_key.contains(&process_name));
+            if file_matches || desktop_entry_matches(&contents, &app_key, &process_name) {
+                if let Some(icon_name) = extract_desktop_icon_name(&contents) {
+                    if let Some(icon_file) = resolve_icon_file(&icon_name) {
+                        cache
+                            .lock()
+                            .unwrap()
+                            .insert(cache_key, Some(icon_file.clone()));
+                        return Some(icon_file);
+                    }
+                }
+            }
+        }
+    }
+
+    cache.lock().unwrap().insert(cache_key, None);
+    None
+}
 
 fn is_browser_app(app: &str) -> bool {
     let app_lower = app.to_lowercase();
-    app_lower.contains("chrome") || 
-    app_lower.contains("firefox") || 
-    app_lower.contains("brave") || 
-    app_lower.contains("safari") || 
-    app_lower.contains("opera") || 
-    app_lower.contains("chromium") || 
-    app_lower.contains("edge")
+    app_lower.contains("chrome")
+        || app_lower.contains("firefox")
+        || app_lower.contains("brave")
+        || app_lower.contains("safari")
+        || app_lower.contains("opera")
+        || app_lower.contains("chromium")
+        || app_lower.contains("edge")
 }
 
-fn extract_domain(url: &str) -> String {
-    let without_protocol = if let Some(stripped) = url.strip_prefix("https://") {
-        stripped
-    } else if let Some(stripped) = url.strip_prefix("http://") {
-        stripped
-    } else {
-        url
-    };
-    
-    let end = without_protocol.find('/')
-        .or_else(|| without_protocol.find('?'))
-        .or_else(|| without_protocol.find(':'))
-        .unwrap_or(without_protocol.len());
-        
-    let host = &without_protocol[..end];
-    if let Some(stripped) = host.strip_prefix("www.") {
-        stripped.to_string()
-    } else {
-        host.to_string()
-    }
-}
-
-fn resolve_current_activity(db: &DbState) -> (String, String, Option<String>, Option<String>, String) {
-    let (app, title) = get_active_window();
+fn resolve_current_activity(
+    db: &DbState,
+) -> (String, String, Option<String>, Option<String>, String) {
+    let (app, title, app_icon) = get_active_window();
     if app.is_empty() && title.is_empty() {
         return (String::new(), String::new(), None, None, "OS".to_string());
     }
-    
+
     if is_browser_app(&app) {
         let active_title = db.get_setting("active_tab_title").unwrap_or_default();
         let active_url = db.get_setting("active_tab_url").unwrap_or_default();
         let active_favicon = db.get_setting("active_tab_favicon").unwrap_or_default();
-        
+
         let title_lower = title.to_lowercase();
         let active_title_lower = active_title.to_lowercase();
-        
-        if !active_url.is_empty() && (active_title.is_empty() || title_lower.contains(&active_title_lower) || active_title_lower.contains(&title_lower)) {
+
+        if !active_url.is_empty()
+            && (active_title.is_empty()
+                || title_lower.contains(&active_title_lower)
+                || active_title_lower.contains(&title_lower))
+        {
             return (
                 app,
                 active_title,
                 Some(active_url),
-                if active_favicon.is_empty() { None } else { Some(active_favicon) },
-                "Browser".to_string()
+                if active_favicon.is_empty() {
+                    None
+                } else {
+                    Some(active_favicon)
+                },
+                "Browser".to_string(),
             );
         }
     }
-    
-    (app, title, None, None, "OS".to_string())
+
+    let icon_url = app_icon.or_else(|| resolve_app_icon(&app, None));
+    (app, title, None, icon_url, "OS".to_string())
 }
 
 pub fn start_window_tracker(
@@ -90,7 +229,8 @@ pub fn start_window_tracker(
         loop {
             thread::sleep(Duration::from_secs(1));
 
-            let mut min_log_duration = db.get_setting("min_log_duration")
+            let mut min_log_duration = db
+                .get_setting("min_log_duration")
                 .unwrap_or_else(|_| "60".to_string())
                 .parse::<i64>()
                 .unwrap_or(60);
@@ -111,6 +251,11 @@ pub fn start_window_tracker(
                             source: parent_source.clone(),
                             url: parent_url.clone(),
                             icon_url: parent_icon_url.clone(),
+                            domain_tag: if parent_source == "Browser" {
+                                parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                            } else {
+                                None
+                            },
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -135,7 +280,10 @@ pub fn start_window_tracker(
             }
 
             // Check if incognito mode is active; if so, clear active trace and skip DB writes
-            let is_incognito = db.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
+            let is_incognito = db
+                .get_setting("incognito")
+                .unwrap_or_else(|_| "false".to_string())
+                == "true";
             if is_incognito {
                 if parent_duration > 0 {
                     // Save active parent session if it was significant before incognito toggle
@@ -149,6 +297,11 @@ pub fn start_window_tracker(
                             source: parent_source.clone(),
                             url: parent_url.clone(),
                             icon_url: parent_icon_url.clone(),
+                            domain_tag: if parent_source == "Browser" {
+                                parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                            } else {
+                                None
+                            },
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -198,15 +351,21 @@ pub fn start_window_tracker(
                         source: parent_source.clone(),
                         url: parent_url.clone(),
                         icon_url: parent_icon_url.clone(),
+                        domain_tag: if parent_source == "Browser" {
+                            parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                        } else {
+                            None
+                        },
                     });
                 }
                 continue;
             }
 
             // A focus change is detected if the app changes OR if the active tab URL changes for a browser
-            let is_same_focus = app == parent_app 
-                && (source != "Browser" 
-                    || extract_domain(url.as_deref().unwrap_or("")) == extract_domain(parent_url.as_deref().unwrap_or("")));
+            let is_same_focus = app == parent_app
+                && (source != "Browser"
+                    || extract_domain(url.as_deref().unwrap_or(""))
+                        == extract_domain(parent_url.as_deref().unwrap_or("")));
 
             if is_same_focus {
                 // If we returned to the parent focus, fold in any temporary session durations under 120 seconds
@@ -226,9 +385,10 @@ pub fn start_window_tracker(
                 }
             } else {
                 // We are in a different focus
-                let is_same_temp = app == temp_app 
-                    && (source != "Browser" 
-                        || extract_domain(url.as_deref().unwrap_or("")) == extract_domain(temp_url.as_deref().unwrap_or("")));
+                let is_same_temp = app == temp_app
+                    && (source != "Browser"
+                        || extract_domain(url.as_deref().unwrap_or(""))
+                            == extract_domain(temp_url.as_deref().unwrap_or("")));
 
                 if is_same_temp {
                     temp_duration += 1;
@@ -245,10 +405,15 @@ pub fn start_window_tracker(
                                 source: parent_source.clone(),
                                 url: parent_url.clone(),
                                 icon_url: parent_icon_url.clone(),
+                                domain_tag: if parent_source == "Browser" {
+                                    parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                                } else {
+                                    None
+                                },
                             };
                             let _ = db.insert_activity_log(&log);
                         }
-                        
+
                         // Promote the temp session to parent
                         parent_app = temp_app.clone();
                         parent_title = temp_title.clone();
@@ -257,7 +422,7 @@ pub fn start_window_tracker(
                         parent_source = temp_source.clone();
                         parent_start_time = temp_start_time;
                         parent_duration = temp_duration;
-                        
+
                         // Clear temp focus variables
                         temp_app.clear();
                         temp_title.clear();
@@ -279,6 +444,11 @@ pub fn start_window_tracker(
                             source: parent_source.clone(),
                             url: parent_url.clone(),
                             icon_url: parent_icon_url.clone(),
+                            domain_tag: if parent_source == "Browser" {
+                                parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                            } else {
+                                None
+                            },
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -296,7 +466,7 @@ pub fn start_window_tracker(
                         parent_app.clear();
                         parent_duration = 0;
                     }
-                    
+
                     // Initialize new temporary focus tracking
                     temp_app = app.clone();
                     temp_title = title.clone();
@@ -321,6 +491,11 @@ pub fn start_window_tracker(
                         source: parent_source.clone(),
                         url: parent_url.clone(),
                         icon_url: parent_icon_url.clone(),
+                        domain_tag: if parent_source == "Browser" {
+                            parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
+                        } else {
+                            None
+                        },
                     });
                 } else {
                     *active_lock = None;
@@ -330,34 +505,36 @@ pub fn start_window_tracker(
     });
 }
 
-pub fn get_active_window() -> (String, String) {
+pub fn get_active_window() -> (String, String, Option<String>) {
     // 1. Attempt Wayland compositor check
     if std::env::var("XDG_SESSION_TYPE").unwrap_or_default() == "wayland" {
         // Hyprland focus check
         if let Ok(output) = std::process::Command::new("hyprctl")
             .args(["activewindow", "-j"])
-            .output() 
+            .output()
         {
             if output.status.success() {
                 if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
                     let app = json["class"].as_str().unwrap_or("").to_string();
                     let title = json["title"].as_str().unwrap_or("").to_string();
                     if !app.is_empty() || !title.is_empty() {
-                        return (app, title);
+                        let icon_url = resolve_app_icon(&app, None);
+                        return (app, title, icon_url);
                     }
                 }
             }
         }
-        
+
         // Sway tree focus check (parses swaymsg tree for focused container)
         if let Ok(output) = std::process::Command::new("swaymsg")
             .args(["-t", "get_tree"])
-            .output() 
+            .output()
         {
             if output.status.success() {
                 if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
                     if let Some((app, title)) = find_focused_node_in_sway_tree(&json) {
-                        return (app, title);
+                        let icon_url = resolve_app_icon(&app, None);
+                        return (app, title, icon_url);
                     }
                 }
             }
@@ -366,27 +543,33 @@ pub fn get_active_window() -> (String, String) {
 
     // 2. Default to active-win-pos-rs crate check (cross-platform / X11)
     match active_win_pos_rs::get_active_window() {
-        Ok(win) => (win.app_name, win.title),
+        Ok(win) => {
+            let icon_url = resolve_app_icon(&win.app_name, Some(&win.process_path));
+            (win.app_name, win.title, icon_url)
+        }
         Err(_) => {
             // X11 tools fallback (xdotool)
             if let Ok(output) = std::process::Command::new("xdotool")
                 .args(["getwindowfocus", "getwindowname"])
-                .output() 
+                .output()
             {
                 if output.status.success() {
                     let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     let app = if let Ok(class_out) = std::process::Command::new("xdotool")
                         .args(["getwindowfocus", "getwindowclassname"])
-                        .output() 
+                        .output()
                     {
-                        String::from_utf8_lossy(&class_out.stdout).trim().to_string()
+                        String::from_utf8_lossy(&class_out.stdout)
+                            .trim()
+                            .to_string()
                     } else {
                         "Unknown".to_string()
                     };
-                    return (app, title);
+                    let icon_url = resolve_app_icon(&app, None);
+                    return (app, title, icon_url);
                 }
             }
-            ("Idle".to_string(), "No active focus".to_string())
+            ("Idle".to_string(), "No active focus".to_string(), None)
         }
     }
 }
@@ -395,7 +578,8 @@ pub fn get_active_window() -> (String, String) {
 fn find_focused_node_in_sway_tree(node: &serde_json::Value) -> Option<(String, String)> {
     if node["focused"].as_bool().unwrap_or(false) {
         let name = node["name"].as_str().unwrap_or("").to_string();
-        let app = node["app_id"].as_str()
+        let app = node["app_id"]
+            .as_str()
             .or_else(|| node["window_properties"]["class"].as_str())
             .unwrap_or("Sway Window")
             .to_string();

@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 use serde::{Deserialize, Serialize};
-use crate::db::{DbState, ActivityLog};
+use crate::db::{extract_domain, ActivityLog, DbState};
 use chrono::Utc;
 use std::path::PathBuf;
 
@@ -43,6 +43,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                 let _ = db.set_setting("active_tab_title", &payload.title);
                 let _ = db.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
 
+                let domain_tag = extract_domain(&payload.url);
                 let log = ActivityLog {
                     id: None,
                     app_name: "Chrome".to_string(),
@@ -52,6 +53,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     source: "Browser".to_string(),
                     url: Some(payload.url),
                     icon_url: payload.favIconUrl,
+                    domain_tag: if domain_tag.is_empty() { None } else { Some(domain_tag) },
                 };
                 
                 // Insert tab activity log

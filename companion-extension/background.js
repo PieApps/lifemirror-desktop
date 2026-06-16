@@ -22,13 +22,14 @@ function getNativePort() {
 
 // Send tab info to the host
 function reportTabActivity(tabId, changeInfo, tab) {
-  // Only track once tab has loaded and is active
-  if (!tab || !tab.active || (changeInfo && changeInfo.status !== "complete")) {
+  // Track loaded tabs, plus later favicon-only updates Chrome emits after load.
+  const isReadyUpdate = !changeInfo || changeInfo.status === "complete" || Boolean(changeInfo.favIconUrl);
+  if (!tab || !tab.active || !isReadyUpdate) {
     return;
   }
 
-  // Filter out internal browser pages
-  if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
+  // Filter out internal browser pages (only track standard http/https web pages)
+  if (!tab.url || (!tab.url.startsWith("http://") && !tab.url.startsWith("https://"))) {
     return;
   }
 
@@ -60,4 +61,16 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   reportTabActivity(tabId, changeInfo, tab);
+});
+
+// Hook window focus events to sync active tab of the newly focused window
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) {
+    return;
+  }
+  chrome.tabs.query({ active: true, windowId: windowId }, (tabs) => {
+    if (tabs && tabs[0]) {
+      reportTabActivity(tabs[0].id, null, tabs[0]);
+    }
+  });
 });
