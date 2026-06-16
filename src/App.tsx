@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartActive } from "@tauri-apps/plugin-autostart";
 import { 
-  ShieldAlert, Sparkles, BookOpen, 
+  ShieldAlert, Sparkles, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
   Calendar, Clock, Grid, Send, Trash2, MessageSquare
 } from "lucide-react";
@@ -36,7 +36,6 @@ export interface ChatMessage {
 
 function App() {
   const [activities, setActivities] = useState<ActivityNode[]>([]);
-  const [journals, setJournals] = useState<any[]>([]);
   const [isIncognito, setIsIncognito] = useState(false);
   const [trackingActive, setTrackingActive] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -390,10 +389,6 @@ ${compileContextRollup()}`;
         const summaries = await invoke<DailySummary[]>("get_monthly_summary", { startDate: range.start, endDate: range.end });
         setMonthlySummaries(summaries);
       }
-      
-      const dbJournals = await invoke<any[]>("get_journals", { limit: 10 });
-      setJournals(dbJournals);
-
       const incognitoState = await invoke<boolean>("is_incognito");
       setIsIncognito(incognitoState);
 

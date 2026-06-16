@@ -42,7 +42,6 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                 let _ = db.set_setting("active_tab_url", &payload.url);
                 let _ = db.set_setting("active_tab_title", &payload.title);
                 let _ = db.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
-
                 let domain_tag = extract_domain(&payload.url);
                 let log = ActivityLog {
                     id: None,
@@ -54,6 +53,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     url: Some(payload.url),
                     icon_url: payload.favIconUrl,
                     domain_tag: if domain_tag.is_empty() { None } else { Some(domain_tag) },
+                    notes: None,
                 };
                 
                 // Insert tab activity log

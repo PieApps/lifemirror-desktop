@@ -272,24 +272,44 @@ const extractDomain = (url?: string): string => {
 };
 
 export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAddJournal, onDeleteLog }) => {
-  const rowHeight = 160;
+  const rowHeight = 250;
   const width = 800;
+  const colXs = [130, 400, 670];
+
+  // Helper to calculate coordinates of node at index
+  const getNodeCoords = (index: number) => {
+    const r = Math.floor(index / 3);
+    const isRowEven = r % 2 === 0;
+    const col = isRowEven ? (index % 3) : (2 - (index % 3));
+    const x = colXs[col];
+    const y = r * rowHeight + 80;
+    return { x, y, r, isRowEven };
+  };
 
   // Generate continuous cubic Bézier path for the S-Curve
   const generatePath = () => {
-    if (activities.length === 0) return `M ${width / 2} 0 L ${width / 2} 400`;
+    if (activities.length === 0) return `M ${width / 2} 50 L ${width / 2} 400`;
+    if (activities.length === 1) return `M ${colXs[0]} 80 L ${colXs[0]} 80`;
     
-    let d = `M ${width / 2} 0`;
-    for (let i = 0; i < activities.length; i++) {
-      const yStart = i * rowHeight;
-      const yEnd = (i + 1) * rowHeight;
-      const isEven = i % 2 === 0;
+    let d = `M ${colXs[0]} 80`; // Start at the first node
+    
+    const coords = activities.map((_, i) => getNodeCoords(i));
+    
+    for (let i = 0; i < coords.length - 1; i++) {
+      const curr = coords[i];
+      const next = coords[i + 1];
       
-      // Calculate control points for the sweep
-      const cpX1 = isEven ? width - 50 : 50;
-      const cpX2 = isEven ? width - 50 : 50;
-      
-      d += ` C ${cpX1} ${yStart + rowHeight / 4}, ${cpX2} ${yEnd - rowHeight / 4}, ${width / 2} ${yEnd}`;
+      if (curr.r === next.r) {
+        // Horizontal line in the same row
+        d += ` L ${next.x} ${next.y}`;
+      } else {
+        // Transition to next row (180-degree U-turn)
+        const isRightTurn = curr.isRowEven;
+        const cpX1 = isRightTurn ? width - 20 : 20;
+        const cpX2 = isRightTurn ? width - 20 : 20;
+        
+        d += ` C ${cpX1} ${curr.y}, ${cpX2} ${next.y}, ${next.x} ${next.y}`;
+      }
     }
     return d;
   };
@@ -310,8 +330,12 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
     }
   };
 
+  const totalHeight = activities.length === 0 
+    ? 400 
+    : Math.ceil(activities.length / 3) * rowHeight + 80;
+
   return (
-    <div className="relative w-full max-w-4xl mx-auto py-10 px-4 select-none">
+    <div className="relative w-full overflow-x-auto py-10 select-none flex justify-center">
       {activities.length === 0 ? (
         <div className="text-center py-20 glass-card rounded-2xl p-8 max-w-md mx-auto">
           <Clock className="w-12 h-12 text-violet-400 mx-auto mb-4 animate-pulse" />
@@ -321,11 +345,11 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
           </p>
         </div>
       ) : (
-        <div className="relative" style={{ height: `${activities.length * rowHeight + 100}px` }}>
+        <div className="relative shrink-0 w-[800px]" style={{ height: `${totalHeight}px` }}>
           {/* Timeline SVG */}
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox={`0 0 ${width} ${activities.length * rowHeight + 100}`}
+            viewBox={`0 0 ${width} ${totalHeight}`}
             fill="none"
           >
             {/* Background path line */}
@@ -345,7 +369,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
             />
             
             <defs>
-              <linearGradient id="timeline-grad" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="timeline-grad" x1="0" y1="0" x2="1" y2="0">
                 <stop offset="0%" stopColor="#c084fc" />
                 <stop offset="50%" stopColor="#8b5cf6" />
                 <stop offset="100%" stopColor="#6366f1" />
@@ -355,24 +379,15 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
 
           {/* Interactive nodes along the curve */}
           {activities.map((node, index) => {
-            const isEven = index % 2 === 0;
-            // Midpoint calculation for t=0.5 on cubic Bezier
-            const nodeY = (index + 0.5) * rowHeight;
-            const nodeX = isEven ? width * 0.875 : width * 0.125;
-
-            // Positioning calculations for details card relative to node
-            const cardStyle: React.CSSProperties = isEven
-              ? { left: `${width * 0.05}px`, top: `${nodeY - 50}px`, width: "320px" }
-              : { right: `${width * 0.05}px`, top: `${nodeY - 50}px`, width: "320px" };
-
+            const { x: nodeX, y: nodeY } = getNodeCoords(index);
             const isBrowser = node.source.toLowerCase() === "browser";
 
             return (
               <React.Fragment key={node.id || index}>
                 {/* Visual anchor point circle */}
                 <div
-                  className="absolute z-10 w-9 h-9 rounded-full border-2 border-violet-500 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)] transition-transform duration-300 hover:scale-125"
-                  style={{ left: `${(nodeX / width) * 100}%`, top: `${nodeY}px` }}
+                  className="absolute z-20 w-9 h-9 rounded-full border-2 border-violet-500 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)] transition-transform duration-300 hover:scale-125"
+                  style={{ left: `${nodeX}px`, top: `${nodeY}px` }}
                   title={`${node.app_name}: ${node.window_title}`}
                 >
                   <AppIcon 
@@ -386,28 +401,28 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                   />
                 </div>
 
-                {/* Glassmorphic Activity Card */}
+                {/* Glassmorphic Activity Card hanging from the node */}
                 <div
-                  className="absolute glass-card rounded-xl p-4 shadow-xl text-left"
+                  className="absolute glass-card rounded-xl p-3.5 shadow-xl text-left z-10"
                   style={{
-                    ...cardStyle,
-                    left: isEven ? '10%' : 'auto',
-                    right: !isEven ? '10%' : 'auto',
-                    width: '38%'
+                    left: `${nodeX}px`,
+                    top: `${nodeY + 22}px`,
+                    transform: 'translateX(-50%)',
+                    width: '230px'
                   }}
                 >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5 overflow-visible">
+                  <div className="flex items-center justify-between gap-1 mb-1.5">
+                    <div className="flex items-center gap-1 overflow-hidden max-w-[130px]">
                       <AppIcon 
                         appName={String(node.app_name)} 
                         url={node.url} 
                         iconUrl={node.icon_url} 
                         domainTag={node.domain_tag}
                         source={node.source} 
-                        className="w-5 h-5 shrink-0" 
+                        className="w-4 h-4 shrink-0" 
                         showBadge={true}
                       />
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full truncate ${
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full truncate ${
                         isBrowser 
                           ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30' 
                           : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
@@ -415,33 +430,33 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                         {isBrowser ? (node.domain_tag || extractDomain(node.url)) : node.app_name}
                       </span>
                     </div>
-                    <div className="flex items-center text-xs text-[var(--text-muted)] gap-1 shrink-0">
-                      <Clock className="w-3 h-3 text-violet-400" />
+                    <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0">
+                      <Clock className="w-2.5 h-2.5 text-violet-400" />
                       <span>{getFormatDuration(node.duration)}</span>
                     </div>
                   </div>
 
-                  <h4 className="text-sm font-semibold text-[var(--text-color)] line-clamp-1 mb-1" title={String(node.window_title)}>
+                  <h4 className="text-xs font-semibold text-[var(--text-color)] line-clamp-2 mb-1" title={String(node.window_title)}>
                     {node.window_title}
                   </h4>
 
                   {node.url && (
-                    <p className="text-xs text-blue-500 dark:text-blue-400 line-clamp-1 mb-2 select-all hover:underline cursor-pointer">
+                    <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
                       {node.url}
                     </p>
                   )}
 
                   {node.notes && (
-                    <div className="mt-2.5 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs italic text-[var(--text-color)] select-text leading-relaxed">
+                    <div className="mt-1.5 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] italic text-[var(--text-color)] select-text leading-snug line-clamp-3">
                       "{node.notes}"
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                  <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[var(--border-color)]">
+                    <span className="text-[9px] text-[var(--text-muted)] font-mono">
                       {getFormatTime(node.start_time)}
                     </span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
                           if (node.id && window.confirm("Delete this activity log?")) {
@@ -449,17 +464,17 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                           }
                         }}
                         disabled={!node.id}
-                        className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 disabled:text-[var(--text-muted)] disabled:cursor-not-allowed transition-colors font-semibold cursor-pointer"
+                        className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer"
+                        title="Delete log"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => onAddJournal(node)}
-                        className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors font-semibold cursor-pointer"
+                        className="p-1 rounded text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 transition-colors cursor-pointer"
+                        title={node.notes ? "Edit Note" : "Reflect"}
                       >
-                        <Plus className="w-3 h-3" />
-                        <span>{node.notes ? "Edit Note" : "Reflect"}</span>
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
