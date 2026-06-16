@@ -316,11 +316,22 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
   // Group consecutive browser usages together
   const processedNodes = useMemo(() => {
+    const isBrowserApp = (appName: string): boolean => {
+      const lower = appName.toLowerCase();
+      return lower.includes("chrome") ||
+             lower.includes("firefox") ||
+             lower.includes("brave") ||
+             lower.includes("safari") ||
+             lower.includes("opera") ||
+             lower.includes("edge") ||
+             lower.includes("chromium");
+    };
+
     const nodes: TimelineNode[] = [];
     let currentGroup: TimelineNode | null = null;
 
     activities.forEach((activity) => {
-      const isBrowser = activity.source.toLowerCase() === "browser";
+      const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
       if (isBrowser) {
         if (currentGroup) {
           currentGroup.duration += activity.duration;
