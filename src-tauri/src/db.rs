@@ -49,6 +49,17 @@ pub struct ChatMessage {
     pub timestamp: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BrowserTabEvent {
+    pub id: Option<i64>,
+    pub url: String,
+    pub title: String,
+    pub favicon_url: Option<String>,
+    pub domain: Option<String>,
+    pub timestamp: String,
+    pub browser_name: Option<String>,
+}
+
 pub fn extract_domain(url: &str) -> String {
     let without_protocol = if let Some(stripped) = url.strip_prefix("https://") {
         stripped
@@ -215,6 +226,52 @@ impl DbState {
             "CREATE INDEX IF NOT EXISTS idx_chat_history_date ON chat_history (date);",
             [],
         )?;
+
+        // Create browser_tab_events table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS browser_tab_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                favicon_url TEXT,
+                domain TEXT,
+                timestamp TEXT NOT NULL,
+                browser_name TEXT
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_browser_tab_events_timestamp ON browser_tab_events (timestamp);",
+            [],
+        )?;
+
+        // One-time database migration from activity_logs to browser_tab_events
+        let migration_done: String = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'migration_tab_events_done'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| "false".to_string());
+
+        if migration_done != "true" {
+            let _ = conn.execute(
+                "INSERT INTO browser_tab_events (url, title, favicon_url, domain, timestamp, browser_name)
+                 SELECT url, window_title, icon_url, domain_tag, start_time, app_name
+                 FROM activity_logs
+                 WHERE source = 'Browser' AND duration <= 1 AND url IS NOT NULL;",
+                [],
+            );
+            let _ = conn.execute(
+                "DELETE FROM activity_logs WHERE source = 'Browser' AND duration <= 1;",
+                [],
+            );
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_tab_events_done', 'true');",
+                [],
+            );
+        }
 
         Ok(())
     }
@@ -536,5 +593,59 @@ impl DbState {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM chat_history WHERE date = ?1", params![date])?;
         Ok(())
+    }
+
+    pub fn insert_browser_tab_event(&self, event: &BrowserTabEvent) -> Result<i64> {
+        let tracking_active = self
+            .get_setting("tracking_active")
+            .unwrap_or_else(|_| "true".to_string())
+            == "true";
+        if !tracking_active {
+            return Ok(0);
+        }
+
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO browser_tab_events (url, title, favicon_url, domain, timestamp, browser_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                event.url,
+                event.title,
+                event.favicon_url,
+                event.domain,
+                event.timestamp,
+                event.browser_name
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn get_browser_tab_events_for_day(&self, date: &str) -> Result<Vec<BrowserTabEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, url, title, favicon_url, domain, timestamp, browser_name
+             FROM browser_tab_events
+             WHERE datetime(timestamp, 'localtime') >= datetime(?1 || ' 00:00:00')
+               AND datetime(timestamp, 'localtime') <= datetime(?1 || ' 23:59:59', '+10 minutes')
+             ORDER BY timestamp ASC;",
+        )?;
+
+        let event_iter = stmt.query_map([date], |row| {
+            Ok(BrowserTabEvent {
+                id: Some(row.get(0)?),
+                url: row.get(1)?,
+                title: row.get(2)?,
+                favicon_url: row.get(3)?,
+                domain: row.get(4)?,
+                timestamp: row.get(5)?,
+                browser_name: row.get(6)?,
+            })
+        })?;
+
+        let mut events = Vec::new();
+        for event in event_iter {
+            events.push(event?);
+        }
+        Ok(events)
     }
 }

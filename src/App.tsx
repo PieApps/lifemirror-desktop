@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
   Calendar, Clock, Grid, Send, Trash2, MessageSquare
 } from "lucide-react";
-import { SCurveTimeline, ActivityNode } from "./components/SCurveTimeline";
+import { SCurveTimeline, ActivityNode, BrowserTabEvent } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WeeklyView } from "./components/WeeklyView";
@@ -36,6 +36,7 @@ export interface ChatMessage {
 
 function App() {
   const [activities, setActivities] = useState<ActivityNode[]>([]);
+  const [browserTabEvents, setBrowserTabEvents] = useState<BrowserTabEvent[]>([]);
   const [isIncognito, setIsIncognito] = useState(false);
   const [trackingActive, setTrackingActive] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -378,6 +379,12 @@ ${compileContextRollup()}`;
         }
         
         setActivities(mergedActivities);
+        try {
+          const tabEvents = await invoke<BrowserTabEvent[]>("get_browser_tab_events", { date: selectedDate });
+          setBrowserTabEvents(tabEvents);
+        } catch (err) {
+          console.error("Failed to load browser tab events:", err);
+        }
       } else if (viewMode === "weekly") {
         const range = getWeekRange(selectedDate);
         const summaries = await invoke<DailySummary[]>("get_weekly_summary", { startDate: range.start, endDate: range.end });
@@ -888,6 +895,7 @@ ${compileContextRollup()}`;
             {viewMode === "daily" ? (
               <SCurveTimeline 
                 activities={[...activities].reverse()} 
+                browserTabEvents={browserTabEvents}
                 onAddJournal={(node) => setSelectedActivity(node)} 
                 onDeleteLog={handleDeleteLog}
               />

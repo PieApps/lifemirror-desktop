@@ -184,6 +184,16 @@ fn get_daily_activities(
 }
 
 #[tauri::command]
+fn get_browser_tab_events(
+    state: State<'_, Arc<DbState>>,
+    date: String,
+) -> Result<Vec<db::BrowserTabEvent>, String> {
+    state
+        .get_browser_tab_events_for_day(&date)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_weekly_summary(
     state: State<'_, Arc<DbState>>,
     start_date: String,
@@ -453,7 +463,8 @@ pub fn run() {
             get_hourly_heatmap,
             get_chat_history,
             add_chat_message,
-            clear_chat_history
+            clear_chat_history,
+            get_browser_tab_events
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

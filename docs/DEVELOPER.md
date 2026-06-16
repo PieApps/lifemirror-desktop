@@ -70,6 +70,16 @@ Stores the multi-turn persistent chat histories keyed by date for normal trackin
 * `content`: `TEXT NOT NULL` (the text content of the message)
 * `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
 
+### Table 4: `browser_tab_events`
+Stores individual tab switches sent via the browser companion extension separately from active OS-level window session logs.
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `url`: `TEXT NOT NULL`
+* `title`: `TEXT NOT NULL`
+* `favicon_url`: `TEXT` (Nullable website favicon URL)
+* `domain`: `TEXT` (Nullable website domain)
+* `timestamp`: `TEXT NOT NULL` (ISO 8601 string, UTC format)
+* `browser_name`: `TEXT` (Nullable name of the browser, e.g. `"Chrome"`)
+
 ### Resilient SQLCipher Initialization & Fail-Soft Recovery
 On startup, `DbState::new` opens the database and runs a verification query (`SELECT count(*) FROM sqlite_master;`) immediately after applying `PRAGMA key`. If the query fails (due to decryption key changes, file corruption, or database format issues):
 1. The connection is cleanly dropped.
@@ -95,6 +105,7 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
   }
   ```
 * **Active Tab Caching:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event, which are then read by the background OS focus poller to map active tab URLs to the OS-level window focus state.
+* **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `browser_tab_events` table via `insert_browser_tab_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
 
 ---
 
