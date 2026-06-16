@@ -4,6 +4,6 @@
   "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://aagbofmjdgfcceidclhmdhmgmbpgeifn/" 
+    "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/" 
   ]
 }
