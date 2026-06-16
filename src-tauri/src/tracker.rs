@@ -256,6 +256,7 @@ pub fn start_window_tracker(
                             } else {
                                 None
                             },
+                            notes: None,
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -302,6 +303,7 @@ pub fn start_window_tracker(
                             } else {
                                 None
                             },
+                            notes: None,
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -356,6 +358,7 @@ pub fn start_window_tracker(
                         } else {
                             None
                         },
+                        notes: None,
                     });
                 }
                 continue;
@@ -410,6 +413,7 @@ pub fn start_window_tracker(
                                 } else {
                                     None
                                 },
+                                notes: None,
                             };
                             let _ = db.insert_activity_log(&log);
                         }
@@ -449,6 +453,7 @@ pub fn start_window_tracker(
                             } else {
                                 None
                             },
+                            notes: None,
                         };
                         let _ = db.insert_activity_log(&log);
                     }
@@ -496,6 +501,7 @@ pub fn start_window_tracker(
                         } else {
                             None
                         },
+                        notes: None,
                     });
                 } else {
                     *active_lock = None;

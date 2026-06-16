@@ -15,6 +15,7 @@ pub struct ActivityLog {
     pub url: Option<String>,
     pub icon_url: Option<String>,
     pub domain_tag: Option<String>,
+    pub notes: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -144,6 +145,7 @@ impl DbState {
         // Ensure newer columns are present for backward compatibility
         let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN icon_url TEXT;", []);
         let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN domain_tag TEXT;", []);
+        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN notes TEXT;", []);
 
         // Create journal_entries table
         conn.execute(
@@ -273,10 +275,19 @@ impl DbState {
         Ok(conn.last_insert_rowid())
     }
 
+    pub fn update_activity_notes(&self, id: i64, notes: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE activity_logs SET notes = ?1 WHERE id = ?2",
+            params![notes, id],
+        )?;
+        Ok(())
+    }
+
     pub fn get_activity_logs(&self, limit: i64) -> Result<Vec<ActivityLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag, notes
              FROM activity_logs
              ORDER BY start_time DESC
              LIMIT ?1",
@@ -292,6 +303,7 @@ impl DbState {
                 url: row.get(6)?,
                 icon_url: row.get(7)?,
                 domain_tag: row.get(8)?,
+                notes: row.get(9)?,
             })
         })?;
 
@@ -456,7 +468,7 @@ impl DbState {
     pub fn get_raw_activities_for_day(&self, date: &str) -> Result<Vec<ActivityLog>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag, notes
              FROM activity_logs
              WHERE date(start_time, 'localtime') = ?1
              ORDER BY start_time DESC;",
@@ -473,6 +485,7 @@ impl DbState {
                 url: row.get(6)?,
                 icon_url: row.get(7)?,
                 domain_tag: row.get(8)?,
+                notes: row.get(9)?,
             })
         })?;
 

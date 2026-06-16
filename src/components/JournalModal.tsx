@@ -9,7 +9,7 @@ interface JournalModalProps {
 }
 
 export const JournalModal: React.FC<JournalModalProps> = ({ activity, onClose, onSave }) => {
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(activity?.notes || "");
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {

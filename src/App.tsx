@@ -467,7 +467,7 @@ ${compileContextRollup()}`;
 
   const handleSaveJournal = async (notes: string) => {
     try {
-      await invoke("add_journal", { notes });
+      await invoke("add_journal", { notes, activityId: selectedActivity?.id || null });
       await loadData();
     } catch (e) {
       console.error("Failed to save journal entry:", e);
@@ -935,7 +935,7 @@ ${compileContextRollup()}`;
             />
           ) : (
             /* AI Reflection & Chat Module */
-            <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left min-h-[420px]">
+            <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left flex-1">
               {/* Header with Switcher Tabs */}
               <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
                 <div className="flex items-center gap-2">
@@ -1017,7 +1017,7 @@ ${compileContextRollup()}`;
                   {/* Messages list */}
                   <div 
                     id="chat-messages-container"
-                    className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[180px] max-h-[260px] scrollbar-thin"
+                    className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px] scrollbar-thin"
                   >
                     {(isIncognito ? volatileChatHistory : chatMessages).length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center p-4">
@@ -1106,31 +1106,6 @@ ${compileContextRollup()}`;
               )}
             </div>
           )}
-
-          {/* Historical Journals Feed */}
-          <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex-1 flex flex-col gap-4 text-left overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
-              <BookOpen className="w-4 h-4 text-violet-400" />
-              <h3 className="text-sm font-bold tracking-wider text-[var(--text-muted)] uppercase">Mindfulness Logs</h3>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              {journals.length === 0 ? (
-                <div className="text-center py-10 text-[var(--text-muted)] text-xs">
-                  No historical mindfulness journal entries found.
-                </div>
-              ) : (
-                journals.map((entry) => (
-                  <div key={entry.id} className="p-3.5 rounded-xl bg-[var(--bg-color)]/20 border border-[var(--border-color)] flex flex-col gap-2">
-                    <p className="text-sm text-[var(--text-color)] leading-normal">{entry.notes}</p>
-                    <span className="text-[10px] text-[var(--text-muted)] font-mono self-start">
-                      {new Date(entry.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       </div>
 

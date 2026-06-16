@@ -12,6 +12,7 @@ export interface ActivityNode {
   url?: string;
   icon_url?: string;
   domain_tag?: string;
+  notes?: string;
 }
 
 interface SCurveTimelineProps {
@@ -430,6 +431,12 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                     </p>
                   )}
 
+                  {node.notes && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs italic text-[var(--text-color)] select-text leading-relaxed">
+                      "{node.notes}"
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-[var(--border-color)]">
                     <span className="text-[10px] text-[var(--text-muted)] font-mono">
                       {getFormatTime(node.start_time)}
@@ -452,7 +459,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                         className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors font-semibold cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>Reflect</span>
+                        <span>{node.notes ? "Edit Note" : "Reflect"}</span>
                       </button>
                     </div>
                   </div>

@@ -74,8 +74,15 @@ fn delete_activity_log(state: State<'_, Arc<DbState>>, id: i64) -> Result<(), St
 }
 
 #[tauri::command]
-fn add_journal(state: State<'_, Arc<DbState>>, notes: String) -> Result<i64, String> {
+fn add_journal(
+    state: State<'_, Arc<DbState>>,
+    notes: String,
+    activity_id: Option<i64>,
+) -> Result<i64, String> {
     let timestamp = chrono::Utc::now().to_rfc3339();
+    if let Some(id) = activity_id {
+        let _ = state.update_activity_notes(id, &notes);
+    }
     state
         .insert_journal_entry(&timestamp, &notes)
         .map_err(|e| e.to_string())
