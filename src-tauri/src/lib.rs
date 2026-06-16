@@ -41,6 +41,75 @@ fn update_tray_icon_by_state(app: &tauri::AppHandle) {
     }
 }
 
+/// Returns the home directory as a PathBuf, checking XDG_HOME then HOME.
+fn get_home_dir() -> Option<PathBuf> {
+    std::env::var("HOME").ok().map(PathBuf::from)
+}
+
+/// Auto-installs the native messaging host manifest for Chrome and Chromium.
+/// Called on every GUI startup so users never have to run a manual script.
+/// The manifest is written with the path of the currently running executable,
+/// which keeps it correct across app updates or directory moves.
+fn install_native_host_manifest() {
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[native-host] Could not determine exe path: {e}");
+            return;
+        }
+    };
+
+    let home = match get_home_dir() {
+        Some(h) => h,
+        None => {
+            eprintln!("[native-host] HOME not set, cannot install manifest");
+            return;
+        }
+    };
+
+    // The extension ID is fixed once published to the Chrome Web Store.
+    // During development this matches the unpacked extension ID.
+    let allowed_origin = "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/";
+
+    let manifest = format!(
+        r#"{{
+  "name": "com.lifemirror.desktop",
+  "description": "LifeMirror Native Messaging Bridge",
+  "path": "{exe}",
+  "type": "stdio",
+  "allowed_origins": [
+    "{origin}"
+  ]
+}}
+"#,
+        exe = exe_path.display(),
+        origin = allowed_origin
+    );
+
+    // Install for Google Chrome and Chromium
+    let host_dirs = [
+        home.join(".config/google-chrome/NativeMessagingHosts"),
+        home.join(".config/chromium/NativeMessagingHosts"),
+    ];
+
+    for dir in &host_dirs {
+        // Only write if the browser config dir parent exists (browser is installed)
+        let browser_config = dir.parent().unwrap_or(dir);
+        if !browser_config.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            eprintln!("[native-host] Failed to create {}: {e}", dir.display());
+            continue;
+        }
+        let manifest_path = dir.join("com.lifemirror.desktop.json");
+        match std::fs::write(&manifest_path, &manifest) {
+            Ok(_) => eprintln!("[native-host] Manifest installed: {}", manifest_path.display()),
+            Err(e) => eprintln!("[native-host] Failed to write {}: {e}", manifest_path.display()),
+        }
+    }
+}
+
 fn get_db_path() -> PathBuf {
     let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
         PathBuf::from(data_home)
@@ -373,6 +442,12 @@ pub fn run() {
     }
 
     // Route 2: Graphical desktop application execution mode
+
+    // Auto-install native messaging host manifest for Chrome/Chromium.
+    // This runs silently on every launch so the manifest always reflects
+    // the current binary path — no manual setup required for users.
+    install_native_host_manifest();
+
     let db_state = DbState::new(db_path);
     let db_arc = Arc::new(db_state);
 
