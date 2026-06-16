@@ -283,7 +283,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
     const col = isRowEven ? (index % 3) : (2 - (index % 3));
     const x = colXs[col];
     const y = r * rowHeight + 80;
-    return { x, y, r, isRowEven };
+    return { x, y, r, isRowEven, col };
   };
 
   // Generate continuous cubic Bézier path for the S-Curve
@@ -330,12 +330,14 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
     }
   };
 
+  const colPercentages = ['16.25%', '50%', '83.75%'];
+
   const totalHeight = activities.length === 0 
     ? 400 
     : Math.ceil(activities.length / 3) * rowHeight + 80;
 
   return (
-    <div className="relative w-full overflow-x-auto py-10 select-none flex justify-center">
+    <div className="relative w-full max-h-[calc(100vh-180px)] overflow-y-auto overflow-x-hidden py-10 px-4 select-none flex justify-center">
       {activities.length === 0 ? (
         <div className="text-center py-20 glass-card rounded-2xl p-8 max-w-md mx-auto">
           <Clock className="w-12 h-12 text-violet-400 mx-auto mb-4 animate-pulse" />
@@ -345,11 +347,12 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
           </p>
         </div>
       ) : (
-        <div className="relative shrink-0 w-[800px]" style={{ height: `${totalHeight}px` }}>
+        <div className="relative w-full max-w-4xl" style={{ height: `${totalHeight}px` }}>
           {/* Timeline SVG */}
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
             viewBox={`0 0 ${width} ${totalHeight}`}
+            preserveAspectRatio="none"
             fill="none"
           >
             {/* Background path line */}
@@ -379,7 +382,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
 
           {/* Interactive nodes along the curve */}
           {activities.map((node, index) => {
-            const { x: nodeX, y: nodeY } = getNodeCoords(index);
+            const { y: nodeY, col } = getNodeCoords(index);
             const isBrowser = node.source.toLowerCase() === "browser";
 
             return (
@@ -387,7 +390,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                 {/* Visual anchor point circle */}
                 <div
                   className="absolute z-20 w-9 h-9 rounded-full border-2 border-violet-500 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)] transition-transform duration-300 hover:scale-125"
-                  style={{ left: `${nodeX}px`, top: `${nodeY}px` }}
+                  style={{ left: colPercentages[col], top: `${nodeY}px` }}
                   title={`${node.app_name}: ${node.window_title}`}
                 >
                   <AppIcon 
@@ -405,10 +408,12 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ activities, onAd
                 <div
                   className="absolute glass-card rounded-xl p-3.5 shadow-xl text-left z-10"
                   style={{
-                    left: `${nodeX}px`,
+                    left: colPercentages[col],
                     top: `${nodeY + 22}px`,
                     transform: 'translateX(-50%)',
-                    width: '230px'
+                    width: '28%',
+                    minWidth: '150px',
+                    maxWidth: '245px'
                   }}
                 >
                   <div className="flex items-center justify-between gap-1 mb-1.5">
