@@ -161,24 +161,36 @@ fn add_journal(
 fn toggle_incognito(
     app: tauri::AppHandle,
     state: State<'_, Arc<DbState>>,
+    tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
     tray_state: State<'_, TrayMenuState>,
 ) -> Result<bool, String> {
     let current = state
         .get_setting("incognito")
         .unwrap_or_else(|_| "false".to_string())
         == "true";
-    let new_state = !current;
+    let new_incognito = !current;
+    
     state
-        .set_setting("incognito", if new_state { "true" } else { "false" })
+        .set_setting("incognito", if new_incognito { "true" } else { "false" })
         .map_err(|e| e.to_string())?;
 
     // Update tray checkbox
-    let _ = tray_state.incognito_item.set_checked(new_state);
+    let _ = tray_state.incognito_item.set_checked(new_incognito);
+
+    // RADIO BEHAVIOR: If Incognito is turned ON, Tracking Active must turn OFF
+    if new_incognito {
+        state
+            .set_setting("tracking_active", "false")
+            .map_err(|e| e.to_string())?;
+        tracking_active.store(false, std::sync::atomic::Ordering::SeqCst);
+        let _ = tray_state.tracking_item.set_checked(false);
+        let _ = app.emit("tracking-changed", false);
+    }
 
     // Update tray icon
     update_tray_icon_by_state(&app);
 
-    Ok(new_state)
+    Ok(new_incognito)
 }
 
 #[tauri::command]
@@ -212,19 +224,29 @@ fn toggle_tracking(
     tray_state: State<'_, TrayMenuState>,
 ) -> Result<bool, String> {
     let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
-    let new_state = !current;
+    let new_tracking = !current;
+    
     state
-        .set_setting("tracking_active", if new_state { "true" } else { "false" })
+        .set_setting("tracking_active", if new_tracking { "true" } else { "false" })
         .map_err(|e| e.to_string())?;
-    tracking_active.store(new_state, std::sync::atomic::Ordering::SeqCst);
+    tracking_active.store(new_tracking, std::sync::atomic::Ordering::SeqCst);
 
     // Update tray checkbox
-    let _ = tray_state.tracking_item.set_checked(new_state);
+    let _ = tray_state.tracking_item.set_checked(new_tracking);
+
+    // RADIO BEHAVIOR: If Tracking Active is turned ON, Incognito Mode must turn OFF
+    if new_tracking {
+        state
+            .set_setting("incognito", "false")
+            .map_err(|e| e.to_string())?;
+        let _ = tray_state.incognito_item.set_checked(false);
+        let _ = app.emit("incognito-changed", false);
+    }
 
     // Update tray icon
     update_tray_icon_by_state(&app);
 
-    Ok(new_state)
+    Ok(new_tracking)
 }
 
 #[tauri::command]
@@ -376,28 +398,44 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
             "incognito" => {
                 let db = app.state::<Arc<DbState>>();
                 let current = db.get_setting("incognito").unwrap_or_default() == "true";
-                let new_state = !current;
-                let _ = db.set_setting("incognito", if new_state { "true" } else { "false" });
+                let new_incognito = !current;
+                let _ = db.set_setting("incognito", if new_incognito { "true" } else { "false" });
 
                 let tray_state = app.state::<TrayMenuState>();
-                let _ = tray_state.incognito_item.set_checked(new_state);
+                let _ = tray_state.incognito_item.set_checked(new_incognito);
+                let _ = app.emit("incognito-changed", new_incognito);
 
-                let _ = app.emit("incognito-changed", new_state);
+                // RADIO BEHAVIOR: Turn off tracking if incognito is enabled
+                if new_incognito {
+                    let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
+                    tracking_active.store(false, std::sync::atomic::Ordering::SeqCst);
+                    let _ = db.set_setting("tracking_active", "false");
+                    let _ = tray_state.tracking_item.set_checked(false);
+                    let _ = app.emit("tracking-changed", false);
+                }
+
                 update_tray_icon_by_state(app);
             }
             "tracking" => {
                 let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
                 let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
-                let new_state = !current;
-                tracking_active.store(new_state, std::sync::atomic::Ordering::SeqCst);
+                let new_tracking = !current;
+                tracking_active.store(new_tracking, std::sync::atomic::Ordering::SeqCst);
 
                 let db = app.state::<Arc<DbState>>();
-                let _ = db.set_setting("tracking_active", if new_state { "true" } else { "false" });
+                let _ = db.set_setting("tracking_active", if new_tracking { "true" } else { "false" });
 
                 let tray_state = app.state::<TrayMenuState>();
-                let _ = tray_state.tracking_item.set_checked(new_state);
+                let _ = tray_state.tracking_item.set_checked(new_tracking);
+                let _ = app.emit("tracking-changed", new_tracking);
 
-                let _ = app.emit("tracking-changed", new_state);
+                // RADIO BEHAVIOR: Turn off incognito if tracking is enabled
+                if new_tracking {
+                    let _ = db.set_setting("incognito", "false");
+                    let _ = tray_state.incognito_item.set_checked(false);
+                    let _ = app.emit("incognito-changed", false);
+                }
+
                 update_tray_icon_by_state(app);
             }
             "quit" => {
@@ -459,11 +497,21 @@ pub fn run() {
         }
     });
 
-    // Load initial tracking state
-    let initial_tracking = db_arc
-        .get_setting("tracking_active")
-        .unwrap_or_else(|_| "true".to_string())
+    // Load initial configuration safely keeping radio logic intact
+    let is_incognito_init = db_arc
+        .get_setting("incognito")
+        .unwrap_or_else(|_| "false".to_string())
         == "true";
+
+    let initial_tracking = if is_incognito_init {
+        false // If incognito is active, tracking cannot be active on launch
+    } else {
+        db_arc
+            .get_setting("tracking_active")
+            .unwrap_or_else(|_| "true".to_string())
+            == "true"
+    };
+    
     let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
     let active_activity = Arc::new(std::sync::Mutex::new(None));
 
