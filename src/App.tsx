@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
   Calendar, Clock, Grid, Send, Trash2, MessageSquare
 } from "lucide-react";
-import { SCurveTimeline, ActivityNode, BrowserTabEvent } from "./components/SCurveTimeline";
+import { SCurveTimeline, ActivityNode, SubSessionEvent } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WeeklyView } from "./components/WeeklyView";
@@ -36,7 +36,7 @@ export interface ChatMessage {
 
 function App() {
   const [activities, setActivities] = useState<ActivityNode[]>([]);
-  const [browserTabEvents, setBrowserTabEvents] = useState<BrowserTabEvent[]>([]);
+  const [subSessionEvents, setSubSessionEvents] = useState<SubSessionEvent[]>([]);
   const [isIncognito, setIsIncognito] = useState(false);
   const [trackingActive, setTrackingActive] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -57,7 +57,7 @@ function App() {
 
   // DB Log Threshold & Windows configurations
   const [minLogDuration, setMinLogDurationState] = useState(60);
-  const [minTabDuration, setMinTabDurationState] = useState(60);
+  const [minSubSessionDuration, setMinSubSessionDurationState] = useState(60);
   const [isAutostartEnabled, setIsAutostartEnabled] = useState(false);
 
   // AI Chat states
@@ -217,10 +217,10 @@ ${compileContextRollup()}`;
           if (!isNaN(parsed)) setMinLogDurationState(Math.max(60, parsed));
         }
 
-        const minTabDurationStr = await invoke<string>("get_db_setting", { key: "min_tab_duration" });
-        if (minTabDurationStr && minTabDurationStr !== "false" && minTabDurationStr.trim() !== "") {
-          const parsed = parseInt(minTabDurationStr, 10);
-          if (!isNaN(parsed)) setMinTabDurationState(Math.max(0, parsed));
+        const minSubSessionDurationStr = await invoke<string>("get_db_setting", { key: "min_sub_session_duration" });
+        if (minSubSessionDurationStr && minSubSessionDurationStr !== "false" && minSubSessionDurationStr.trim() !== "") {
+          const parsed = parseInt(minSubSessionDurationStr, 10);
+          if (!isNaN(parsed)) setMinSubSessionDurationState(Math.max(0, parsed));
         }
 
         try {
@@ -265,13 +265,13 @@ ${compileContextRollup()}`;
     }
   };
 
-  const updateMinTabDuration = async (duration: number) => {
+  const updateMinSubSessionDuration = async (duration: number) => {
     const clamped = Math.max(0, duration);
-    setMinTabDurationState(clamped);
+    setMinSubSessionDurationState(clamped);
     try {
-      await invoke("set_db_setting", { key: "min_tab_duration", value: String(clamped) });
+      await invoke("set_db_setting", { key: "min_sub_session_duration", value: String(clamped) });
     } catch (e) {
-      console.error("Failed to save min_tab_duration setting:", e);
+      console.error("Failed to save min_sub_session_duration setting:", e);
     }
   };
 
@@ -397,10 +397,10 @@ ${compileContextRollup()}`;
         
         setActivities(mergedActivities);
         try {
-          const tabEvents = await invoke<BrowserTabEvent[]>("get_browser_tab_events", { date: selectedDate });
-          setBrowserTabEvents(tabEvents);
+          const events = await invoke<SubSessionEvent[]>("get_sub_session_events_for_day", { date: selectedDate });
+          setSubSessionEvents(events);
         } catch (err) {
-          console.error("Failed to load browser tab events:", err);
+          console.error("Failed to load sub session events:", err);
         }
       } else if (viewMode === "weekly") {
         const range = getWeekRange(selectedDate);
@@ -912,7 +912,7 @@ ${compileContextRollup()}`;
             {viewMode === "daily" ? (
               <SCurveTimeline 
                 activities={[...activities].reverse()} 
-                browserTabEvents={browserTabEvents}
+                subSessionEvents={subSessionEvents}
                 onAddJournal={(node) => setSelectedActivity(node)} 
                 onDeleteLog={handleDeleteLog}
               />
@@ -950,8 +950,8 @@ ${compileContextRollup()}`;
               setTrackingActive={handleToggleTracking}
               minLogDuration={minLogDuration}
               setMinLogDuration={updateMinLogDuration}
-              minTabDuration={minTabDuration}
-              setMinTabDuration={updateMinTabDuration}
+              minSubSessionDuration={minSubSessionDuration}
+              updateMinSubSessionDuration={updateMinSubSessionDuration}
               isAutostartEnabled={isAutostartEnabled}
               toggleAutostart={toggleAutostart}
             />

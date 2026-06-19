@@ -18,25 +18,26 @@ export interface ActivityNode {
   notes?: string;
 }
 
-export interface BrowserTabEvent {
+export interface SubSessionEvent {
   id: number;
-  url: string;
+  session_type: string;
+  parent_app_name?: string;
   title: string;
-  favicon_url?: string;
-  domain?: string;
+  primary_uri?: string;
+  icon_url?: string;
+  context_tag?: string;
+  metadata?: string;
   timestamp: string;
-  browser_name?: string;
 }
 
 interface SCurveTimelineProps {
   activities: ActivityNode[];
-  browserTabEvents: BrowserTabEvent[];
+  subSessionEvents: SubSessionEvent[];
   onAddJournal: (activity: ActivityNode) => void;
   onDeleteLog: (id: number) => void;
 }
 
-export interface TimelineNode {
-  isGroupedBrowser: boolean;
+  isGroupedSession: boolean;
   id: number;
   app_name: string;
   window_title: string;
@@ -48,7 +49,7 @@ export interface TimelineNode {
   domain_tag?: string;
   notes?: string;
   originalActivities: ActivityNode[];
-  tabEvents: BrowserTabEvent[];
+  subEvents: SubSessionEvent[];
 }
 
 // Brand SVG Icons
@@ -303,7 +304,7 @@ const extractDomain = (url?: string): string => {
 
 export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ 
   activities, 
-  browserTabEvents, 
+  subSessionEvents, 
   onAddJournal, 
   onDeleteLog 
 }) => {
@@ -314,7 +315,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
   const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null);
 
-  // Group consecutive browser usages together
+  // Group consecutive browser/editor usages together
   const processedNodes = useMemo(() => {
     const isBrowserApp = (appName: string): boolean => {
       const lower = appName.toLowerCase();
@@ -332,8 +333,12 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
     activities.forEach((activity) => {
       const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
-      if (isBrowser) {
-        if (currentGroup) {
+      const isEditor = activity.source.toLowerCase() === "editor";
+      const isGroupable = isBrowser || isEditor;
+
+      if (isGroupable) {
+        // Group by app_name and source
+        if (currentGroup && currentGroup.source === (isBrowser ? "Browser" : "Editor") && currentGroup.app_name === activity.app_name) {
           currentGroup.duration += activity.duration;
           currentGroup.originalActivities.push(activity);
           if (activity.notes) {
@@ -342,17 +347,19 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
               : activity.notes;
           }
         } else {
+          if (currentGroup) nodes.push(currentGroup);
+          
           currentGroup = {
-            isGroupedBrowser: true,
+            isGroupedSession: true,
             id: activity.id,
             app_name: activity.app_name,
-            window_title: "Browser Session",
+            window_title: `${activity.app_name} Session`,
             start_time: activity.start_time,
             duration: activity.duration,
-            source: "Browser",
+            source: isBrowser ? "Browser" : "Editor",
             notes: activity.notes,
             originalActivities: [activity],
-            tabEvents: [],
+            subEvents: [],
           };
         }
       } else {
@@ -361,7 +368,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
           currentGroup = null;
         }
         nodes.push({
-          isGroupedBrowser: false,
+          isGroupedSession: false,
           id: activity.id,
           app_name: activity.app_name,
           window_title: activity.window_title,
@@ -373,7 +380,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
           domain_tag: activity.domain_tag,
           notes: activity.notes,
           originalActivities: [activity],
-          tabEvents: [],
+          subEvents: [],
         });
       }
     });
@@ -382,13 +389,16 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
       nodes.push(currentGroup);
     }
 
-    // Assign overlapping browser tab events to each group node
+    // Assign overlapping sub session events to each group node
     nodes.forEach((node) => {
-      if (node.isGroupedBrowser) {
+      if (node.isGroupedSession) {
         const groupStart = new Date(node.start_time).getTime();
         const groupEnd = groupStart + node.duration * 1000;
         
-        node.tabEvents = browserTabEvents.filter((event) => {
+        node.subEvents = subSessionEvents.filter((event) => {
+          if (event.session_type !== node.source) return false;
+          if (node.source === "Editor" && event.parent_app_name !== node.app_name) return false;
+          
           const eventTime = new Date(event.timestamp).getTime();
           // Filter events falling within this group session (+/- 5 second tolerance)
           return eventTime >= groupStart - 5000 && eventTime <= groupEnd + 5000;
@@ -397,7 +407,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
     });
 
     return nodes;
-  }, [activities, browserTabEvents]);
+  }, [activities, subSessionEvents]);
 
   // Helper to calculate coordinates of node at index with coordinate shifting
   const getBaseNodeCoords = (index: number) => {
@@ -535,7 +545,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   style={{ left: colPercentages[col], top: `${nodeY}px` }}
                   title={`${node.app_name}: ${node.window_title}`}
                   onClick={() => {
-                    if (node.isGroupedBrowser) {
+                    if (node.isGroupedSession) {
                       setExpandedGroupId(isExpanded ? null : node.id);
                     }
                   }}
@@ -554,7 +564,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                 {/* Glassmorphic Activity Card hanging from the node */}
                 <div
                   className={`absolute glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
-                    node.isGroupedBrowser ? 'cursor-pointer hover:border-violet-500/50' : ''
+                    node.isGroupedSession ? 'cursor-pointer hover:border-violet-500/50' : ''
                   }`}
                   style={{
                     left: colPercentages[col],
@@ -565,8 +575,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     maxWidth: '260px'
                   }}
                   onClick={(e) => {
-                    // Toggle expand if clicking grouped browser card (but not on buttons or links)
-                    if (node.isGroupedBrowser) {
+                    if (node.isGroupedSession) {
                       const target = e.target as HTMLElement;
                       if (!target.closest('button') && !target.closest('a')) {
                         setExpandedGroupId(isExpanded ? null : node.id);
@@ -590,8 +599,8 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                           ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30' 
                           : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
                       }`}>
-                        {node.isGroupedBrowser 
-                          ? `${node.tabEvents.length} tab${node.tabEvents.length === 1 ? '' : 's'}`
+                        {node.isGroupedSession 
+                          ? `${node.subEvents.length} items`
                           : (node.domain_tag || extractDomain(node.url)) || node.app_name
                         }
                       </span>
@@ -604,9 +613,9 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
                   <div className="flex justify-between items-start gap-1">
                     <h4 className="text-xs font-semibold text-[var(--text-color)] line-clamp-2 mb-1 flex-1" title={String(node.window_title)}>
-                      {node.isGroupedBrowser ? `${node.app_name} Session` : node.window_title}
+                      {node.isGroupedSession ? `${node.app_name} Session` : node.window_title}
                     </h4>
-                    {node.isGroupedBrowser && (
+                    {node.isGroupedSession && (
                       <span className="text-[var(--text-muted)] mt-0.5">
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </span>
@@ -614,7 +623,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   </div>
 
                   <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
-                    {node.isGroupedBrowser ? domainsText : node.url}
+                    {node.isGroupedSession ? (isBrowser ? domainsText : "Multiple files") : node.url}
                   </p>
 
                   {node.notes && (
@@ -623,22 +632,22 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     </div>
                   )}
 
-                  {/* Expanded Accordion list for browser tabs */}
-                  {node.isGroupedBrowser && isExpanded && (
+                  {/* Expanded Accordion list for sub sessions */}
+                  {node.isGroupedSession && isExpanded && (
                     <div className="mt-2.5 pt-2 border-t border-[var(--border-color)] max-h-[160px] overflow-y-auto pr-1 select-text custom-scrollbar space-y-1.5">
-                      {node.tabEvents.length === 0 ? (
-                        <span className="text-[9px] text-[var(--text-muted)] italic block py-1 text-center">No tab switches recorded</span>
+                      {node.subEvents.length === 0 ? (
+                        <span className="text-[9px] text-[var(--text-muted)] italic block py-1 text-center">No nested events recorded</span>
                       ) : (
-                        node.tabEvents.map((tab, idx) => {
+                        node.subEvents.map((event, idx) => {
                           // Calculate duration
                           let dur = 0;
-                          if (idx < node.tabEvents.length - 1) {
-                            const t1 = new Date(tab.timestamp).getTime();
-                            const t2 = new Date(node.tabEvents[idx + 1].timestamp).getTime();
+                          if (idx < node.subEvents.length - 1) {
+                            const t1 = new Date(event.timestamp).getTime();
+                            const t2 = new Date(node.subEvents[idx + 1].timestamp).getTime();
                             dur = Math.max(0, (t2 - t1) / 1000);
                           } else {
                             // Last event: cap at the group's end time
-                            const t1 = new Date(tab.timestamp).getTime();
+                            const t1 = new Date(event.timestamp).getTime();
                             const groupStart = new Date(node.start_time).getTime();
                             const groupEnd = groupStart + node.duration * 1000;
                             dur = Math.max(0, (groupEnd - t1) / 1000);
@@ -648,25 +657,25 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
                           return (
                             <div 
-                              key={tab.id || idx} 
+                              key={event.id || idx} 
                               className="flex items-center justify-between gap-2 text-[10px] p-1.5 rounded bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
                             >
                               <div className="flex items-center gap-1.5 overflow-hidden">
                                 <AppIcon
-                                  appName="Chrome"
-                                  url={tab.url}
-                                  iconUrl={tab.favicon_url}
-                                  domainTag={tab.domain}
-                                  source="Browser"
+                                  appName={event.parent_app_name || node.app_name}
+                                  url={event.primary_uri}
+                                  iconUrl={event.icon_url}
+                                  domainTag={event.context_tag}
+                                  source={event.session_type}
                                   className="w-3.5 h-3.5 shrink-0"
                                   showBadge={false}
                                 />
                                 <div className="flex flex-col overflow-hidden">
-                                  <span className="font-semibold text-[var(--text-color)] truncate max-w-[110px]" title={tab.title}>
-                                    {tab.title}
+                                  <span className="font-semibold text-[var(--text-color)] truncate max-w-[110px]" title={event.title}>
+                                    {event.title}
                                   </span>
                                   <span className="text-[8px] text-[var(--text-muted)] truncate max-w-[110px]">
-                                    {tab.domain || extractDomain(tab.url)}
+                                    {event.context_tag || extractDomain(event.primary_uri)}
                                   </span>
                                 </div>
                               </div>
@@ -674,15 +683,17 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                                 <span className="text-[8px] font-mono text-[var(--text-muted)] bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded">
                                   {formattedDur}
                                 </span>
-                                <a
-                                  href={tab.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="p-0.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
-                                  title="Open URL"
-                                >
-                                  <ExternalLink className="w-3 h-3 text-blue-500" />
-                                </a>
+                                {event.primary_uri && event.primary_uri.startsWith("http") && (
+                                  <a
+                                    href={event.primary_uri}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="p-0.5 text-blue-500 hover:bg-blue-500/10 rounded transition-colors"
+                                    title="Open Link"
+                                  >
+                                    <ExternalLink className="w-3 h-3 text-blue-500" />
+                                  </a>
+                                )}
                               </div>
                             </div>
                           );
@@ -698,8 +709,8 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
-                          if (node.isGroupedBrowser) {
-                            if (window.confirm("Delete this browser session and all its tab history?")) {
+                          if (node.isGroupedSession) {
+                            if (window.confirm("Delete this session and all its sub-events?")) {
                               node.originalActivities.forEach(act => {
                                 if (act.id) onDeleteLog(act.id);
                               });

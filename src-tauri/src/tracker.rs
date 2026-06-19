@@ -1,4 +1,4 @@
-use crate::db::{extract_domain, ActivityLog, DbState};
+use crate::db::{extract_domain, ActivityLog, DbState, SubSessionEvent};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -165,6 +165,39 @@ fn is_browser_app(app: &str) -> bool {
         || app_lower.contains("edge")
 }
 
+fn is_editor_app(app: &str) -> bool {
+    let app_lower = app.to_lowercase();
+    app_lower.contains("code")
+        || app_lower.contains("cursor")
+        || app_lower.contains("intellij")
+        || app_lower.contains("sublime")
+        || app_lower.contains("zed")
+        || app_lower.contains("studio")
+        || app_lower.contains("eclipse")
+        || app_lower.contains("webstorm")
+        || app_lower.contains("pycharm")
+        || app_lower.contains("rider")
+        || app_lower.contains("clion")
+}
+
+fn parse_editor_title(title: &str) -> (String, String) {
+    let mut parts: Vec<&str> = title.split(" - ").collect();
+    if parts.len() == 1 {
+        parts = title.split(" – ").collect();
+    }
+    if parts.len() == 1 {
+        parts = title.split(" — ").collect();
+    }
+
+    if parts.len() >= 3 {
+        (parts[0].trim().to_string(), parts[1].trim().to_string())
+    } else if parts.len() == 2 {
+        (parts[0].trim().to_string(), parts[1].trim().to_string())
+    } else {
+        (title.trim().to_string(), String::new())
+    }
+}
+
 fn resolve_current_activity(
     db: &DbState,
 ) -> (String, String, Option<String>, Option<String>, String) {
@@ -200,6 +233,11 @@ fn resolve_current_activity(
         }
     }
 
+    if is_editor_app(&app) {
+        let icon_url = app_icon.or_else(|| resolve_app_icon(&app, None));
+        return (app, title, None, icon_url, "Editor".to_string());
+    }
+
     let icon_url = app_icon.or_else(|| resolve_app_icon(&app, None));
     (app, title, None, icon_url, "OS".to_string())
 }
@@ -226,6 +264,28 @@ pub fn start_window_tracker(
         let mut temp_url: Option<String> = None;
         let mut temp_icon_url: Option<String> = None;
 
+        let mut editor_sub_title = String::new();
+        let mut editor_sub_start_time = Utc::now();
+        let mut editor_sub_duration = 0;
+
+        let db_ref = db.clone();
+        let mut flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
+            if duration >= min_dur && !title.is_empty() {
+                let (primary_uri, context_tag) = parse_editor_title(title);
+                let _ = db_ref.insert_sub_session_event(&SubSessionEvent {
+                    id: None,
+                    session_type: "Editor".to_string(),
+                    parent_app_name: Some(parent_app.to_string()),
+                    title: title.to_string(),
+                    primary_uri: Some(primary_uri),
+                    icon_url,
+                    context_tag: if context_tag.is_empty() { None } else { Some(context_tag) },
+                    metadata: None,
+                    timestamp: start_time.to_rfc3339(),
+                });
+            }
+        };
+
         loop {
             thread::sleep(Duration::from_secs(1));
 
@@ -237,6 +297,12 @@ pub fn start_window_tracker(
             if min_log_duration < 60 {
                 min_log_duration = 60;
             }
+
+            let mut min_sub_session_duration = db
+                .get_setting("min_sub_session_duration")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse::<i64>()
+                .unwrap_or(60);
 
             // Check if background tracking was toggled off (Atomic Cancellation)
             if !tracking_active.load(std::sync::atomic::Ordering::SeqCst) {
@@ -259,6 +325,11 @@ pub fn start_window_tracker(
                             notes: None,
                         };
                         let _ = db.insert_activity_log(&log);
+                    }
+                    if parent_source == "Editor" {
+                        flush_editor_event(editor_sub_duration, &editor_sub_title, editor_sub_start_time, &parent_app, parent_icon_url.clone(), min_sub_session_duration);
+                        editor_sub_duration = 0;
+                        editor_sub_title.clear();
                     }
                     parent_duration = 0;
                     parent_app.clear();
@@ -307,6 +378,11 @@ pub fn start_window_tracker(
                         };
                         let _ = db.insert_activity_log(&log);
                     }
+                    if parent_source == "Editor" {
+                        flush_editor_event(editor_sub_duration, &editor_sub_title, editor_sub_start_time, &parent_app, parent_icon_url.clone(), min_sub_session_duration);
+                        editor_sub_duration = 0;
+                        editor_sub_title.clear();
+                    }
                     parent_duration = 0;
                     parent_app.clear();
                     parent_title.clear();
@@ -340,6 +416,12 @@ pub fn start_window_tracker(
                 parent_source = source.clone();
                 parent_start_time = Utc::now();
                 parent_duration = 1;
+
+                if parent_source == "Editor" {
+                    editor_sub_title = title.clone();
+                    editor_sub_start_time = Utc::now();
+                    editor_sub_duration = 1;
+                }
 
                 // Update the shared active activity state
                 {
@@ -386,6 +468,17 @@ pub fn start_window_tracker(
                 } else {
                     parent_duration += 1;
                 }
+
+                if parent_source == "Editor" {
+                    if title == editor_sub_title {
+                        editor_sub_duration += 1;
+                    } else {
+                        flush_editor_event(editor_sub_duration, &editor_sub_title, editor_sub_start_time, &parent_app, parent_icon_url.clone(), min_sub_session_duration);
+                        editor_sub_title = title.clone();
+                        editor_sub_start_time = Utc::now();
+                        editor_sub_duration = 1;
+                    }
+                }
             } else {
                 // We are in a different focus
                 let is_same_temp = app == temp_app
@@ -427,6 +520,12 @@ pub fn start_window_tracker(
                         parent_start_time = temp_start_time;
                         parent_duration = temp_duration;
 
+                        if parent_source == "Editor" {
+                            editor_sub_title = title.clone();
+                            editor_sub_start_time = Utc::now();
+                            editor_sub_duration = 1;
+                        }
+
                         // Clear temp focus variables
                         temp_app.clear();
                         temp_title.clear();
@@ -457,6 +556,12 @@ pub fn start_window_tracker(
                         };
                         let _ = db.insert_activity_log(&log);
                     }
+                    
+                    if parent_source == "Editor" {
+                        flush_editor_event(editor_sub_duration, &editor_sub_title, editor_sub_start_time, &parent_app, parent_icon_url.clone(), min_sub_session_duration);
+                        editor_sub_duration = 0;
+                        editor_sub_title.clear();
+                    }
 
                     // Promote the completed temporary focus to the new parent
                     if temp_duration > 0 && !temp_app.is_empty() {
@@ -470,6 +575,12 @@ pub fn start_window_tracker(
                     } else {
                         parent_app.clear();
                         parent_duration = 0;
+                    }
+
+                    if parent_source == "Editor" {
+                        editor_sub_title = title.clone();
+                        editor_sub_start_time = Utc::now();
+                        editor_sub_duration = temp_duration; // Inherit temp duration if we just promoted it, wait, if we promote it, temp_duration was spent in THIS title!
                     }
 
                     // Initialize new temporary focus tracking

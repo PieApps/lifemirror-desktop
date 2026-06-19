@@ -12,8 +12,8 @@ interface SettingsPanelProps {
   setTrackingActive: (active: boolean) => void;
   minLogDuration: number;
   setMinLogDuration: (duration: number) => void;
-  minTabDuration: number;
-  setMinTabDuration: (duration: number) => void;
+  minSubSessionDuration: number;
+  updateMinSubSessionDuration: (duration: number) => void;
   isAutostartEnabled: boolean;
   toggleAutostart: () => Promise<void>;
 }
@@ -29,22 +29,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setTrackingActive,
   minLogDuration,
   setMinLogDuration,
-  minTabDuration,
-  setMinTabDuration,
+  minSubSessionDuration,
+  updateMinSubSessionDuration,
   isAutostartEnabled,
   toggleAutostart,
 }) => {
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
-  const [tabInputValue, setTabInputValue] = React.useState(String(minTabDuration));
+  const [subSessionInputValue, setSubSessionInputValue] = React.useState(String(minSubSessionDuration));
 
   React.useEffect(() => {
     setInputValue(String(minLogDuration));
   }, [minLogDuration]);
 
   React.useEffect(() => {
-    setTabInputValue(String(minTabDuration));
-  }, [minTabDuration]);
+    setSubSessionInputValue(String(minSubSessionDuration));
+  }, [minSubSessionDuration]);
 
   const handleAutostartToggle = async () => {
     setAutostartError(null);
@@ -64,12 +64,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     setInputValue(String(clamped));
   };
 
-  const handleMinTabDurationBlur = (val: string) => {
+  const handleMinSubSessionDurationBlur = (val: string) => {
     let parsed = parseInt(val, 10);
     if (isNaN(parsed)) parsed = 60;
     const clamped = Math.max(0, Math.min(300, parsed));
-    setMinTabDuration(clamped);
-    setTabInputValue(String(clamped));
+    updateMinSubSessionDuration(clamped);
+    setSubSessionInputValue(String(clamped));
   };
 
   return (
@@ -171,9 +171,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="flex items-center gap-2">
             <input
               type="number"
-              value={tabInputValue}
-              onChange={(e) => setTabInputValue(e.target.value)}
-              onBlur={(e) => handleMinTabDurationBlur(e.target.value)}
+              value={subSessionInputValue}
+              onChange={(e) => setSubSessionInputValue(e.target.value)}
+              onBlur={(e) => handleMinSubSessionDurationBlur(e.target.value)}
               className="w-16 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-2 py-1 text-xs text-[var(--text-color)] text-center focus:outline-none focus:border-violet-500/50"
               min={0}
               max={300}
@@ -186,13 +186,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             type="range"
             min={0}
             max={300}
-            value={minTabDuration}
-            onChange={(e) => setMinTabDuration(Number(e.target.value))}
+            value={minSubSessionDuration}
+            onChange={(e) => updateMinSubSessionDuration(Number(e.target.value))}
             className="flex-1 accent-violet-600 cursor-pointer h-1 rounded-lg appearance-none bg-zinc-200 dark:bg-zinc-700"
           />
         </div>
         <p className="text-xs text-[var(--text-muted)]">
-          Discards browser tabs shorter than this threshold before saving them (Set to 0 to capture all tabs).
+          Discards sub-sessions (browser tabs or editor files) shorter than this threshold (Set to 0 to capture all).
         </p>
       </div>
 

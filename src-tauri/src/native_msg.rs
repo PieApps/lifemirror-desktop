@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 use serde::{Deserialize, Serialize};
-use crate::db::{extract_domain, BrowserTabEvent, DbState};
+use crate::db::{extract_domain, SubSessionEvent, DbState};
 use chrono::Utc;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,14 +28,14 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     // Spawn consumer thread
     let db_clone = db.clone();
     let consumer_handle = thread::spawn(move || {
-        let mut prev_event: Option<BrowserTabEvent> = None;
+        let mut prev_event: Option<SubSessionEvent> = None;
         let mut prev_time: Option<chrono::DateTime<Utc>> = None;
 
         while let Ok(payload) = rx.recv() {
             let is_incognito = db_clone.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
             let now = Utc::now();
-            let min_tab_duration = db_clone
-                .get_setting("min_tab_duration")
+            let min_sub_session_duration = db_clone
+                .get_setting("min_sub_session_duration")
                 .unwrap_or_else(|_| "60".to_string())
                 .parse::<i64>()
                 .unwrap_or(60);
@@ -43,8 +43,8 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             if is_incognito {
                 if let Some(prev) = prev_event.take() {
                     let duration = (now - prev_time.unwrap()).num_seconds();
-                    if duration >= min_tab_duration {
-                        let _ = db_clone.insert_browser_tab_event(&prev);
+                    if duration >= min_sub_session_duration {
+                        let _ = db_clone.insert_sub_session_event(&prev);
                     }
                 }
                 continue;
@@ -56,22 +56,24 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             let _ = db_clone.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
             let domain_tag = extract_domain(&payload.url);
             
-            let event = BrowserTabEvent {
+            let event = SubSessionEvent {
                 id: None,
-                url: payload.url,
+                session_type: "Browser".to_string(),
+                parent_app_name: Some("Chrome".to_string()),
                 title: payload.title,
-                favicon_url: payload.favIconUrl,
-                domain: if domain_tag.is_empty() { None } else { Some(domain_tag) },
+                primary_uri: Some(payload.url),
+                icon_url: payload.favIconUrl,
+                context_tag: if domain_tag.is_empty() { None } else { Some(domain_tag) },
+                metadata: None,
                 timestamp: now.to_rfc3339(),
-                browser_name: Some("Chrome".to_string()),
             };
 
             // Process previous event
             if let Some(prev) = prev_event.take() {
                 let duration = (now - prev_time.unwrap()).num_seconds();
-                if duration >= min_tab_duration {
-                    if let Err(e) = db_clone.insert_browser_tab_event(&prev) {
-                        eprintln!("Failed to insert browser tab event: {:?}", e);
+                if duration >= min_sub_session_duration {
+                    if let Err(e) = db_clone.insert_sub_session_event(&prev) {
+                        eprintln!("Failed to insert sub session event: {:?}", e);
                     }
                 }
             }
@@ -82,8 +84,8 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
 
         // Output the final event without duration check, as connection is closing
         if let Some(prev) = prev_event.take() {
-            if let Err(e) = db_clone.insert_browser_tab_event(&prev) {
-                eprintln!("Failed to insert final browser tab event: {:?}", e);
+            if let Err(e) = db_clone.insert_sub_session_event(&prev) {
+                eprintln!("Failed to insert final sub session event: {:?}", e);
             }
         }
     });

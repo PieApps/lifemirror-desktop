@@ -275,12 +275,12 @@ fn get_daily_activities(
 }
 
 #[tauri::command]
-fn get_browser_tab_events(
+fn get_sub_session_events_for_day(
     state: State<'_, Arc<DbState>>,
     date: String,
-) -> Result<Vec<db::BrowserTabEvent>, String> {
+) -> Result<Vec<crate::db::SubSessionEvent>, String> {
     state
-        .get_browser_tab_events_for_day(&date)
+        .get_sub_session_events_for_day(&date)
         .map_err(|e| e.to_string())
 }
 
@@ -587,7 +587,7 @@ pub fn run() {
             get_chat_history,
             add_chat_message,
             clear_chat_history,
-            get_browser_tab_events
+            get_sub_session_events_for_day
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

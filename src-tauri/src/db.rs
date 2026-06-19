@@ -50,14 +50,16 @@ pub struct ChatMessage {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct BrowserTabEvent {
+pub struct SubSessionEvent {
     pub id: Option<i64>,
-    pub url: String,
+    pub session_type: String,
+    pub parent_app_name: Option<String>,
     pub title: String,
-    pub favicon_url: Option<String>,
-    pub domain: Option<String>,
+    pub primary_uri: Option<String>,
+    pub icon_url: Option<String>,
+    pub context_tag: Option<String>,
+    pub metadata: Option<String>,
     pub timestamp: String,
-    pub browser_name: Option<String>,
 }
 
 pub fn extract_domain(url: &str) -> String {
@@ -227,24 +229,55 @@ impl DbState {
             [],
         )?;
 
-        // Create browser_tab_events table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS browser_tab_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                url TEXT NOT NULL,
-                title TEXT NOT NULL,
-                favicon_url TEXT,
-                domain TEXT,
-                timestamp TEXT NOT NULL,
-                browser_name TEXT
-            );",
-            [],
-        )?;
+        // Migration from browser_tab_events to sub_session_events
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='sub_session_events';",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_browser_tab_events_timestamp ON browser_tab_events (timestamp);",
-            [],
-        )?;
+        if table_exists == 0 {
+            let old_exists: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='browser_tab_events';",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+
+            if old_exists > 0 {
+                let _ = conn.execute("ALTER TABLE browser_tab_events RENAME TO sub_session_events;", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN url TO primary_uri;", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN favicon_url TO icon_url;", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN domain TO context_tag;", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN browser_name TO parent_app_name;", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN session_type TEXT DEFAULT 'Browser';", []);
+                let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN metadata TEXT;", []);
+                let _ = conn.execute("DROP INDEX IF EXISTS idx_browser_tab_events_timestamp;", []);
+                let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);", []);
+            } else {
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS sub_session_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_type TEXT NOT NULL,
+                        parent_app_name TEXT,
+                        title TEXT NOT NULL,
+                        primary_uri TEXT,
+                        icon_url TEXT,
+                        context_tag TEXT,
+                        metadata TEXT,
+                        timestamp TEXT NOT NULL
+                    );",
+                    [],
+                )?;
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);",
+                    [],
+                )?;
+            }
+        }
 
         // One-time database migration from activity_logs to browser_tab_events
         let migration_done: String = conn
@@ -257,8 +290,8 @@ impl DbState {
 
         if migration_done != "true" {
             let _ = conn.execute(
-                "INSERT INTO browser_tab_events (url, title, favicon_url, domain, timestamp, browser_name)
-                 SELECT url, window_title, icon_url, domain_tag, start_time, app_name
+                "INSERT INTO sub_session_events (session_type, parent_app_name, title, primary_uri, icon_url, context_tag, timestamp)
+                 SELECT 'Browser', app_name, window_title, url, icon_url, domain_tag, start_time
                  FROM activity_logs
                  WHERE source = 'Browser' AND duration <= 1 AND url IS NOT NULL;",
                 [],
@@ -595,7 +628,7 @@ impl DbState {
         Ok(())
     }
 
-    pub fn insert_browser_tab_event(&self, event: &BrowserTabEvent) -> Result<i64> {
+    pub fn insert_sub_session_event(&self, event: &SubSessionEvent) -> Result<i64> {
         let tracking_active = self
             .get_setting("tracking_active")
             .unwrap_or_else(|_| "true".to_string())
@@ -606,39 +639,43 @@ impl DbState {
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO browser_tab_events (url, title, favicon_url, domain, timestamp, browser_name)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO sub_session_events (session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                event.url,
+                event.session_type,
+                event.parent_app_name,
                 event.title,
-                event.favicon_url,
-                event.domain,
+                event.primary_uri,
+                event.icon_url,
+                event.context_tag,
+                event.metadata,
                 event.timestamp,
-                event.browser_name
             ],
         )?;
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn get_browser_tab_events_for_day(&self, date: &str) -> Result<Vec<BrowserTabEvent>> {
+    pub fn get_sub_session_events_for_day(&self, date: &str) -> Result<Vec<SubSessionEvent>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, url, title, favicon_url, domain, timestamp, browser_name
-             FROM browser_tab_events
+            "SELECT id, session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp
+             FROM sub_session_events
              WHERE datetime(timestamp, 'localtime') >= datetime(?1 || ' 00:00:00')
                AND datetime(timestamp, 'localtime') <= datetime(?1 || ' 23:59:59', '+10 minutes')
              ORDER BY timestamp ASC;",
         )?;
 
         let event_iter = stmt.query_map([date], |row| {
-            Ok(BrowserTabEvent {
+            Ok(SubSessionEvent {
                 id: Some(row.get(0)?),
-                url: row.get(1)?,
-                title: row.get(2)?,
-                favicon_url: row.get(3)?,
-                domain: row.get(4)?,
-                timestamp: row.get(5)?,
-                browser_name: row.get(6)?,
+                session_type: row.get(1)?,
+                parent_app_name: row.get(2)?,
+                title: row.get(3)?,
+                primary_uri: row.get(4)?,
+                icon_url: row.get(5)?,
+                context_tag: row.get(6)?,
+                metadata: row.get(7)?,
+                timestamp: row.get(8)?,
             })
         })?;
 
