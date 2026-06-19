@@ -198,10 +198,20 @@ fn parse_editor_title(title: &str) -> (String, String) {
     }
 }
 
+use crate::window_provider::WindowProvider;
+
 fn resolve_current_activity(
     db: &DbState,
+    provider: &dyn WindowProvider,
 ) -> (String, String, Option<String>, Option<String>, String) {
-    let (app, title, app_icon) = get_active_window();
+    let (app, title, app_icon) = match provider.get_active_window() {
+        Some(info) => {
+            let icon = resolve_app_icon(&info.app_name, info.process_path.as_deref());
+            (info.app_name, info.title, icon)
+        }
+        None => (String::new(), String::new(), None)
+    };
+    
     if app.is_empty() && title.is_empty() {
         return (String::new(), String::new(), None, None, "OS".to_string());
     }
@@ -285,6 +295,8 @@ pub fn start_window_tracker(
                 });
             }
         };
+
+        let provider = crate::window_provider::detect_environment();
 
         loop {
             thread::sleep(Duration::from_secs(1));
@@ -403,7 +415,7 @@ pub fn start_window_tracker(
                 continue;
             }
 
-            let (app, title, url, icon_url, source) = resolve_current_activity(&db);
+            let (app, title, url, icon_url, source) = resolve_current_activity(&db, provider.as_ref());
             if app.is_empty() && title.is_empty() {
                 continue;
             }
@@ -622,99 +634,4 @@ pub fn start_window_tracker(
     });
 }
 
-pub fn get_active_window() -> (String, String, Option<String>) {
-    // 1. Attempt Wayland compositor check
-    if std::env::var("XDG_SESSION_TYPE").unwrap_or_default() == "wayland" {
-        // Hyprland focus check
-        if let Ok(output) = std::process::Command::new("hyprctl")
-            .args(["activewindow", "-j"])
-            .output()
-        {
-            if output.status.success() {
-                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                    let app = json["class"].as_str().unwrap_or("").to_string();
-                    let title = json["title"].as_str().unwrap_or("").to_string();
-                    if !app.is_empty() || !title.is_empty() {
-                        let icon_url = resolve_app_icon(&app, None);
-                        return (app, title, icon_url);
-                    }
-                }
-            }
-        }
 
-        // Sway tree focus check (parses swaymsg tree for focused container)
-        if let Ok(output) = std::process::Command::new("swaymsg")
-            .args(["-t", "get_tree"])
-            .output()
-        {
-            if output.status.success() {
-                if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-                    if let Some((app, title)) = find_focused_node_in_sway_tree(&json) {
-                        let icon_url = resolve_app_icon(&app, None);
-                        return (app, title, icon_url);
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Default to active-win-pos-rs crate check (cross-platform / X11)
-    match active_win_pos_rs::get_active_window() {
-        Ok(win) => {
-            let icon_url = resolve_app_icon(&win.app_name, Some(&win.process_path));
-            (win.app_name, win.title, icon_url)
-        }
-        Err(_) => {
-            // X11 tools fallback (xdotool)
-            if let Ok(output) = std::process::Command::new("xdotool")
-                .args(["getwindowfocus", "getwindowname"])
-                .output()
-            {
-                if output.status.success() {
-                    let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    let app = if let Ok(class_out) = std::process::Command::new("xdotool")
-                        .args(["getwindowfocus", "getwindowclassname"])
-                        .output()
-                    {
-                        String::from_utf8_lossy(&class_out.stdout)
-                            .trim()
-                            .to_string()
-                    } else {
-                        "Unknown".to_string()
-                    };
-                    let icon_url = resolve_app_icon(&app, None);
-                    return (app, title, icon_url);
-                }
-            }
-            ("Idle".to_string(), "No active focus".to_string(), None)
-        }
-    }
-}
-
-// DFS to find focused node in Sway tree JSON dump
-fn find_focused_node_in_sway_tree(node: &serde_json::Value) -> Option<(String, String)> {
-    if node["focused"].as_bool().unwrap_or(false) {
-        let name = node["name"].as_str().unwrap_or("").to_string();
-        let app = node["app_id"]
-            .as_str()
-            .or_else(|| node["window_properties"]["class"].as_str())
-            .unwrap_or("Sway Window")
-            .to_string();
-        return Some((app, name));
-    }
-    if let Some(nodes) = node["nodes"].as_array() {
-        for n in nodes {
-            if let Some(res) = find_focused_node_in_sway_tree(n) {
-                return Some(res);
-            }
-        }
-    }
-    if let Some(nodes) = node["floating_nodes"].as_array() {
-        for n in nodes {
-            if let Some(res) = find_focused_node_in_sway_tree(n) {
-                return Some(res);
-            }
-        }
-    }
-    None
-}

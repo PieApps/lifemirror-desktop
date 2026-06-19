@@ -2,6 +2,7 @@ pub mod ai;
 pub mod db;
 pub mod native_msg;
 pub mod tracker;
+pub mod window_provider;
 
 use db::{ActivityLog, ChatMessage, DailySummary, DbState, HourlyMetric, JournalEntry};
 use std::path::PathBuf;
