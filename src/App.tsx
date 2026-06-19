@@ -109,6 +109,17 @@ function App() {
   const [monthlySummaries, setMonthlySummaries] = useState<DailySummary[]>([]);
   const [heatmapData, setHeatmapData] = useState<HourlyMetric[]>([]);
 
+  const formatDurationForAI = (seconds: number) => {
+    if (seconds < 60) return `${Math.floor(seconds)} seconds`;
+    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(mins / 60);
+    if (hrs > 0) {
+      const remainingMins = mins % 60;
+      return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
+    }
+    return `${mins}m`;
+  };
+
   const compileContextRollup = (): string => {
     if (viewMode === "daily") {
       if (activities.length === 0) {
@@ -123,17 +134,32 @@ function App() {
 
       const topApps = Object.entries(appDurations)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .slice(0, 15)
+        .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)}`)
         .join("\n");
 
-      // Last 5 window focus transitions for micro-context
-      const recentFocus = activities
-        .slice(0, 5)
-        .map((node) => `- ${node.app_name}: "${node.window_title}" (Spent ${Math.round(node.duration)}s)`)
+      // Up to 200 chronological window focus transitions, including user journal notes
+      const chronologicalFocus = [...activities].slice(0, 200).reverse();
+      const recentFocus = chronologicalFocus
+        .map((node) => {
+          const time = new Date(node.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const noteText = node.notes ? ` (User Journal: "${node.notes}")` : "";
+          return `[${time}] ${node.app_name} (${formatDurationForAI(node.duration)}) - "${node.window_title}"${noteText}`;
+        })
         .join("\n");
+        
+      // Also provide sub-session (browser tab) events chronologically to detect tab switching patterns
+      const chronologicalSubSessions = [...subSessionEvents].slice(0, 200).reverse();
+      const recentSubSessions = chronologicalSubSessions.length > 0 
+        ? "\n\nDetailed Browser Tab Switching Events:\n" + chronologicalSubSessions
+            .map((e) => {
+              const noteText = e.metadata ? ` (Context: ${e.metadata})` : "";
+              return `[${new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}] Switch to tab: "${e.title}" (${e.context_tag || 'Unknown domain'})${noteText}`;
+            })
+            .join("\n")
+        : "";
 
-      return `Selected Date: ${selectedDate}\n\nTop Applications by Duration:\n${topApps}\n\nRecent Focus Events:\n${recentFocus}`;
+      return `Selected Date: ${selectedDate}\n\nTop Applications by Duration:\n${topApps}\n\nChronological Focus Transitions:\n${recentFocus}${recentSubSessions}`;
     } else if (viewMode === "weekly") {
       if (weeklySummaries.length === 0) {
         return "No activity summary recorded for this week.";
@@ -144,10 +170,20 @@ function App() {
       });
       const topApps = Object.entries(appDurations)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .slice(0, 15)
+        .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)}`)
         .join("\n");
-      return `Selected Period: Week of ${selectedDate}\n\nTop Applications by Duration:\n${topApps}`;
+        
+      const dates = Array.from(new Set(weeklySummaries.map(s => s.date))).sort();
+      const dailyBreakdown = dates.map(dateStr => {
+        const daySums = weeklySummaries.filter(s => s.date === dateStr);
+        const top5 = [...daySums].sort((a,b) => b.total_duration - a.total_duration).slice(0, 5);
+        const total = daySums.reduce((acc, s) => acc + s.total_duration, 0);
+        return `${dateStr} (Total Focus: ${formatDurationForAI(total)}):\n` + 
+               top5.map(s => `  - ${s.app_name}: ${formatDurationForAI(s.total_duration)}`).join("\n");
+      }).join("\n\n");
+      
+      return `Selected Period: Week of ${selectedDate}\n\nTop Applications This Week:\n${topApps}\n\nDaily Breakdown (To compute averages/trends):\n${dailyBreakdown}`;
     } else {
       if (monthlySummaries.length === 0) {
         return "No activity summary recorded for this month.";
@@ -156,12 +192,15 @@ function App() {
       monthlySummaries.forEach((sum) => {
         appDurations[sum.app_name] = (appDurations[sum.app_name] || 0) + sum.total_duration;
       });
+      
+      const uniqueDays = new Set(monthlySummaries.map(s => s.date)).size || 1;
       const topApps = Object.entries(appDurations)
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([app, duration]) => `- ${app}: ${Math.round(duration / 60)} minutes`)
+        .slice(0, 20)
+        .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)} (Daily Avg: ${formatDurationForAI(duration / uniqueDays)})`)
         .join("\n");
-      return `Selected Period: Month of ${selectedDate.substring(0, 7)}\n\nTop Applications by Duration:\n${topApps}`;
+        
+      return `Selected Period: Month of ${selectedDate.substring(0, 7)}\n\nTop Applications This Month:\n${topApps}`;
     }
   };
 
@@ -519,7 +558,7 @@ ${compileContextRollup()}`;
     try {
       // Aggregate top activities
       const summaryText = activities.slice(0, 10).map(node => 
-        `- App: ${node.app_name}, Session Title: ${node.window_title}, Spent: ${Math.round(node.duration)} seconds`
+        `- App: ${node.app_name}, Session Title: ${node.window_title}, Spent: ${formatDurationForAI(node.duration)}`
       ).join("\n");
 
       const prompt = `You are a personal productivity reflection companion. Below is a log of my recent desktop focus events. Analyze them and provide a concise, beautiful 2-sentence summary detailing what my focus was on, and highlight if I was productive or distracted.
@@ -1026,6 +1065,14 @@ ${compileContextRollup()}`;
               ) : (
                 /* Chat Tab Content */
                 <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-[300px]">
+                  {/* Context Banner */}
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-color)]/50 border border-[var(--border-color)]">
+                    <Calendar className="w-4 h-4 text-violet-400" />
+                    <span className="text-xs font-semibold text-[var(--text-muted)]">
+                      Chat Context: <span className="text-[var(--text-color)]">{getPeriodLabel()}</span>
+                    </span>
+                  </div>
+
                   {/* Warning banner for Incognito mode */}
                   {isIncognito && (
                     <div className="flex items-start gap-1.5 p-2 rounded-xl bg-amber-950/20 border border-amber-800/30 text-amber-500 text-[10px] leading-tight">
