@@ -12,6 +12,8 @@ interface SettingsPanelProps {
   setTrackingActive: (active: boolean) => void;
   minLogDuration: number;
   setMinLogDuration: (duration: number) => void;
+  minTabDuration: number;
+  setMinTabDuration: (duration: number) => void;
   isAutostartEnabled: boolean;
   toggleAutostart: () => Promise<void>;
 }
@@ -27,15 +29,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setTrackingActive,
   minLogDuration,
   setMinLogDuration,
+  minTabDuration,
+  setMinTabDuration,
   isAutostartEnabled,
   toggleAutostart,
 }) => {
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
+  const [tabInputValue, setTabInputValue] = React.useState(String(minTabDuration));
 
   React.useEffect(() => {
     setInputValue(String(minLogDuration));
   }, [minLogDuration]);
+
+  React.useEffect(() => {
+    setTabInputValue(String(minTabDuration));
+  }, [minTabDuration]);
 
   const handleAutostartToggle = async () => {
     setAutostartError(null);
@@ -53,6 +62,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const clamped = Math.max(60, Math.min(300, parsed));
     setMinLogDuration(clamped);
     setInputValue(String(clamped));
+  };
+
+  const handleMinTabDurationBlur = (val: string) => {
+    let parsed = parseInt(val, 10);
+    if (isNaN(parsed)) parsed = 60;
+    const clamped = Math.max(0, Math.min(300, parsed));
+    setMinTabDuration(clamped);
+    setTabInputValue(String(clamped));
   };
 
   return (
@@ -141,6 +158,41 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         <p className="text-xs text-[var(--text-muted)]">
           Discards activities shorter than this threshold before writing them to the SQLite database (Minimum: 1 minute).
+        </p>
+      </div>
+
+      {/* Minimum Tab Session to Log */}
+      <div className="mb-6 p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-[var(--text-muted)]" />
+            <span className="text-sm font-medium text-[var(--text-color)]">Min Tab Duration</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={tabInputValue}
+              onChange={(e) => setTabInputValue(e.target.value)}
+              onBlur={(e) => handleMinTabDurationBlur(e.target.value)}
+              className="w-16 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-2 py-1 text-xs text-[var(--text-color)] text-center focus:outline-none focus:border-violet-500/50"
+              min={0}
+              max={300}
+            />
+            <span className="text-xs text-[var(--text-muted)]">sec</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mb-2">
+          <input
+            type="range"
+            min={0}
+            max={300}
+            value={minTabDuration}
+            onChange={(e) => setMinTabDuration(Number(e.target.value))}
+            className="flex-1 accent-violet-600 cursor-pointer h-1 rounded-lg appearance-none bg-zinc-200 dark:bg-zinc-700"
+          />
+        </div>
+        <p className="text-xs text-[var(--text-muted)]">
+          Discards browser tabs shorter than this threshold before saving them (Set to 0 to capture all tabs).
         </p>
       </div>
 

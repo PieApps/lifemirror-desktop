@@ -28,31 +28,62 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     // Spawn consumer thread
     let db_clone = db.clone();
     let consumer_handle = thread::spawn(move || {
+        let mut prev_event: Option<BrowserTabEvent> = None;
+        let mut prev_time: Option<chrono::DateTime<Utc>> = None;
+
         while let Ok(payload) = rx.recv() {
-            // Check if incognito mode is active via SQLite settings table
             let is_incognito = db_clone.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
+            let now = Utc::now();
+            let min_tab_duration = db_clone
+                .get_setting("min_tab_duration")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse::<i64>()
+                .unwrap_or(60);
             
-            if !is_incognito {
-                // Update local settings with active tab info
-                let _ = db_clone.set_setting("active_tab_url", &payload.url);
-                let _ = db_clone.set_setting("active_tab_title", &payload.title);
-                let _ = db_clone.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
-                let domain_tag = extract_domain(&payload.url);
-                
-                let event = BrowserTabEvent {
-                    id: None,
-                    url: payload.url,
-                    title: payload.title,
-                    favicon_url: payload.favIconUrl,
-                    domain: if domain_tag.is_empty() { None } else { Some(domain_tag) },
-                    timestamp: Utc::now().to_rfc3339(),
-                    browser_name: Some("Chrome".to_string()),
-                };
-                
-                // Insert tab activity event to browser_tab_events
-                if let Err(e) = db_clone.insert_browser_tab_event(&event) {
-                    eprintln!("Failed to insert browser tab event: {:?}", e);
+            if is_incognito {
+                if let Some(prev) = prev_event.take() {
+                    let duration = (now - prev_time.unwrap()).num_seconds();
+                    if duration >= min_tab_duration {
+                        let _ = db_clone.insert_browser_tab_event(&prev);
+                    }
                 }
+                continue;
+            }
+            
+            // Not incognito
+            let _ = db_clone.set_setting("active_tab_url", &payload.url);
+            let _ = db_clone.set_setting("active_tab_title", &payload.title);
+            let _ = db_clone.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
+            let domain_tag = extract_domain(&payload.url);
+            
+            let event = BrowserTabEvent {
+                id: None,
+                url: payload.url,
+                title: payload.title,
+                favicon_url: payload.favIconUrl,
+                domain: if domain_tag.is_empty() { None } else { Some(domain_tag) },
+                timestamp: now.to_rfc3339(),
+                browser_name: Some("Chrome".to_string()),
+            };
+
+            // Process previous event
+            if let Some(prev) = prev_event.take() {
+                let duration = (now - prev_time.unwrap()).num_seconds();
+                if duration >= min_tab_duration {
+                    if let Err(e) = db_clone.insert_browser_tab_event(&prev) {
+                        eprintln!("Failed to insert browser tab event: {:?}", e);
+                    }
+                }
+            }
+            
+            prev_event = Some(event);
+            prev_time = Some(now);
+        }
+
+        // Output the final event without duration check, as connection is closing
+        if let Some(prev) = prev_event.take() {
+            if let Err(e) = db_clone.insert_browser_tab_event(&prev) {
+                eprintln!("Failed to insert final browser tab event: {:?}", e);
             }
         }
     });

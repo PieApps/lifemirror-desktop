@@ -57,6 +57,7 @@ function App() {
 
   // DB Log Threshold & Windows configurations
   const [minLogDuration, setMinLogDurationState] = useState(60);
+  const [minTabDuration, setMinTabDurationState] = useState(60);
   const [isAutostartEnabled, setIsAutostartEnabled] = useState(false);
 
   // AI Chat states
@@ -216,6 +217,12 @@ ${compileContextRollup()}`;
           if (!isNaN(parsed)) setMinLogDurationState(Math.max(60, parsed));
         }
 
+        const minTabDurationStr = await invoke<string>("get_db_setting", { key: "min_tab_duration" });
+        if (minTabDurationStr && minTabDurationStr !== "false" && minTabDurationStr.trim() !== "") {
+          const parsed = parseInt(minTabDurationStr, 10);
+          if (!isNaN(parsed)) setMinTabDurationState(Math.max(0, parsed));
+        }
+
         try {
           const autostartActive = await isAutostartActive();
           setIsAutostartEnabled(autostartActive);
@@ -255,6 +262,16 @@ ${compileContextRollup()}`;
       await invoke("set_db_setting", { key: "min_log_duration", value: String(clamped) });
     } catch (e) {
       console.error("Failed to save min_log_duration setting:", e);
+    }
+  };
+
+  const updateMinTabDuration = async (duration: number) => {
+    const clamped = Math.max(0, duration);
+    setMinTabDurationState(clamped);
+    try {
+      await invoke("set_db_setting", { key: "min_tab_duration", value: String(clamped) });
+    } catch (e) {
+      console.error("Failed to save min_tab_duration setting:", e);
     }
   };
 
@@ -933,6 +950,8 @@ ${compileContextRollup()}`;
               setTrackingActive={handleToggleTracking}
               minLogDuration={minLogDuration}
               setMinLogDuration={updateMinLogDuration}
+              minTabDuration={minTabDuration}
+              setMinTabDuration={updateMinTabDuration}
               isAutostartEnabled={isAutostartEnabled}
               toggleAutostart={toggleAutostart}
             />
