@@ -276,13 +276,23 @@ fn get_daily_activities(
 }
 
 #[tauri::command]
-fn get_sub_session_events_for_day(
-    state: State<'_, Arc<DbState>>,
-    date: String,
-) -> Result<Vec<crate::db::SubSessionEvent>, String> {
-    state
-        .get_sub_session_events_for_day(&date)
-        .map_err(|e| e.to_string())
+fn get_sub_session_events_for_day(db: State<'_, Arc<DbState>>, date: String) -> Result<Vec<db::SubSessionEvent>, String> {
+    db.get_sub_session_events_for_day(&date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_distraction_rules_list(db: State<'_, Arc<DbState>>) -> Result<Vec<db::DistractionRule>, String> {
+    db.get_distraction_rules_list().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_distraction_rule(db: State<'_, Arc<DbState>>, rule_type: String, value: String) -> Result<(), String> {
+    db.add_distraction_rule(&rule_type, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_distraction_rule(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
+    db.delete_distraction_rule(id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -516,12 +526,7 @@ pub fn run() {
     let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
     let active_activity = Arc::new(std::sync::Mutex::new(None));
 
-    // Spawn OS window focus tracker background loop
-    tracker::start_window_tracker(
-        db_arc.clone(),
-        tracking_active.clone(),
-        active_activity.clone(),
-    );
+
 
     // Spawn background idle state AI daily reflection builder
     ai::start_idle_ai_summarizer(db_arc.clone());
@@ -530,13 +535,22 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
-        .manage(db_arc)
-        .manage(tracking_active)
-        .manage(active_activity)
-        .setup(|app| {
+        .manage(db_arc.clone())
+        .manage(tracking_active.clone())
+        .manage(active_activity.clone())
+        .setup(move |app| {
             // Setup system tray menu and states
             let tray_menu_state = setup_system_tray(app)?;
             app.manage(tray_menu_state);
+
+            let app_handle = app.handle().clone();
+            // Spawn OS window focus tracker background loop
+            tracker::start_window_tracker(
+                db_arc.clone(),
+                tracking_active.clone(),
+                active_activity.clone(),
+                app_handle,
+            );
 
             // If the app was not launched with the --hidden flag (autostart boot), show it.
             let args: Vec<String> = std::env::args().collect();
@@ -588,7 +602,10 @@ pub fn run() {
             get_chat_history,
             add_chat_message,
             clear_chat_history,
-            get_sub_session_events_for_day
+            get_sub_session_events_for_day,
+            get_distraction_rules_list,
+            add_distraction_rule,
+            delete_distraction_rule
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

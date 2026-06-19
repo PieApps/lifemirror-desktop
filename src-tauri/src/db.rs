@@ -40,13 +40,21 @@ pub struct HourlyMetric {
     pub total_duration: i64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct ChatMessage {
     pub id: Option<i64>,
     pub date: String,
     pub role: String,
     pub content: String,
     pub timestamp: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct DistractionRule {
+    pub id: i64,
+    pub rule_type: String,
+    pub value: String,
+    pub is_active: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -178,6 +186,29 @@ impl DbState {
             );",
             [],
         )?;
+
+        // Create distraction_rules table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS distraction_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_type TEXT NOT NULL,
+                value TEXT NOT NULL,
+                is_active BOOLEAN NOT NULL DEFAULT 1
+            );",
+            [],
+        )?;
+
+        // Seed default distraction regex if table is empty
+        let rule_count: i64 = conn
+            .query_row("SELECT count(*) FROM distraction_rules;", [], |row| row.get(0))
+            .unwrap_or(0);
+        
+        if rule_count == 0 {
+            let _ = conn.execute(
+                "INSERT INTO distraction_rules (rule_type, value, is_active) VALUES ('regex', '(?i).*(youtube|twitter|reddit|netflix).*', 1);",
+                [],
+            );
+        }
 
         // Seed default incognito setting
         conn.execute(
@@ -684,5 +715,47 @@ impl DbState {
             events.push(event?);
         }
         Ok(events)
+    }
+
+    pub fn get_distraction_rules(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT value FROM distraction_rules WHERE rule_type = 'regex' AND is_active = 1",
+        )?;
+        let rules = stmt
+            .query_map([], |row| row.get(0))?
+            .collect::<std::result::Result<Vec<String>, _>>()?;
+        Ok(rules)
+    }
+
+    pub fn get_distraction_rules_list(&self) -> Result<Vec<DistractionRule>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, rule_type, value, is_active FROM distraction_rules")?;
+        let rules = stmt
+            .query_map([], |row| {
+                Ok(DistractionRule {
+                    id: row.get(0)?,
+                    rule_type: row.get(1)?,
+                    value: row.get(2)?,
+                    is_active: row.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<DistractionRule>, _>>()?;
+        Ok(rules)
+    }
+
+    pub fn add_distraction_rule(&self, rule_type: &str, value: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO distraction_rules (rule_type, value, is_active) VALUES (?1, ?2, 1)",
+            params![rule_type, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_distraction_rule(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM distraction_rules WHERE id = ?1", [id])?;
+        Ok(())
     }
 }

@@ -5,7 +5,7 @@ import { enable as enableAutostart, disable as disableAutostart, isEnabled as is
 import { 
   ShieldAlert, Sparkles, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
-  Calendar, Clock, Grid, Send, Trash2, MessageSquare
+  Calendar, Clock, Grid, Send, Trash2, MessageSquare, Target
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode, SubSessionEvent } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
@@ -52,6 +52,10 @@ function App() {
   // Ollama configuration
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
+  
+  // Focus Mode
+  const [activeIntention, setActiveIntention] = useState("");
+  const [intentionInput, setIntentionInput] = useState("");
   const [aiReflection, setAiReflection] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -248,6 +252,11 @@ ${compileContextRollup()}`;
           setOllamaModel(model);
         } else {
           setOllamaModel("llama3.2");
+        }
+
+        const intent = await invoke<string>("get_db_setting", { key: "active_intention" });
+        if (intent && intent !== "false") {
+          setActiveIntention(intent);
         }
 
         const minLogDurationStr = await invoke<string>("get_db_setting", { key: "min_log_duration" });
@@ -812,6 +821,26 @@ ${compileContextRollup()}`;
     }
   };
 
+  const handleStartFocus = async () => {
+    if (!intentionInput.trim()) return;
+    try {
+      await invoke("set_db_setting", { key: "active_intention", value: intentionInput.trim() });
+      setActiveIntention(intentionInput.trim());
+      setIntentionInput("");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleStopFocus = async () => {
+    try {
+      await invoke("set_db_setting", { key: "active_intention", value: "false" });
+      setActiveIntention("");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col transition-colors duration-300">
       {/* Top Header */}
@@ -930,6 +959,46 @@ ${compileContextRollup()}`;
             </div>
           </div>
           
+          {/* Active Intention Bar */}
+          <div className="px-6 py-3 border-b border-[var(--border-color)] bg-[var(--bg-color)]/20">
+            {activeIntention ? (
+              <div className="flex items-center justify-between bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2">
+                <div className="flex items-center gap-3">
+                  <Target className="w-5 h-5 text-rose-500 animate-pulse" />
+                  <div>
+                    <div className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Active Intention</div>
+                    <div className="text-sm text-[var(--text-color)] font-medium">{activeIntention}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleStopFocus}
+                  className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  Clear Intention
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Target className="w-4 h-4 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  value={intentionInput}
+                  onChange={(e) => setIntentionInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
+                  placeholder="Set an intention to enable AI distraction evaluation (e.g., 'Writing Rust code')..."
+                  className="flex-1 bg-transparent border-none text-sm text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50"
+                />
+                <button
+                  onClick={handleStartFocus}
+                  disabled={!intentionInput.trim()}
+                  className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                >
+                  Start Focus
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex-1 overflow-y-auto relative">
             {/* Visual Lock overlay for Incognito Mode */}
             {isIncognito && (

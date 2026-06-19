@@ -367,3 +367,22 @@ To prevent agents running concurrently from triggering duplicate compilations (w
   * Other subagents (Data, QA, Documenter) skip build executions.
 * **Integration compilation:** The Orchestrator runs the final combined validation loop after all specialist tasks finish.
 
+---
+
+## 8. Deep Work Enforcement Protocol (Active Interdiction)
+
+LifeMirror Desktop incorporates an "Active Interdiction" system designed to transition the app from a passive reflection tool into an active productivity defender. The system uses a hybrid two-phase architecture to detect and block distractions.
+
+### Phase 1: Rule-Based Soft Intervention
+The first line of defense is a hyper-fast Regex Evaluation Engine integrated directly into the `tracker.rs` polling loop.
+1. **Rule Compilation:** User-defined regex rules (managed in `SettingsPanel.tsx`) are loaded from the SQLite `settings` table into a compiled memory vector `Vec<(String, regex::Regex)>`. To minimize database I/O, the rule cache refreshes periodically (e.g., every 5-10 seconds).
+2. **Synchronous Evaluation:** On every 1-second focus tick, the current active window title is evaluated against the compiled regex rules.
+3. **Trigger:** If a match is found, the tracker instantly fires a Tauri `"distraction-detected"` event to the frontend, bringing down an `alwaysOnTop` fullscreen glassmorphic blur overlay (`InterdictionOverlay.tsx`) to block the screen.
+
+### Phase 2: AI-Powered Intention Lock
+To catch "soft" distractions that evade regex blacklists (e.g., reading a generic blog when you should be coding), an asynchronous local LLM evaluator serves as the second line of defense.
+1. **Active Intention Goal:** The user sets an `active_intention` goal via the React Dashboard (e.g., "Writing Rust code"). This sets a flag in the SQLite database.
+2. **Asynchronous LLM Threading:** If a window title passes the regex check, the `tracker.rs` loop checks for an `active_intention`. If present, it spawns an isolated background thread (`std::thread::spawn`) to ping the local Ollama instance without blocking the primary OS focus polling interval.
+3. **Thread-Safe LRU Caching:** To prevent spamming the local LLM and spiking CPU/battery usage, evaluations are cached in a thread-safe `Arc<Mutex<HashMap<String, bool>>>`. Once Ollama determines if a window title + intention pair is a distraction, the result is cached instantly. Subsequent visits to that window resolve via the in-memory cache at zero computational cost.
+4. **Dynamic Overlay Injection:** If the LLM thread concludes the window is a distraction, it updates the cache and dynamically emits the `"distraction-detected"` Tauri event, dropping the overlay over the active window.
+

@@ -1,5 +1,6 @@
 import React from "react";
-import { Settings, Shield, Cpu, Sliders, Power, AlertCircle } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Settings, Shield, Cpu, Sliders, Power, AlertCircle, X, Plus, Target } from "lucide-react";
 
 interface SettingsPanelProps {
   isIncognito: boolean;
@@ -37,6 +38,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
   const [subSessionInputValue, setSubSessionInputValue] = React.useState(String(minSubSessionDuration));
+  const [distractionRules, setDistractionRules] = React.useState<Array<{id: number, rule_type: string, value: string, is_active: boolean}>>([]);
+  const [newRuleValue, setNewRuleValue] = React.useState("");
+
+  const loadRules = async () => {
+    try {
+      const rules = await invoke<Array<{id: number, rule_type: string, value: string, is_active: boolean}>>("get_distraction_rules_list");
+      setDistractionRules(rules);
+    } catch (err) {
+      console.error("Failed to load distraction rules:", err);
+    }
+  };
+
+  React.useEffect(() => {
+    loadRules();
+  }, []);
 
   React.useEffect(() => {
     setInputValue(String(minLogDuration));
@@ -70,6 +86,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const clamped = Math.max(0, Math.min(300, parsed));
     updateMinSubSessionDuration(clamped);
     setSubSessionInputValue(String(clamped));
+  };
+
+  const handleAddRule = async () => {
+    if (!newRuleValue.trim()) return;
+    try {
+      await invoke("add_distraction_rule", { ruleType: "regex", value: newRuleValue.trim() });
+      setNewRuleValue("");
+      await loadRules();
+    } catch (err) {
+      console.error("Failed to add rule:", err);
+    }
+  };
+
+  const handleDeleteRule = async (id: number) => {
+    try {
+      await invoke("delete_distraction_rule", { id });
+      await loadRules();
+    } catch (err) {
+      console.error("Failed to delete rule:", err);
+    }
   };
 
   return (
@@ -225,6 +261,52 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <span>{autostartError}</span>
           </p>
         )}
+      </div>
+
+      {/* Deep Work & Distractions */}
+      <div className="mb-8 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          <Target className="w-4 h-4 text-rose-400" />
+          <span>Deep Work Enforcement</span>
+        </div>
+        
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+          When the background tracker detects you focusing on these applications or website titles, it will instantly deploy a full-screen interdiction overlay to break the distraction cycle.
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newRuleValue}
+            onChange={(e) => setNewRuleValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddRule() }}
+            placeholder="Regex rule (e.g., (?i).*youtube.*)"
+            className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/30 font-mono text-xs"
+          />
+          <button 
+            onClick={handleAddRule}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white p-2 rounded-xl border border-zinc-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2 mt-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+          {distractionRules.map(rule => (
+            <div key={rule.id} className="flex items-center justify-between p-2 rounded-lg bg-[var(--bg-color)]/30 border border-[var(--border-color)]">
+              <span className="font-mono text-xs text-[var(--text-color)] truncate pr-2">{rule.value}</span>
+              <button 
+                onClick={() => handleDeleteRule(rule.id)}
+                className="text-[var(--text-muted)] hover:text-red-400 p-1 rounded-md hover:bg-red-500/10 transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          {distractionRules.length === 0 && (
+            <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">No interdiction rules configured.</div>
+          )}
+        </div>
       </div>
 
 

@@ -17,6 +17,17 @@
         "width": 800,
         "height": 600,
         "visible": false
+      },
+      {
+        "label": "overlay",
+        "title": "Interdiction Overlay",
+        "url": "/overlay",
+        "fullscreen": true,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

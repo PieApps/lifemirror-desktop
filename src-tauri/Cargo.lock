@@ -2194,6 +2194,7 @@ dependencies = [
  "chrono",
  "libc",
  "once_cell",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

@@ -252,10 +252,13 @@ fn resolve_current_activity(
     (app, title, None, icon_url, "OS".to_string())
 }
 
+use tauri::Emitter;
+
 pub fn start_window_tracker(
     db: Arc<DbState>,
     tracking_active: Arc<std::sync::atomic::AtomicBool>,
     active_activity: Arc<Mutex<Option<ActivityLog>>>,
+    app_handle: tauri::AppHandle,
 ) {
     thread::spawn(move || {
         let mut parent_app = String::new();
@@ -278,8 +281,14 @@ pub fn start_window_tracker(
         let mut editor_sub_start_time = Utc::now();
         let mut editor_sub_duration = 0;
 
+        let mut compiled_rules: Vec<(String, regex::Regex)> = Vec::new();
+        let mut last_rule_check = std::time::Instant::now() - Duration::from_secs(10);
+
+        let llm_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>> = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let pending_evaluations: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+
         let db_ref = db.clone();
-        let mut flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
+        let flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
             if duration >= min_dur && !title.is_empty() {
                 let (primary_uri, context_tag) = parse_editor_title(title);
                 let _ = db_ref.insert_sub_session_event(&SubSessionEvent {
@@ -310,7 +319,7 @@ pub fn start_window_tracker(
                 min_log_duration = 60;
             }
 
-            let mut min_sub_session_duration = db
+            let min_sub_session_duration = db
                 .get_setting("min_sub_session_duration")
                 .unwrap_or_else(|_| "60".to_string())
                 .parse::<i64>()
@@ -418,6 +427,120 @@ pub fn start_window_tracker(
             let (app, title, url, icon_url, source) = resolve_current_activity(&db, provider.as_ref());
             if app.is_empty() && title.is_empty() {
                 continue;
+            }
+
+            // Distraction evaluation
+            let mut is_distracted = false;
+            
+            if last_rule_check.elapsed() > Duration::from_secs(5) {
+                let rules = db.get_distraction_rules().unwrap_or_default();
+                compiled_rules.clear();
+                for r in rules {
+                    if let Ok(re) = regex::Regex::new(&r) {
+                        compiled_rules.push((r, re));
+                    }
+                }
+                last_rule_check = std::time::Instant::now();
+            }
+
+            for (_, re) in &compiled_rules {
+                if re.is_match(&title) {
+                    is_distracted = true;
+                    break;
+                }
+            }
+
+            if !is_distracted {
+                let intention = db.get_setting("active_intention").unwrap_or_else(|_| "false".to_string());
+                if intention != "false" && !intention.is_empty() {
+                    let cache_key = format!("{}::{}", title, intention);
+                    let mut cached_result = None;
+                    {
+                        let cache = llm_cache.lock().unwrap();
+                        if let Some(&res) = cache.get(&cache_key) {
+                            cached_result = Some(res);
+                        }
+                    }
+
+                    if let Some(res) = cached_result {
+                        is_distracted = res;
+                    } else {
+                        let mut pending = pending_evaluations.lock().unwrap();
+                        if !pending.contains(&cache_key) {
+                            pending.insert(cache_key.clone());
+                            
+                            let llm_cache_clone = llm_cache.clone();
+                            let pending_clone = pending_evaluations.clone();
+                            let title_clone = title.clone();
+                            let app_handle_clone = app_handle.clone();
+                            let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
+                            let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
+                            
+                            std::thread::spawn(move || {
+                                let prompt = format!(
+                                    "You are an active distraction monitor. The user's current deep work intention is: \"{}\". They are currently looking at a window titled: \"{}\". Is this window a distraction from their goal? Reply with exactly YES or NO.",
+                                    intention, title_clone
+                                );
+                                
+                                let payload = serde_json::json!({
+                                    "model": ollama_model,
+                                    "prompt": prompt,
+                                    "stream": false
+                                });
+                                
+                                let output = std::process::Command::new("curl")
+                                    .args([
+                                        "-s",
+                                        "-X", "POST",
+                                        &format!("{}/api/generate", ollama_url),
+                                        "-H", "Content-Type: application/json",
+                                        "-d", &payload.to_string(),
+                                    ])
+                                    .output();
+                                
+                                let mut result_distracted = false;
+                                if let Ok(out) = output {
+                                    if out.status.success() {
+                                        if let Ok(response_json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                                            if let Some(response) = response_json["response"].as_str() {
+                                                if response.to_uppercase().contains("YES") {
+                                                    result_distracted = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                {
+                                    let mut cache = llm_cache_clone.lock().unwrap();
+                                    cache.insert(cache_key.clone(), result_distracted);
+                                }
+                                {
+                                    let mut pending_lock = pending_clone.lock().unwrap();
+                                    pending_lock.remove(&cache_key);
+                                }
+                                
+                                if result_distracted {
+                                    use tauri::{Manager, Emitter};
+                                    if let Some(overlay_win) = app_handle_clone.get_webview_window("overlay") {
+                                        let _ = overlay_win.show();
+                                        let _ = overlay_win.set_focus();
+                                    }
+                                    let _ = app_handle_clone.emit("distraction-detected", &title_clone);
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+
+            if is_distracted {
+                use tauri::{Manager, Emitter};
+                if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
+                    let _ = overlay_win.show();
+                    let _ = overlay_win.set_focus();
+                }
+                let _ = app_handle.emit("distraction-detected", &title);
             }
 
             if parent_app.is_empty() {

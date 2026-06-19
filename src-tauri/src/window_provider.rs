@@ -89,7 +89,7 @@ impl WindowProvider for KdeProvider {
         // Fallback: KWin DBus script injection
         // Requires tokio runtime since zbus uses async under the hood, but blocking APIs are available
         use zbus::blocking::Connection;
-        if let Ok(conn) = Connection::session() {
+        if let Ok(_conn) = Connection::session() {
             // In a real KWin script implementation, we'd load a script and run it.
             // For now, if active_win_pos_rs (kdotool) fails, we likely don't have permission.
             // As a basic DBus fallback we can try to query if there's any simple property,
