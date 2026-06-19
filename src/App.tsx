@@ -1020,7 +1020,7 @@ ${compileContextRollup()}`;
                   {/* Messages list */}
                   <div 
                     id="chat-messages-container"
-                    className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px] scrollbar-thin"
+                    className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px] max-h-[calc(100vh-250px)] scrollbar-thin"
                   >
                     {(isIncognito ? volatileChatHistory : chatMessages).length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center p-4">
