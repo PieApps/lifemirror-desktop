@@ -65,6 +65,7 @@ export interface TimelineNode {
   subEvents: SubSessionEvent[];
   isShield?: boolean;
   distractionEvent?: DistractionEvent;
+  distractionEvents?: DistractionEvent[];
 }
 
 // Brand SVG Icons
@@ -361,7 +362,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
         if (isGroupable) {
           // Group by app_name and source
-          if (currentGroup && currentGroup.source === (isBrowser ? "Browser" : "Editor") && currentGroup.app_name === activity.app_name) {
+          if (currentGroup && !currentGroup.isShield && currentGroup.source === (isBrowser ? "Browser" : "Editor") && currentGroup.app_name === activity.app_name) {
             currentGroup.duration += activity.duration;
             currentGroup.originalActivities.push(activity);
             if (activity.notes) {
@@ -408,24 +409,29 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
         }
       } else {
         // Distraction Event
-        if (currentGroup) {
-          nodes.push(currentGroup);
-          currentGroup = null;
-        }
         const dEvent = ev.data as DistractionEvent;
-        nodes.push({
-          isGroupedSession: false,
-          id: -dEvent.id, // Negative ID to avoid collision
-          app_name: dEvent.app_name,
-          window_title: dEvent.window_title,
-          start_time: dEvent.timestamp,
-          duration: dEvent.duration_blocked,
-          source: "Shield",
-          originalActivities: [],
-          subEvents: [],
-          isShield: true,
-          distractionEvent: dEvent
-        });
+        if (currentGroup && currentGroup.isShield) {
+          currentGroup.duration += dEvent.duration_blocked;
+          currentGroup.distractionEvents!.push(dEvent);
+        } else {
+          if (currentGroup) {
+            nodes.push(currentGroup);
+          }
+          currentGroup = {
+            isGroupedSession: true,
+            id: -dEvent.id, // Negative ID to avoid collision
+            app_name: "Distraction Shield",
+            window_title: "Distractions Blocked",
+            start_time: dEvent.timestamp,
+            duration: dEvent.duration_blocked,
+            source: "Shield",
+            originalActivities: [],
+            subEvents: [],
+            isShield: true,
+            distractionEvent: dEvent,
+            distractionEvents: [dEvent]
+          };
+        }
       }
     });
 
@@ -659,7 +665,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                             : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
                       }`}>
                         {node.isShield
-                          ? 'Distraction Blocked'
+                          ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Distraction Blocked')
                           : node.isGroupedSession 
                             ? `${node.subEvents.length} items`
                             : (node.domain_tag || extractDomain(node.url)) || node.app_name
@@ -674,7 +680,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
                   <div className="flex justify-between items-start gap-1">
                     <h4 className={`text-xs font-semibold line-clamp-2 mb-1 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={String(node.window_title)}>
-                      {node.isGroupedSession ? `${node.app_name} Session` : node.window_title}
+                      {node.isGroupedSession && !node.isShield ? `${node.app_name} Session` : node.window_title}
                     </h4>
                     {node.isGroupedSession && (
                       <span className="text-[var(--text-muted)] mt-0.5">
@@ -684,9 +690,15 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   </div>
 
                   {node.isShield ? (
-                    <p className="text-[10px] text-red-500/80 dark:text-red-400/80 line-clamp-2 mb-1.5 font-mono bg-red-500/10 p-1 rounded border border-red-500/20">
-                      Reason: {node.distractionEvent?.interception_reason}
-                    </p>
+                    node.distractionEvents && node.distractionEvents.length === 1 ? (
+                      <p className="text-[10px] text-red-500/80 dark:text-red-400/80 line-clamp-2 mb-1.5 font-mono bg-red-500/10 p-1 rounded border border-red-500/20">
+                        Reason: {node.distractionEvents[0].interception_reason}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-red-500/80 dark:text-red-400/80 line-clamp-1 mb-1.5 font-mono">
+                        Multiple distractions intercepted
+                      </p>
+                    )
                   ) : (
                     <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
                       {node.isGroupedSession ? (isBrowser ? domainsText : "Multiple files") : node.url}
@@ -702,7 +714,28 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   {/* Expanded Accordion list for sub sessions */}
                   {node.isGroupedSession && isExpanded && (
                     <div className="mt-2.5 pt-2 border-t border-[var(--border-color)] max-h-[160px] overflow-y-auto pr-1 select-text custom-scrollbar space-y-1.5">
-                      {node.subEvents.length === 0 ? (
+                      {node.isShield ? (
+                        node.distractionEvents?.map((event, idx) => (
+                          <div 
+                            key={event.id || idx} 
+                            className="flex items-center justify-between gap-2 text-[10px] p-1.5 rounded bg-red-500/5 dark:bg-red-500/10 border border-red-500/10 hover:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors"
+                          >
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="font-semibold text-red-500 dark:text-red-400 truncate max-w-[160px]" title={event.window_title}>
+                                {event.app_name}: {event.window_title}
+                              </span>
+                              <span className="text-[8px] text-red-400/80 truncate max-w-[160px]" title={event.interception_reason}>
+                                {event.interception_reason}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-[8px] font-mono text-red-400/80 bg-red-500/10 px-1 py-0.5 rounded">
+                                {getFormatDuration(event.duration_blocked)}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      ) : node.subEvents.length === 0 ? (
                         <span className="text-[9px] text-[var(--text-muted)] italic block py-1 text-center">No nested events recorded</span>
                       ) : (
                         node.subEvents.map((event, idx) => {
@@ -776,7 +809,13 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
-                              if (node.isGroupedSession) {
+                              if (node.isShield) {
+                                if (window.confirm("Delete all blocked distractions in this group?")) {
+                                  node.distractionEvents?.forEach(ev => {
+                                    onDeleteLog(-ev.id);
+                                  });
+                                }
+                              } else if (node.isGroupedSession) {
                                 if (window.confirm("Delete this session and all its sub-events?")) {
                                   node.originalActivities.forEach(act => {
                                     if (act.id) onDeleteLog(act.id);
