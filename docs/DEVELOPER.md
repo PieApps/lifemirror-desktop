@@ -55,14 +55,38 @@ Stores time-slice focus events captured natively or piped from browser extension
 * `source`: `TEXT NOT NULL` (`"OS"` or `"Browser"`)
 * `url`: `TEXT` (Nullable, populated for browser events)
 * `icon_url`: `TEXT` (Nullable, stores website favicon URLs)
+* `domain_tag`: `TEXT` (Nullable, domain extracted from url)
+* `notes`: `TEXT` (Nullable, user notes for the session)
 
-### Table 2: `settings`
+### Table 2: `journal_entries`
+Stores daily reflection journal entries.
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
+* `notes`: `TEXT NOT NULL`
+
+### Table 3: `settings`
 Persistent configuration store shared across processes (Tauri GUI and CLI Native Messaging Hosts).
 * `key`: `TEXT PRIMARY KEY`
 * `value`: `TEXT NOT NULL`
-* Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, and `active_tab_favicon`.
+* Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, `active_tab_favicon`, and `migration_tab_events_done`.
 
-### Table 3: `chat_history`
+### Table 4: `distraction_rules`
+Stores rules for detecting and blocking distractions (Active Interdiction).
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `rule_type`: `TEXT NOT NULL` (e.g. `"regex"`)
+* `value`: `TEXT NOT NULL`
+* `is_active`: `BOOLEAN NOT NULL DEFAULT 1`
+
+### Table 5: `aggregated_daily_metrics`
+Stores daily rolled-up activity summaries for faster analytics querying.
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `date`: `TEXT NOT NULL`
+* `app_name`: `TEXT NOT NULL`
+* `source`: `TEXT NOT NULL`
+* `total_duration`: `INTEGER NOT NULL`
+* `session_count`: `INTEGER NOT NULL`
+
+### Table 6: `chat_history`
 Stores the multi-turn persistent chat histories keyed by date for normal tracking sessions.
 * `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
 * `date`: `TEXT NOT NULL` (maps conversation turns to specific days, e.g. `"2026-06-15"`)
@@ -70,15 +94,28 @@ Stores the multi-turn persistent chat histories keyed by date for normal trackin
 * `content`: `TEXT NOT NULL` (the text content of the message)
 * `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
 
-### Table 4: `browser_tab_events`
-Stores individual tab switches sent via the browser companion extension separately from active OS-level window session logs.
+### Table 7: `distraction_events`
+Stores individual distraction interceptions triggered by the Active Interdiction Protocol.
 * `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
-* `url`: `TEXT NOT NULL`
+* `timestamp`: `TEXT NOT NULL` (ISO 8601 string)
+* `app_name`: `TEXT NOT NULL`
+* `window_title`: `TEXT NOT NULL`
+* `interception_type`: `TEXT NOT NULL` (`"REGEX_RULE"` or `"LLM_EVALUATION"`)
+* `interception_reason`: `TEXT NOT NULL` (The matched regex or the active intention violated)
+* `duration_blocked`: `INTEGER DEFAULT 0`
+* `action_taken`: `TEXT` (Nullable, e.g. `"dismissed"`, `"adjusted_rules"`)
+
+### Table 8: `sub_session_events`
+Stores individual sub-events (like tab switches) separately from active OS-level window session logs. Replaces the legacy `browser_tab_events` table.
+* `id`: `INTEGER PRIMARY KEY AUTOINCREMENT`
+* `session_type`: `TEXT NOT NULL` (e.g. `"Browser"`)
+* `parent_app_name`: `TEXT` (Nullable, name of the browser, e.g. `"Chrome"`)
 * `title`: `TEXT NOT NULL`
-* `favicon_url`: `TEXT` (Nullable website favicon URL)
-* `domain`: `TEXT` (Nullable website domain)
+* `primary_uri`: `TEXT` (Nullable)
+* `icon_url`: `TEXT` (Nullable)
+* `context_tag`: `TEXT` (Nullable)
+* `metadata`: `TEXT` (Nullable)
 * `timestamp`: `TEXT NOT NULL` (ISO 8601 string, UTC format)
-* `browser_name`: `TEXT` (Nullable name of the browser, e.g. `"Chrome"`)
 
 ### Resilient SQLCipher Initialization & Fail-Soft Recovery
 On startup, `DbState::new` opens the database and runs a verification query (`SELECT count(*) FROM sqlite_master;`) immediately after applying `PRAGMA key`. If the query fails (due to decryption key changes, file corruption, or database format issues):
@@ -105,7 +142,7 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
   }
   ```
 * **Active Tab Caching:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event, which are then read by the background OS focus poller to map active tab URLs to the OS-level window focus state.
-* **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `browser_tab_events` table via `insert_browser_tab_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
+* **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `sub_session_events` table via `insert_sub_session_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
 
 ---
 
@@ -385,4 +422,10 @@ To catch "soft" distractions that evade regex blacklists (e.g., reading a generi
 2. **Asynchronous LLM Threading:** If a window title passes the regex check, the `tracker.rs` loop checks for an `active_intention`. If present, it spawns an isolated background thread (`std::thread::spawn`) to ping the local Ollama instance without blocking the primary OS focus polling interval.
 3. **Thread-Safe LRU Caching:** To prevent spamming the local LLM and spiking CPU/battery usage, evaluations are cached in a thread-safe `Arc<Mutex<HashMap<String, bool>>>`. Once Ollama determines if a window title + intention pair is a distraction, the result is cached instantly. Subsequent visits to that window resolve via the in-memory cache at zero computational cost.
 4. **Dynamic Overlay Injection:** If the LLM thread concludes the window is a distraction, it updates the cache and dynamically emits the `"distraction-detected"` Tauri event, dropping the overlay over the active window.
+
+### Persistent Shield Analytics
+Instead of distractions vanishing when the shield drops, interceptions are permanently recorded to the `distraction_events` SQLite table.
+1. **Thread-Safe Logging**: The tracker loop securely passes event payload metadata (the violated intention or the matched regex) into the database precisely before the shield overlay renders.
+2. **Timeline Visualization**: In the React frontend `SCurveTimeline.tsx`, distraction events are fetched and chronologically interleaved with regular focus activities. They render as distinct Red Shield nodes.
+3. **Gamification Metrics**: The main dashboard Date Scrubber displays a red badge metric `"🛡️ Deflected: X"` counting the total distractions successfully repelled for the day, gamifying focus retention.
 
