@@ -243,10 +243,14 @@ ${compileContextRollup()}`;
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const url = await invoke<string>("get_db_setting", { key: "ollama_url" });
+        let url = await invoke<string>("get_db_setting", { key: "ollama_url" });
         if (url === "disabled") {
           setOllamaUrl("");
         } else if (url && url !== "false" && url.trim() !== "") {
+          url = url.trim();
+          if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "http://" + url;
+          }
           setOllamaUrl(url);
         } else {
           setOllamaUrl("http://localhost:11434");
@@ -347,8 +351,13 @@ ${compileContextRollup()}`;
   };
 
   const updateOllamaUrl = async (url: string) => {
-    const sanitizedUrl = url.trim() === "" || url.trim() === "false" || url.trim() === "null" || url.trim() === "disabled" ? "disabled" : url.trim();
-    setOllamaUrl(url);
+    let sanitizedUrl = url.trim();
+    if (sanitizedUrl === "" || sanitizedUrl === "false" || sanitizedUrl === "null" || sanitizedUrl === "disabled") {
+      sanitizedUrl = "disabled";
+    } else if (!sanitizedUrl.startsWith("http://") && !sanitizedUrl.startsWith("https://")) {
+      sanitizedUrl = "http://" + sanitizedUrl;
+    }
+    setOllamaUrl(sanitizedUrl === "disabled" ? "" : sanitizedUrl);
     try {
       await invoke("set_db_setting", { key: "ollama_url", value: sanitizedUrl });
     } catch (e) {
@@ -743,6 +752,11 @@ ${compileContextRollup()}`;
           }
         } catch (_) {}
         throw new Error(errorMsg);
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        throw new Error("Received HTML response. Ensure the Ollama URL is correct.");
       }
 
       if (!response.body) {
