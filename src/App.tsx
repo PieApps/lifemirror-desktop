@@ -1206,12 +1206,7 @@ ${compileContextRollup()}`;
                         
                         {/* Suggestion Pills */}
                         <div className="flex flex-col gap-3 w-full max-w-[280px] mt-4 items-center">
-                          {loadingSuggestions ? (
-                            <div className="flex flex-col items-center justify-center gap-3 text-xs text-violet-500 font-medium animate-pulse py-4 bg-violet-500/5 rounded-xl w-full border border-violet-500/20">
-                              <Sparkles className="w-5 h-5" />
-                              Analyzing recent activity...
-                            </div>
-                          ) : chatSuggestions.length > 0 ? (
+                          {chatSuggestions.length > 0 ? (
                             <div className="flex flex-col gap-2 w-full">
                               {chatSuggestions.map((suggestion, idx) => (
                                 <button
@@ -1234,7 +1229,7 @@ ${compileContextRollup()}`;
                                 {["Summarize my day", "Where did I waste time?", "How was my focus?"].map((pillText) => (
                                   <button
                                     key={pillText}
-                                    disabled={chatLoading}
+                                    disabled={chatLoading || loadingSuggestions}
                                     onClick={() => handleSendChat(pillText)}
                                     className="text-[10px] px-2.5 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:bg-zinc-500/10 hover:text-[var(--text-color)] text-[var(--text-muted)] font-medium transition-all cursor-pointer disabled:opacity-50"
                                   >
@@ -1244,11 +1239,24 @@ ${compileContextRollup()}`;
                               </div>
                               <button
                                 onClick={handleGenerateSuggestions}
-                                disabled={chatLoading}
-                                className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 font-semibold transition-all cursor-pointer shadow-sm shadow-violet-500/5"
+                                disabled={chatLoading || loadingSuggestions}
+                                className={`flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg border transition-all shadow-sm ${
+                                  loadingSuggestions
+                                    ? "border-zinc-500/30 bg-zinc-500/10 text-zinc-500 cursor-not-allowed"
+                                    : "border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 font-semibold cursor-pointer shadow-violet-500/5"
+                                }`}
                               >
-                                <Sparkles className="w-3 h-3" />
-                                Generate AI Suggestions
+                                {loadingSuggestions ? (
+                                  <>
+                                    <div className="w-3 h-3 border border-zinc-500 border-t-transparent rounded-full animate-spin" />
+                                    Analyzing activity...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-3 h-3" />
+                                    Generate AI Suggestions
+                                  </>
+                                )}
                               </button>
                             </div>
                           )}

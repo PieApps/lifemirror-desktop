@@ -158,8 +158,8 @@ pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) ->
         "You are a productivity coach. It is {}. You have visibility into my activity starting from {}.\n\
         If I ask about events before {}, or if you don't see evidence in logs, you must politely state you lack context.\n\
         Based on these recent logs:\n{}\n\
-        Generate exactly 3 short, actionable questions I can ask you right now to gain insights or coaching.\n\
-        Output ONLY a valid JSON array of 3 strings.",
+        Generate between 2 and 5 short, actionable questions I can ask you right now to gain insights or coaching.\n\
+        Output ONLY a valid JSON array of strings.",
         current_time, oldest_time, oldest_time, summary_text
     );
 
@@ -186,7 +186,7 @@ pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) ->
             if let Some(text) = response_json["response"].as_str() {
                 if let Ok(parsed_arr) = serde_json::from_str::<Vec<String>>(text) {
                     if !parsed_arr.is_empty() {
-                        return Ok(parsed_arr.into_iter().take(3).collect());
+                        return Ok(parsed_arr.into_iter().take(5).collect());
                     }
                 }
             }
