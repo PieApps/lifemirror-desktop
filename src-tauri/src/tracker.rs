@@ -432,29 +432,31 @@ pub fn start_window_tracker(
             let mut distraction_type: Option<String> = None;
             let mut distraction_reason: Option<String> = None;
             
-            if last_rule_check.elapsed() > Duration::from_secs(5) {
-                let rules = db.get_distraction_rules().unwrap_or_default();
-                compiled_rules.clear();
-                for r in rules {
-                    if let Ok(re) = regex::Regex::new(&r) {
-                        compiled_rules.push((r, re));
+            let intention = db.get_setting("active_intention").unwrap_or_else(|_| "false".to_string());
+            let is_focus_mode_active = intention != "false" && !intention.is_empty();
+
+            if is_focus_mode_active {
+                if last_rule_check.elapsed() > Duration::from_secs(5) {
+                    let rules = db.get_distraction_rules().unwrap_or_default();
+                    compiled_rules.clear();
+                    for r in rules {
+                        if let Ok(re) = regex::Regex::new(&r) {
+                            compiled_rules.push((r, re));
+                        }
+                    }
+                    last_rule_check = std::time::Instant::now();
+                }
+
+                for (r, re) in &compiled_rules {
+                    if re.is_match(&title) {
+                        is_distracted = true;
+                        distraction_type = Some("REGEX_RULE".to_string());
+                        distraction_reason = Some(r.clone());
+                        break;
                     }
                 }
-                last_rule_check = std::time::Instant::now();
-            }
 
-            for (r, re) in &compiled_rules {
-                if re.is_match(&title) {
-                    is_distracted = true;
-                    distraction_type = Some("REGEX_RULE".to_string());
-                    distraction_reason = Some(r.clone());
-                    break;
-                }
-            }
-
-            if !is_distracted {
-                let intention = db.get_setting("active_intention").unwrap_or_else(|_| "false".to_string());
-                if intention != "false" && !intention.is_empty() {
+                if !is_distracted {
                     let cache_key = format!("{}::{}", title, intention);
                     let mut cached_result = None;
                     {
