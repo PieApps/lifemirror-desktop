@@ -252,8 +252,6 @@ fn resolve_current_activity(
     (app, title, None, icon_url, "OS".to_string())
 }
 
-use tauri::Emitter;
-
 pub fn start_window_tracker(
     db: Arc<DbState>,
     tracking_active: Arc<std::sync::atomic::AtomicBool>,
