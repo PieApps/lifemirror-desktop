@@ -1,5 +1,6 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { Settings, Shield, Cpu, Sliders, Power, AlertCircle, X, Plus, Target } from "lucide-react";
 
 interface SettingsPanelProps {
@@ -40,6 +41,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [subSessionInputValue, setSubSessionInputValue] = React.useState(String(minSubSessionDuration));
   const [distractionRules, setDistractionRules] = React.useState<Array<{id: number, rule_type: string, value: string, is_active: boolean}>>([]);
   const [newRuleValue, setNewRuleValue] = React.useState("");
+  const [appVersion, setAppVersion] = React.useState<string>("");
 
   const loadRules = async () => {
     try {
@@ -52,6 +54,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   React.useEffect(() => {
     loadRules();
+    getVersion().then(setAppVersion).catch(console.error);
   }, []);
 
   React.useEffect(() => {
@@ -341,6 +344,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {ollamaModel === "false" || !ollamaModel ? 'llama3.2' : ollamaModel}</code> in your terminal.
           </p>
         </div>
+      </div>
+
+      <div className="mt-8 pt-4 border-t border-[var(--border-color)] text-center">
+        <p className="text-xs text-[var(--text-muted)] font-mono">v{appVersion}</p>
       </div>
     </div>
   );
