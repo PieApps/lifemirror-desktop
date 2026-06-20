@@ -362,6 +362,21 @@ fn clear_chat_history(state: State<'_, Arc<DbState>>, date: String) -> Result<()
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn hide_overlay(app: tauri::AppHandle) {
+    if let Some(overlay_win) = app.get_webview_window("overlay") {
+        let _ = overlay_win.hide();
+    }
+}
+
+#[tauri::command]
+fn show_main(app: tauri::AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.show();
+        let _ = main_win.set_focus();
+    }
+}
+
 fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
     let open_i = MenuItem::with_id(app, "open", "Open LifeMirror", true, None::<&str>)?;
 
@@ -611,7 +626,9 @@ pub fn run() {
             get_sub_session_events_for_day,
             get_distraction_rules_list,
             add_distraction_rule,
-            delete_distraction_rule
+            delete_distraction_rule,
+            hide_overlay,
+            show_main
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

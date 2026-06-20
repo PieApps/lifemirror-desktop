@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ShieldAlert, CheckCircle, Settings } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { ShieldAlert, CheckCircle, Settings, X } from "lucide-react";
 
 export function InterdictionOverlay() {
   const [distractingTitle, setDistractingTitle] = useState("");
@@ -17,8 +17,7 @@ export function InterdictionOverlay() {
       if (e.key === "Escape") {
         const now = Date.now();
         if (now - lastEsc < 500) {
-          const win = getCurrentWindow();
-          await win.hide();
+          await invoke("hide_overlay");
         }
         lastEsc = now;
       }
@@ -33,8 +32,7 @@ export function InterdictionOverlay() {
 
   const handleReturnToWork = async () => {
     try {
-      const win = getCurrentWindow();
-      await win.hide();
+      await invoke("hide_overlay");
     } catch (e) {
       console.error(e);
     }
@@ -42,12 +40,9 @@ export function InterdictionOverlay() {
 
   const handleAdjustRules = async () => {
     try {
-      // Hide overlay
-      const win = getCurrentWindow();
-      await win.hide();
-      
-      // We could ideally emit an event to the main window to open settings,
-      // but for now, just hiding the overlay so the user can open main window themselves.
+      // Hide overlay and show main
+      await invoke("hide_overlay");
+      await invoke("show_main");
     } catch (e) {
       console.error(e);
     }
@@ -55,9 +50,17 @@ export function InterdictionOverlay() {
 
   return (
     <div className="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-gray-900/40 backdrop-blur-2xl text-white font-sans overflow-hidden z-50">
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent pointer-events-none" />
+      <div data-tauri-drag-region className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent" />
       
       <div className="relative flex flex-col items-center text-center max-w-xl p-10 bg-gray-900/60 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
+        <button 
+          onClick={handleReturnToWork}
+          className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors duration-200"
+          aria-label="Close overlay"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
         <div className="mb-6 bg-red-500/20 p-4 rounded-full">
           <ShieldAlert className="w-16 h-16 text-red-400" />
         </div>

@@ -284,6 +284,7 @@ pub fn start_window_tracker(
 
         let llm_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>> = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         let pending_evaluations: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+        let last_overlay_time = Arc::new(std::sync::Mutex::new(std::time::Instant::now() - Duration::from_secs(60)));
 
         let db_ref = db.clone();
         let flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
@@ -486,6 +487,7 @@ pub fn start_window_tracker(
                             let intention_clone = intention.clone();
                             let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
                             let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
+                            let overlay_time_clone = last_overlay_time.clone();
                             
                             std::thread::spawn(move || {
                                 let prompt = format!(
@@ -541,12 +543,23 @@ pub fn start_window_tracker(
                                         "LLM_EVALUATION",
                                         &intention_clone
                                     );
-                                    
-                                    if let Some(overlay_win) = app_handle_clone.get_webview_window("overlay") {
-                                        let _ = overlay_win.show();
-                                        let _ = overlay_win.set_focus();
+                                    let mut should_show = false;
+                                    {
+                                        let mut last_time = overlay_time_clone.lock().unwrap();
+                                        if last_time.elapsed() > std::time::Duration::from_secs(30) {
+                                            should_show = true;
+                                            *last_time = std::time::Instant::now();
+                                        }
                                     }
-                                    let _ = app_handle_clone.emit("distraction-detected", &title_clone);
+                                    
+                                    if should_show {
+                                        if let Some(overlay_win) = app_handle_clone.get_webview_window("overlay") {
+                                            let _ = overlay_win.hide();
+                                            let _ = overlay_win.show();
+                                            let _ = overlay_win.set_focus();
+                                        }
+                                        let _ = app_handle_clone.emit("distraction-detected", &title_clone);
+                                    }
                                 }
                             });
                         }
@@ -568,11 +581,28 @@ pub fn start_window_tracker(
                     );
                 }
                 
-                if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
-                    let _ = overlay_win.show();
-                    let _ = overlay_win.set_focus();
+                let mut should_show = false;
+                {
+                    let mut last_time = last_overlay_time.lock().unwrap();
+                    if last_time.elapsed() > std::time::Duration::from_secs(30) {
+                        should_show = true;
+                        *last_time = std::time::Instant::now();
+                    }
                 }
-                let _ = app_handle.emit("distraction-detected", &title);
+                
+                if should_show {
+                    if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
+                        let _ = overlay_win.hide();
+                        let _ = overlay_win.show();
+                        let _ = overlay_win.set_focus();
+                    }
+                    let _ = app_handle.emit("distraction-detected", &title);
+                }
+            } else if is_focus_mode_active {
+                // If they are not distracted (productive), instantly clear the snooze timer 
+                // so they can be immediately warned if they drift off again.
+                let mut last_time = last_overlay_time.lock().unwrap();
+                *last_time = std::time::Instant::now() - std::time::Duration::from_secs(60);
             }
 
             if parent_app.is_empty() {
