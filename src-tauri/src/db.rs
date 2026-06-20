@@ -70,6 +70,18 @@ pub struct SubSessionEvent {
     pub timestamp: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DistractionEvent {
+    pub id: Option<i64>,
+    pub timestamp: String,
+    pub app_name: String,
+    pub window_title: String,
+    pub interception_type: String,
+    pub interception_reason: String,
+    pub duration_blocked: i64,
+    pub action_taken: Option<String>,
+}
+
 pub fn extract_domain(url: &str) -> String {
     let without_protocol = if let Some(stripped) = url.strip_prefix("https://") {
         stripped
@@ -257,6 +269,21 @@ impl DbState {
         // Index for chat history dates
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chat_history_date ON chat_history (date);",
+            [],
+        )?;
+
+        // Create distraction_events table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS distraction_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                app_name TEXT NOT NULL,
+                window_title TEXT NOT NULL,
+                interception_type TEXT NOT NULL,
+                interception_reason TEXT NOT NULL,
+                duration_blocked INTEGER DEFAULT 0,
+                action_taken TEXT
+            );",
             [],
         )?;
 
@@ -757,5 +784,51 @@ impl DbState {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM distraction_rules WHERE id = ?1", [id])?;
         Ok(())
+    }
+
+    pub fn insert_distraction_event(
+        &self,
+        timestamp: &str,
+        app_name: &str,
+        window_title: &str,
+        interception_type: &str,
+        interception_reason: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO distraction_events (timestamp, app_name, window_title, interception_type, interception_reason, duration_blocked)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0)",
+            params![timestamp, app_name, window_title, interception_type, interception_reason],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_distraction_events_for_day(&self, date: &str) -> Result<Vec<DistractionEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp, app_name, window_title, interception_type, interception_reason, duration_blocked, action_taken
+             FROM distraction_events
+             WHERE date(timestamp) = ?1
+             ORDER BY timestamp ASC",
+        )?;
+
+        let iter = stmt.query_map([date], |row| {
+            Ok(DistractionEvent {
+                id: Some(row.get(0)?),
+                timestamp: row.get(1)?,
+                app_name: row.get(2)?,
+                window_title: row.get(3)?,
+                interception_type: row.get(4)?,
+                interception_reason: row.get(5)?,
+                duration_blocked: row.get(6)?,
+                action_taken: row.get(7)?,
+            })
+        })?;
+
+        let mut events = Vec::new();
+        for event in iter {
+            events.push(event?);
+        }
+        Ok(events)
     }
 }

@@ -429,6 +429,8 @@ pub fn start_window_tracker(
 
             // Distraction evaluation
             let mut is_distracted = false;
+            let mut distraction_type: Option<String> = None;
+            let mut distraction_reason: Option<String> = None;
             
             if last_rule_check.elapsed() > Duration::from_secs(5) {
                 let rules = db.get_distraction_rules().unwrap_or_default();
@@ -441,9 +443,11 @@ pub fn start_window_tracker(
                 last_rule_check = std::time::Instant::now();
             }
 
-            for (_, re) in &compiled_rules {
+            for (r, re) in &compiled_rules {
                 if re.is_match(&title) {
                     is_distracted = true;
+                    distraction_type = Some("REGEX_RULE".to_string());
+                    distraction_reason = Some(r.clone());
                     break;
                 }
             }
@@ -462,6 +466,10 @@ pub fn start_window_tracker(
 
                     if let Some(res) = cached_result {
                         is_distracted = res;
+                        if res {
+                            distraction_type = Some("LLM_EVALUATION".to_string());
+                            distraction_reason = Some(intention.clone());
+                        }
                     } else {
                         let mut pending = pending_evaluations.lock().unwrap();
                         if !pending.contains(&cache_key) {
@@ -470,7 +478,10 @@ pub fn start_window_tracker(
                             let llm_cache_clone = llm_cache.clone();
                             let pending_clone = pending_evaluations.clone();
                             let title_clone = title.clone();
+                            let app_clone = app.clone();
                             let app_handle_clone = app_handle.clone();
+                            let db_clone = db_ref.clone();
+                            let intention_clone = intention.clone();
                             let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
                             let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
                             
@@ -520,6 +531,15 @@ pub fn start_window_tracker(
                                 
                                 if result_distracted {
                                     use tauri::{Manager, Emitter};
+                                    let now_str = Utc::now().to_rfc3339();
+                                    let _ = db_clone.insert_distraction_event(
+                                        &now_str,
+                                        &app_clone,
+                                        &title_clone,
+                                        "LLM_EVALUATION",
+                                        &intention_clone
+                                    );
+                                    
                                     if let Some(overlay_win) = app_handle_clone.get_webview_window("overlay") {
                                         let _ = overlay_win.show();
                                         let _ = overlay_win.set_focus();
@@ -534,6 +554,18 @@ pub fn start_window_tracker(
 
             if is_distracted {
                 use tauri::{Manager, Emitter};
+                
+                if let (Some(dtype), Some(dreason)) = (distraction_type, distraction_reason) {
+                    let now_str = Utc::now().to_rfc3339();
+                    let _ = db_ref.insert_distraction_event(
+                        &now_str,
+                        &app,
+                        &title,
+                        &dtype,
+                        &dreason
+                    );
+                }
+                
                 if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
                     let _ = overlay_win.show();
                     let _ = overlay_win.set_focus();

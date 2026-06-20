@@ -281,6 +281,11 @@ fn get_sub_session_events_for_day(db: State<'_, Arc<DbState>>, date: String) -> 
 }
 
 #[tauri::command]
+fn get_distraction_events_for_day(db: State<'_, Arc<DbState>>, date: String) -> Result<Vec<db::DistractionEvent>, String> {
+    db.get_distraction_events_for_day(&date).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_distraction_rules_list(db: State<'_, Arc<DbState>>) -> Result<Vec<db::DistractionRule>, String> {
     db.get_distraction_rules_list().map_err(|e| e.to_string())
 }
@@ -586,6 +591,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_activities,
             get_journals,
+            get_distraction_events_for_day,
             delete_activity_log,
             add_journal,
             toggle_incognito,

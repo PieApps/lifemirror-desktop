@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { 
   Monitor, Globe, Clock, Plus, Terminal, MessageSquare, 
-  Trash2, Video, ChevronDown, ChevronUp, ExternalLink 
+  Trash2, Video, ChevronDown, ChevronUp, ExternalLink, ShieldAlert
 } from "lucide-react";
 
 export interface ActivityNode {
@@ -16,6 +16,17 @@ export interface ActivityNode {
   icon_url?: string;
   domain_tag?: string;
   notes?: string;
+}
+
+export interface DistractionEvent {
+  id: number;
+  timestamp: string;
+  app_name: string;
+  window_title: string;
+  interception_type: string;
+  interception_reason: string;
+  duration_blocked: number;
+  action_taken?: string;
 }
 
 export interface SubSessionEvent {
@@ -33,10 +44,12 @@ export interface SubSessionEvent {
 interface SCurveTimelineProps {
   activities: ActivityNode[];
   subSessionEvents: SubSessionEvent[];
+  distractionEvents: DistractionEvent[];
   onAddJournal: (activity: ActivityNode) => void;
   onDeleteLog: (id: number) => void;
 }
 
+export interface TimelineNode {
   isGroupedSession: boolean;
   id: number;
   app_name: string;
@@ -50,6 +63,8 @@ interface SCurveTimelineProps {
   notes?: string;
   originalActivities: ActivityNode[];
   subEvents: SubSessionEvent[];
+  isShield?: boolean;
+  distractionEvent?: DistractionEvent;
 }
 
 // Brand SVG Icons
@@ -304,7 +319,8 @@ const extractDomain = (url?: string): string => {
 
 export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ 
   activities, 
-  subSessionEvents, 
+  subSessionEvents,
+  distractionEvents,
   onAddJournal, 
   onDeleteLog 
 }) => {
@@ -331,56 +347,84 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
     const nodes: TimelineNode[] = [];
     let currentGroup: TimelineNode | null = null;
 
-    activities.forEach((activity) => {
-      const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
-      const isEditor = activity.source.toLowerCase() === "editor";
-      const isGroupable = isBrowser || isEditor;
+    const allEvents = [
+      ...activities.map(a => ({ type: 'activity', time: new Date(a.start_time).getTime(), data: a as ActivityNode })),
+      ...distractionEvents.map(d => ({ type: 'distraction', time: new Date(d.timestamp).getTime(), data: d as DistractionEvent }))
+    ].sort((a, b) => a.time - b.time);
 
-      if (isGroupable) {
-        // Group by app_name and source
-        if (currentGroup && currentGroup.source === (isBrowser ? "Browser" : "Editor") && currentGroup.app_name === activity.app_name) {
-          currentGroup.duration += activity.duration;
-          currentGroup.originalActivities.push(activity);
-          if (activity.notes) {
-            currentGroup.notes = currentGroup.notes 
-              ? `${currentGroup.notes} | ${activity.notes}` 
-              : activity.notes;
+    allEvents.forEach((ev) => {
+      if (ev.type === 'activity') {
+        const activity = ev.data as ActivityNode;
+        const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
+        const isEditor = activity.source.toLowerCase() === "editor";
+        const isGroupable = isBrowser || isEditor;
+
+        if (isGroupable) {
+          // Group by app_name and source
+          if (currentGroup && currentGroup.source === (isBrowser ? "Browser" : "Editor") && currentGroup.app_name === activity.app_name) {
+            currentGroup.duration += activity.duration;
+            currentGroup.originalActivities.push(activity);
+            if (activity.notes) {
+              currentGroup.notes = currentGroup.notes 
+                ? `${currentGroup.notes} | ${activity.notes}` 
+                : activity.notes;
+            }
+          } else {
+            if (currentGroup) nodes.push(currentGroup);
+            
+            currentGroup = {
+              isGroupedSession: true,
+              id: activity.id,
+              app_name: activity.app_name,
+              window_title: `${activity.app_name} Session`,
+              start_time: activity.start_time,
+              duration: activity.duration,
+              source: isBrowser ? "Browser" : "Editor",
+              notes: activity.notes,
+              originalActivities: [activity],
+              subEvents: [],
+            };
           }
         } else {
-          if (currentGroup) nodes.push(currentGroup);
-          
-          currentGroup = {
-            isGroupedSession: true,
+          if (currentGroup) {
+            nodes.push(currentGroup);
+            currentGroup = null;
+          }
+          nodes.push({
+            isGroupedSession: false,
             id: activity.id,
             app_name: activity.app_name,
-            window_title: `${activity.app_name} Session`,
+            window_title: activity.window_title,
             start_time: activity.start_time,
             duration: activity.duration,
-            source: isBrowser ? "Browser" : "Editor",
+            source: activity.source,
+            url: activity.url,
+            icon_url: activity.icon_url,
+            domain_tag: activity.domain_tag,
             notes: activity.notes,
             originalActivities: [activity],
             subEvents: [],
-          };
+          });
         }
       } else {
+        // Distraction Event
         if (currentGroup) {
           nodes.push(currentGroup);
           currentGroup = null;
         }
+        const dEvent = ev.data as DistractionEvent;
         nodes.push({
           isGroupedSession: false,
-          id: activity.id,
-          app_name: activity.app_name,
-          window_title: activity.window_title,
-          start_time: activity.start_time,
-          duration: activity.duration,
-          source: activity.source,
-          url: activity.url,
-          icon_url: activity.icon_url,
-          domain_tag: activity.domain_tag,
-          notes: activity.notes,
-          originalActivities: [activity],
+          id: -dEvent.id, // Negative ID to avoid collision
+          app_name: dEvent.app_name,
+          window_title: dEvent.window_title,
+          start_time: dEvent.timestamp,
+          duration: dEvent.duration_blocked,
+          source: "Shield",
+          originalActivities: [],
           subEvents: [],
+          isShield: true,
+          distractionEvent: dEvent
         });
       }
     });
@@ -407,7 +451,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
     });
 
     return nodes;
-  }, [activities, subSessionEvents]);
+  }, [activities, subSessionEvents, distractionEvents]);
 
   // Helper to calculate coordinates of node at index with coordinate shifting
   const getBaseNodeCoords = (index: number) => {
@@ -541,7 +585,11 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
               <React.Fragment key={node.id || index}>
                 {/* Visual anchor point circle */}
                 <div
-                  className="absolute z-20 w-9 h-9 rounded-full border-2 border-violet-500 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)] transition-transform duration-300 hover:scale-125"
+                  className={`absolute z-20 w-9 h-9 rounded-full border-2 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform duration-300 hover:scale-125 ${
+                    node.isShield 
+                      ? 'border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.3)]' 
+                      : 'border-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.3)]'
+                  }`}
                   style={{ left: colPercentages[col], top: `${nodeY}px` }}
                   title={`${node.app_name}: ${node.window_title}`}
                   onClick={() => {
@@ -550,15 +598,19 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     }
                   }}
                 >
-                  <AppIcon 
-                    appName={String(node.app_name)} 
-                    url={node.url || (node.originalActivities[0] && node.originalActivities[0].url)} 
-                    iconUrl={node.icon_url || (node.originalActivities[0] && node.originalActivities[0].icon_url)} 
-                    domainTag={node.domain_tag || (node.originalActivities[0] && node.originalActivities[0].domain_tag)}
-                    source={node.source} 
-                    className="w-5 h-5" 
-                    showBadge={true}
-                  />
+                  {node.isShield ? (
+                    <ShieldAlert className="w-5 h-5 text-red-500" />
+                  ) : (
+                    <AppIcon 
+                      appName={String(node.app_name)} 
+                      url={node.url || (node.originalActivities[0] && node.originalActivities[0].url)} 
+                      iconUrl={node.icon_url || (node.originalActivities[0] && node.originalActivities[0].icon_url)} 
+                      domainTag={node.domain_tag || (node.originalActivities[0] && node.originalActivities[0].domain_tag)}
+                      source={node.source} 
+                      className="w-5 h-5" 
+                      showBadge={true}
+                    />
+                  )}
                 </div>
 
                 {/* Glassmorphic Activity Card hanging from the node */}
@@ -585,23 +637,32 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                 >
                   <div className="flex items-center justify-between gap-1 mb-1.5">
                     <div className="flex items-center gap-1 overflow-hidden max-w-[130px]">
-                      <AppIcon 
-                        appName={String(node.app_name)} 
-                        url={node.url || (node.originalActivities[0] && node.originalActivities[0].url)} 
-                        iconUrl={node.icon_url || (node.originalActivities[0] && node.originalActivities[0].icon_url)} 
-                        domainTag={node.domain_tag || (node.originalActivities[0] && node.originalActivities[0].domain_tag)}
-                        source={node.source} 
-                        className="w-4 h-4 shrink-0" 
-                        showBadge={true}
-                      />
+                      {node.isShield ? (
+                        <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
+                      ) : (
+                        <AppIcon 
+                          appName={String(node.app_name)} 
+                          url={node.url || (node.originalActivities[0] && node.originalActivities[0].url)} 
+                          iconUrl={node.icon_url || (node.originalActivities[0] && node.originalActivities[0].icon_url)} 
+                          domainTag={node.domain_tag || (node.originalActivities[0] && node.originalActivities[0].domain_tag)}
+                          source={node.source} 
+                          className="w-4 h-4 shrink-0" 
+                          showBadge={true}
+                        />
+                      )}
+                      
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full truncate ${
-                        isBrowser 
-                          ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30' 
-                          : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
+                        node.isShield
+                          ? 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/30'
+                          : isBrowser 
+                            ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30' 
+                            : 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/30'
                       }`}>
-                        {node.isGroupedSession 
-                          ? `${node.subEvents.length} items`
-                          : (node.domain_tag || extractDomain(node.url)) || node.app_name
+                        {node.isShield
+                          ? 'Distraction Blocked'
+                          : node.isGroupedSession 
+                            ? `${node.subEvents.length} items`
+                            : (node.domain_tag || extractDomain(node.url)) || node.app_name
                         }
                       </span>
                     </div>
@@ -612,7 +673,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   </div>
 
                   <div className="flex justify-between items-start gap-1">
-                    <h4 className="text-xs font-semibold text-[var(--text-color)] line-clamp-2 mb-1 flex-1" title={String(node.window_title)}>
+                    <h4 className={`text-xs font-semibold line-clamp-2 mb-1 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={String(node.window_title)}>
                       {node.isGroupedSession ? `${node.app_name} Session` : node.window_title}
                     </h4>
                     {node.isGroupedSession && (
@@ -622,9 +683,15 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                     )}
                   </div>
 
-                  <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
-                    {node.isGroupedSession ? (isBrowser ? domainsText : "Multiple files") : node.url}
-                  </p>
+                  {node.isShield ? (
+                    <p className="text-[10px] text-red-500/80 dark:text-red-400/80 line-clamp-2 mb-1.5 font-mono bg-red-500/10 p-1 rounded border border-red-500/20">
+                      Reason: {node.distractionEvent?.interception_reason}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
+                      {node.isGroupedSession ? (isBrowser ? domainsText : "Multiple files") : node.url}
+                    </p>
+                  )}
 
                   {node.notes && (
                     <div className="mt-1.5 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[10px] italic text-[var(--text-color)] select-text leading-snug line-clamp-3">
@@ -707,36 +774,39 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                       {getFormatTime(node.start_time)}
                     </span>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (node.isGroupedSession) {
-                            if (window.confirm("Delete this session and all its sub-events?")) {
-                              node.originalActivities.forEach(act => {
-                                if (act.id) onDeleteLog(act.id);
-                              });
-                            }
-                          } else {
-                            if (node.id && window.confirm("Delete this activity log?")) {
-                              onDeleteLog(node.id);
-                            }
-                          }
-                        }}
-                        disabled={!node.id}
-                        className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer"
-                        title="Delete log"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          // For grouped browser card, pass the first original activity log
-                          onAddJournal(node.originalActivities[0] || (node as any));
-                        }}
-                        className="p-1 rounded text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 transition-colors cursor-pointer"
-                        title={node.notes ? "Edit Note" : "Reflect"}
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
+                      {!node.isShield && (
+                        <>
+                          <button
+                            onClick={() => {
+                              if (node.isGroupedSession) {
+                                if (window.confirm("Delete this session and all its sub-events?")) {
+                                  node.originalActivities.forEach(act => {
+                                    if (act.id) onDeleteLog(act.id);
+                                  });
+                                }
+                              } else {
+                                if (node.id && window.confirm("Delete this activity log?")) {
+                                  onDeleteLog(node.id);
+                                }
+                              }
+                            }}
+                            disabled={!node.id}
+                            className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer"
+                            title="Delete log"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              onAddJournal(node.originalActivities[0] || (node as any));
+                            }}
+                            className="p-1 rounded text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 transition-colors cursor-pointer"
+                            title={node.notes ? "Edit Note" : "Reflect"}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

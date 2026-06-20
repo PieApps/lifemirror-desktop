@@ -7,7 +7,7 @@ import {
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
   Calendar, Clock, Grid, Send, Trash2, MessageSquare, Target
 } from "lucide-react";
-import { SCurveTimeline, ActivityNode, SubSessionEvent } from "./components/SCurveTimeline";
+import { SCurveTimeline, ActivityNode, SubSessionEvent, DistractionEvent } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WeeklyView } from "./components/WeeklyView";
@@ -37,6 +37,7 @@ export interface ChatMessage {
 function App() {
   const [activities, setActivities] = useState<ActivityNode[]>([]);
   const [subSessionEvents, setSubSessionEvents] = useState<SubSessionEvent[]>([]);
+  const [distractionEvents, setDistractionEvents] = useState<DistractionEvent[]>([]);
   const [isIncognito, setIsIncognito] = useState(false);
   const [trackingActive, setTrackingActive] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -449,6 +450,13 @@ ${compileContextRollup()}`;
           setSubSessionEvents(events);
         } catch (err) {
           console.error("Failed to load sub session events:", err);
+        }
+        
+        try {
+          const dEvents = await invoke<DistractionEvent[]>("get_distraction_events_for_day", { date: selectedDate });
+          setDistractionEvents(dEvents);
+        } catch (err) {
+          console.error("Failed to load distraction events:", err);
         }
       } else if (viewMode === "weekly") {
         const range = getWeekRange(selectedDate);
@@ -940,6 +948,12 @@ ${compileContextRollup()}`;
 
             {/* Date Scrubber */}
             <div className="flex items-center gap-2">
+              {viewMode === "daily" && distractionEvents.length > 0 && (
+                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 dark:text-red-400 font-mono text-xs shadow-sm" title="Distractions Deflected Today">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Deflected: {distractionEvents.length}</span>
+                </div>
+              )}
               <button
                 onClick={handlePrevPeriod}
                 className="p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all"
@@ -1021,6 +1035,7 @@ ${compileContextRollup()}`;
               <SCurveTimeline 
                 activities={[...activities].reverse()} 
                 subSessionEvents={subSessionEvents}
+                distractionEvents={distractionEvents}
                 onAddJournal={(node) => setSelectedActivity(node)} 
                 onDeleteLog={handleDeleteLog}
               />
