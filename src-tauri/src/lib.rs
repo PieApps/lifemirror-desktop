@@ -634,7 +634,8 @@ pub fn run() {
             add_distraction_rule,
             delete_distraction_rule,
             hide_toast,
-            show_main
+            show_main,
+            ai::generate_chat_suggestions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

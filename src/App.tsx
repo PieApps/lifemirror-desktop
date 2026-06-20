@@ -5,7 +5,7 @@ import { enable as enableAutostart, disable as disableAutostart, isEnabled as is
 import { 
   ShieldAlert, Sparkles, 
   Settings as SettingsIcon, RefreshCw, Sun, Moon,
-  Calendar, Clock, Grid, Send, Trash2, MessageSquare, Target
+  Calendar, Clock, Grid, Send, Trash2, MessageSquare, Target, ArrowRight
 } from "lucide-react";
 import { SCurveTimeline, ActivityNode, SubSessionEvent, DistractionEvent } from "./components/SCurveTimeline";
 import { JournalModal } from "./components/JournalModal";
@@ -70,6 +70,8 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatSuggestions, setChatSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [volatileChatHistory, setVolatileChatHistory] = useState<ChatMessage[]>([]); // For Incognito mode
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -635,6 +637,25 @@ ${compileContextRollup()}`;
     scrollToBottom();
   }, [chatMessages, volatileChatHistory]);
 
+  const handleGenerateSuggestions = async () => {
+    if (!ollamaUrl || ollamaUrl === "false" || !ollamaModel || ollamaModel === "false") return;
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await invoke<string[]>("generate_chat_suggestions");
+      setChatSuggestions(suggestions);
+    } catch (e) {
+      console.error("Failed to generate chat suggestions:", e);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeAiTab !== "chat") {
+      setChatSuggestions([]);
+    }
+  }, [activeAiTab]);
+
   const handleSendChat = async (overrideText?: string) => {
     const textToSend = (overrideText || chatInput).trim();
     if (!textToSend || chatLoading) return;
@@ -1184,19 +1205,53 @@ ${compileContextRollup()}`;
                         </p>
                         
                         {/* Suggestion Pills */}
-                        <div className="flex flex-wrap gap-1.5 justify-center max-w-[240px]">
-                          {["Summarize my day", "Where did I waste time?", "How was my focus?"].map((pillText) => (
-                            <button
-                              key={pillText}
-                              disabled={chatLoading}
-                              onClick={() => {
-                                handleSendChat(pillText);
-                              }}
-                              className="text-[10px] px-2 py-1 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:bg-zinc-500/10 hover:text-[var(--text-color)] text-[var(--text-muted)] font-medium transition-all cursor-pointer"
-                            >
-                              {pillText}
-                            </button>
-                          ))}
+                        <div className="flex flex-col gap-3 w-full max-w-[280px] mt-4 items-center">
+                          {loadingSuggestions ? (
+                            <div className="flex flex-col items-center justify-center gap-3 text-xs text-violet-500 font-medium animate-pulse py-4 bg-violet-500/5 rounded-xl w-full border border-violet-500/20">
+                              <Sparkles className="w-5 h-5" />
+                              Analyzing recent activity...
+                            </div>
+                          ) : chatSuggestions.length > 0 ? (
+                            <div className="flex flex-col gap-2 w-full">
+                              {chatSuggestions.map((suggestion, idx) => (
+                                <button
+                                  key={idx}
+                                  disabled={chatLoading}
+                                  onClick={() => {
+                                    setChatInput(suggestion);
+                                    handleSendChat(suggestion);
+                                  }}
+                                  className="text-left px-3 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/40 hover:border-violet-500/40 hover:bg-violet-500/10 transition-all text-xs text-[var(--text-color)] group flex items-center justify-between cursor-pointer shadow-sm disabled:opacity-50"
+                                >
+                                  <span className="pr-2 leading-tight">{suggestion}</span>
+                                  <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-violet-500 flex-shrink-0" />
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-3 w-full items-center">
+                              <div className="flex flex-wrap gap-1.5 justify-center">
+                                {["Summarize my day", "Where did I waste time?", "How was my focus?"].map((pillText) => (
+                                  <button
+                                    key={pillText}
+                                    disabled={chatLoading}
+                                    onClick={() => handleSendChat(pillText)}
+                                    className="text-[10px] px-2.5 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:bg-zinc-500/10 hover:text-[var(--text-color)] text-[var(--text-muted)] font-medium transition-all cursor-pointer disabled:opacity-50"
+                                  >
+                                    {pillText}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                onClick={handleGenerateSuggestions}
+                                disabled={chatLoading}
+                                className="flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 font-semibold transition-all cursor-pointer shadow-sm shadow-violet-500/5"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                Generate AI Suggestions
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ) : (

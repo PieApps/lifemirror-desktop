@@ -123,3 +123,80 @@ fn trigger_background_reflection(db: Arc<DbState>) {
         }
     });
 }
+
+#[tauri::command]
+pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) -> Result<Vec<String>, String> {
+    let ollama_model = state.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
+    let ollama_url = state.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    
+    if ollama_model.is_empty() || ollama_model == "false" || ollama_url.is_empty() || ollama_url == "false" {
+        return Err("Ollama is disabled".to_string());
+    }
+
+    let logs = state.get_activity_logs(200).unwrap_or_default();
+    if logs.is_empty() {
+        return Ok(vec![
+            "What can you help me with?".to_string(),
+            "How do I use this app?".to_string(),
+            "Summarize my day".to_string()
+        ]);
+    }
+
+    let oldest_log = logs.last().unwrap();
+    let oldest_time = match chrono::DateTime::parse_from_rfc3339(&oldest_log.start_time) {
+        Ok(dt) => dt.with_timezone(&chrono::Local).format("%I:%M %p").to_string(),
+        Err(_) => "Unknown".to_string(),
+    };
+
+    let summary_text = logs.iter().take(15).map(|node| {
+        format!("- App: {}, Window: {}, Duration: {}s", node.app_name, node.window_title, node.duration)
+    }).collect::<Vec<String>>().join("\n");
+
+    let current_time = chrono::Local::now().format("%I:%M %p").to_string();
+
+    let prompt = format!(
+        "You are a productivity coach. It is {}. You have visibility into my activity starting from {}.\n\
+        If I ask about events before {}, or if you don't see evidence in logs, you must politely state you lack context.\n\
+        Based on these recent logs:\n{}\n\
+        Generate exactly 3 short, actionable questions I can ask you right now to gain insights or coaching.\n\
+        Output ONLY a valid JSON array of 3 strings.",
+        current_time, oldest_time, oldest_time, summary_text
+    );
+
+    let payload = serde_json::json!({
+        "model": ollama_model,
+        "prompt": prompt,
+        "stream": false,
+        "format": "json"
+    });
+
+    let output = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "-X", "POST",
+            &format!("{}/api/generate", ollama_url),
+            "-H", "Content-Type: application/json",
+            "-d", &payload.to_string(),
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        if let Ok(response_json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+            if let Some(text) = response_json["response"].as_str() {
+                if let Ok(parsed_arr) = serde_json::from_str::<Vec<String>>(text) {
+                    if !parsed_arr.is_empty() {
+                        return Ok(parsed_arr.into_iter().take(3).collect());
+                    }
+                }
+            }
+        }
+    }
+    
+    // Fallback if AI fails or returns bad json
+    Ok(vec![
+        "Summarize my day".to_string(),
+        "What was my most distracting app today?".to_string(),
+        "How can I improve my focus?".to_string()
+    ])
+}
