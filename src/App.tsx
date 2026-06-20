@@ -551,10 +551,14 @@ ${compileContextRollup()}`;
 
   const handleDeleteLog = async (id: number) => {
     try {
-      await invoke("delete_activity_log", { id });
+      if (id < 0) {
+        await invoke("delete_distraction_event", { id: Math.abs(id) });
+      } else {
+        await invoke("delete_activity_log", { id });
+      }
       await loadData();
     } catch (e) {
-      console.error("Failed to delete activity log:", e);
+      console.error("Failed to delete log:", e);
     }
   };
 

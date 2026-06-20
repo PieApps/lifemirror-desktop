@@ -812,6 +812,12 @@ impl DbState {
         Ok(())
     }
 
+    pub fn delete_distraction_event(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM distraction_events WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn get_distraction_events_for_day(&self, date: &str) -> Result<Vec<DistractionEvent>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(

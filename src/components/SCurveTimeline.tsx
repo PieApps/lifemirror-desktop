@@ -774,8 +774,6 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                       {getFormatTime(node.start_time)}
                     </span>
                     <div className="flex items-center gap-2">
-                      {!node.isShield && (
-                        <>
                           <button
                             onClick={() => {
                               if (node.isGroupedSession) {
@@ -785,7 +783,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                                   });
                                 }
                               } else {
-                                if (node.id && window.confirm("Delete this activity log?")) {
+                                if (node.id && window.confirm("Delete this event?")) {
                                   onDeleteLog(node.id);
                                 }
                               }
@@ -796,6 +794,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          {!node.isShield && (
                           <button
                             onClick={() => {
                               onAddJournal(node.originalActivities[0] || (node as any));
@@ -805,8 +804,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
-                        </>
-                      )}
+                          )}
                     </div>
                   </div>
                 </div>

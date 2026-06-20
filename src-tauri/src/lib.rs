@@ -139,8 +139,13 @@ fn get_journals(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<Journa
 }
 
 #[tauri::command]
-fn delete_activity_log(state: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
-    state.delete_activity_log(id).map_err(|e| e.to_string())
+fn delete_activity_log(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
+    db.delete_activity_log(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_distraction_event(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
+    db.delete_distraction_event(id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -360,13 +365,6 @@ fn clear_chat_history(state: State<'_, Arc<DbState>>, date: String) -> Result<()
     state
         .clear_chat_messages_for_day(&date)
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn hide_overlay(app: tauri::AppHandle) {
-    if let Some(overlay_win) = app.get_webview_window("overlay") {
-        let _ = overlay_win.hide();
-    }
 }
 
 #[tauri::command]
@@ -615,6 +613,7 @@ pub fn run() {
             get_journals,
             get_distraction_events_for_day,
             delete_activity_log,
+            delete_distraction_event,
             add_journal,
             toggle_incognito,
             is_incognito,
@@ -634,7 +633,6 @@ pub fn run() {
             get_distraction_rules_list,
             add_distraction_rule,
             delete_distraction_rule,
-            hide_overlay,
             hide_toast,
             show_main
         ])

@@ -19,17 +19,6 @@
         "visible": false
       },
       {
-        "label": "overlay",
-        "title": "Interdiction Overlay",
-        "url": "/overlay",
-        "fullscreen": true,
-        "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": false
-      },
-      {
         "label": "toast",
         "title": "Distraction Reminder",
         "url": "/toast",

@@ -285,10 +285,10 @@ pub fn start_window_tracker(
         let mut current_distraction_app = String::new();
         let mut current_distraction_title = String::new();
         let mut current_distraction_id: Option<i64> = None;
+        let mut current_distraction_duration: i64 = 0;
 
         let llm_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>> = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         let pending_evaluations: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
-        let has_shown_fullscreen = Arc::new(std::sync::Mutex::new(false));
 
         let db_ref = db.clone();
         let flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
@@ -546,93 +546,73 @@ pub fn start_window_tracker(
 
             if is_distracted {
                 if app == current_distraction_app && title == current_distraction_title {
-                    if let Some(id) = current_distraction_id {
-                        let _ = db_ref.update_distraction_duration(id, 1);
-                    }
-                } else {
-                    if let (Some(dtype), Some(dreason)) = (distraction_type, distraction_reason) {
-                        let now_str = Utc::now().to_rfc3339();
-                        if let Ok(id) = db_ref.insert_distraction_event(
-                            &now_str,
-                            &app,
-                            &title,
-                            &dtype,
-                            &dreason
-                        ) {
-                            current_distraction_id = Some(id);
-                            current_distraction_app = app.clone();
-                            current_distraction_title = title.clone();
+                    current_distraction_duration += 1;
+                    
+                    if current_distraction_duration == 60 {
+                        // We hit the 60 seconds threshold, log it to the DB
+                        if let (Some(ref dtype), Some(ref dreason)) = (distraction_type, distraction_reason) {
+                            let now_str = Utc::now().to_rfc3339();
+                            if let Ok(id) = db_ref.insert_distraction_event(
+                                &now_str,
+                                &app,
+                                &title,
+                                dtype,
+                                dreason
+                            ) {
+                                current_distraction_id = Some(id);
+                                // The initial DB insert sets duration_blocked = 1
+                                // So we add 59 to make the DB match the memory value of 60
+                                let _ = db_ref.update_distraction_duration(id, 59);
+                            }
+                        }
+                    } else if current_distraction_duration > 60 {
+                        // After 60 seconds, continuously update the DB entry every second
+                        if let Some(id) = current_distraction_id {
+                            let _ = db_ref.update_distraction_duration(id, 1);
                         }
                     }
-                }
-                
-                let mut should_show_overlay = false;
-                {
-                    let mut has_shown = has_shown_fullscreen.lock().unwrap();
-                    if !*has_shown {
-                        should_show_overlay = true;
-                        *has_shown = true;
-                    }
-                }
-                
-                if should_show_overlay {
-                    if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
-                        let _ = overlay_win.hide();
-                        let _ = overlay_win.show();
-                        let _ = overlay_win.set_focus();
-                    }
-                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
-                        let _ = toast_win.hide();
-                    }
-                    let _ = app_handle.emit("distraction-detected", &title);
                 } else {
-                    let is_overlay_visible = app_handle.get_webview_window("overlay")
-                        .map(|w| w.is_visible().unwrap_or(false))
-                        .unwrap_or(false);
-                        
-                    if !is_overlay_visible {
-                        if let Some(toast_win) = app_handle.get_webview_window("toast") {
-                            if !toast_win.is_visible().unwrap_or(false) {
-                                // Get primary monitor
-                                if let Ok(Some(monitor)) = toast_win.primary_monitor() {
-                                    let size = monitor.size();
-                                    let toast_size = toast_win.outer_size().unwrap_or(tauri::PhysicalSize::new(380, 140));
-                                    
-                                    // Calculate bottom right position with 24px padding
-                                    let x = (size.width.saturating_sub(toast_size.width)).saturating_sub(24);
-                                    let y = (size.height.saturating_sub(toast_size.height)).saturating_sub(24);
-                                    
-                                    let _ = toast_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
-                                }
-                                let _ = toast_win.show();
-                            }
+                    // New distraction started
+                    current_distraction_app = app.clone();
+                    current_distraction_title = title.clone();
+                    current_distraction_duration = 1;
+                    current_distraction_id = None;
+                }
+                
+                // Show the toast reminder
+                if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                    if !toast_win.is_visible().unwrap_or(false) {
+                        // Get primary monitor
+                        if let Ok(Some(monitor)) = toast_win.primary_monitor() {
+                            let size = monitor.size();
+                            let toast_size = toast_win.outer_size().unwrap_or(tauri::PhysicalSize::new(380, 140));
                             
-                            #[derive(serde::Serialize, Clone)]
-                            struct DistractionPayload {
-                                title: String,
-                                duration: i64,
-                            }
-                            let _ = app_handle.emit("distraction-tick", DistractionPayload {
-                                title: title.clone(),
-                                duration: parent_duration,
-                            });
+                            // Calculate bottom right position with 24px padding
+                            let x = (size.width.saturating_sub(toast_size.width)).saturating_sub(24);
+                            let y = (size.height.saturating_sub(toast_size.height)).saturating_sub(24);
+                            
+                            let _ = toast_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
                         }
+                        let _ = toast_win.show();
                     }
+                    
+                    #[derive(serde::Serialize, Clone)]
+                    struct DistractionPayload {
+                        title: String,
+                        duration: i64,
+                    }
+                    let _ = app_handle.emit("distraction-tick", DistractionPayload {
+                        title: title.clone(),
+                        duration: current_distraction_duration,
+                    });
                 }
             } else {
                 current_distraction_app.clear();
                 current_distraction_title.clear();
+                current_distraction_duration = 0;
                 current_distraction_id = None;
 
                 if is_focus_mode_active {
-                    let mut has_shown = has_shown_fullscreen.lock().unwrap();
-                    *has_shown = false;
-                    
-                    if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
-                        if overlay_win.is_visible().unwrap_or(false) {
-                            let _ = overlay_win.hide();
-                        }
-                    }
                     if let Some(toast_win) = app_handle.get_webview_window("toast") {
                         if toast_win.is_visible().unwrap_or(false) {
                             let _ = toast_win.hide();
