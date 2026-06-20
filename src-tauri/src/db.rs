@@ -793,12 +793,21 @@ impl DbState {
         window_title: &str,
         interception_type: &str,
         interception_reason: &str,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO distraction_events (timestamp, app_name, window_title, interception_type, interception_reason, duration_blocked)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0)",
+             VALUES (?1, ?2, ?3, ?4, ?5, 1)",
             params![timestamp, app_name, window_title, interception_type, interception_reason],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_distraction_duration(&self, id: i64, added_duration: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE distraction_events SET duration_blocked = duration_blocked + ?1 WHERE id = ?2",
+            params![added_duration, id],
         )?;
         Ok(())
     }

@@ -370,6 +370,13 @@ fn hide_overlay(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn hide_toast(app: tauri::AppHandle) {
+    if let Some(toast_win) = app.get_webview_window("toast") {
+        let _ = toast_win.hide();
+    }
+}
+
+#[tauri::command]
 fn show_main(app: tauri::AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         let _ = main_win.show();
@@ -628,6 +635,7 @@ pub fn run() {
             add_distraction_rule,
             delete_distraction_rule,
             hide_overlay,
+            hide_toast,
             show_main
         ])
         .run(tauri::generate_context!())

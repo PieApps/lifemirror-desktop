@@ -282,9 +282,13 @@ pub fn start_window_tracker(
         let mut compiled_rules: Vec<(String, regex::Regex)> = Vec::new();
         let mut last_rule_check = std::time::Instant::now() - Duration::from_secs(10);
 
+        let mut current_distraction_app = String::new();
+        let mut current_distraction_title = String::new();
+        let mut current_distraction_id: Option<i64> = None;
+
         let llm_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>> = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
         let pending_evaluations: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
-        let last_overlay_time = Arc::new(std::sync::Mutex::new(std::time::Instant::now() - Duration::from_secs(60)));
+        let has_shown_fullscreen = Arc::new(std::sync::Mutex::new(false));
 
         let db_ref = db.clone();
         let flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
@@ -427,6 +431,8 @@ pub fn start_window_tracker(
             if app.is_empty() && title.is_empty() {
                 continue;
             }
+            
+            use tauri::{Manager, Emitter};
 
             // Distraction evaluation
             let mut is_distracted = false;
@@ -481,13 +487,8 @@ pub fn start_window_tracker(
                             let llm_cache_clone = llm_cache.clone();
                             let pending_clone = pending_evaluations.clone();
                             let title_clone = title.clone();
-                            let app_clone = app.clone();
-                            let app_handle_clone = app_handle.clone();
-                            let db_clone = db_ref.clone();
-                            let intention_clone = intention.clone();
                             let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
                             let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
-                            let overlay_time_clone = last_overlay_time.clone();
                             
                             std::thread::spawn(move || {
                                 let prompt = format!(
@@ -534,32 +535,8 @@ pub fn start_window_tracker(
                                 }
                                 
                                 if result_distracted {
-                                    use tauri::{Manager, Emitter};
-                                    let now_str = Utc::now().to_rfc3339();
-                                    let _ = db_clone.insert_distraction_event(
-                                        &now_str,
-                                        &app_clone,
-                                        &title_clone,
-                                        "LLM_EVALUATION",
-                                        &intention_clone
-                                    );
-                                    let mut should_show = false;
-                                    {
-                                        let mut last_time = overlay_time_clone.lock().unwrap();
-                                        if last_time.elapsed() > std::time::Duration::from_secs(30) {
-                                            should_show = true;
-                                            *last_time = std::time::Instant::now();
-                                        }
-                                    }
-                                    
-                                    if should_show {
-                                        if let Some(overlay_win) = app_handle_clone.get_webview_window("overlay") {
-                                            let _ = overlay_win.hide();
-                                            let _ = overlay_win.show();
-                                            let _ = overlay_win.set_focus();
-                                        }
-                                        let _ = app_handle_clone.emit("distraction-detected", &title_clone);
-                                    }
+                                    // The main synchronous loop will handle window visibility and logic 
+                                    // on the next 1-second tick when it reads the updated cache.
                                 }
                             });
                         }
@@ -568,41 +545,100 @@ pub fn start_window_tracker(
             }
 
             if is_distracted {
-                use tauri::{Manager, Emitter};
-                
-                if let (Some(dtype), Some(dreason)) = (distraction_type, distraction_reason) {
-                    let now_str = Utc::now().to_rfc3339();
-                    let _ = db_ref.insert_distraction_event(
-                        &now_str,
-                        &app,
-                        &title,
-                        &dtype,
-                        &dreason
-                    );
-                }
-                
-                let mut should_show = false;
-                {
-                    let mut last_time = last_overlay_time.lock().unwrap();
-                    if last_time.elapsed() > std::time::Duration::from_secs(30) {
-                        should_show = true;
-                        *last_time = std::time::Instant::now();
+                if app == current_distraction_app && title == current_distraction_title {
+                    if let Some(id) = current_distraction_id {
+                        let _ = db_ref.update_distraction_duration(id, 1);
+                    }
+                } else {
+                    if let (Some(dtype), Some(dreason)) = (distraction_type, distraction_reason) {
+                        let now_str = Utc::now().to_rfc3339();
+                        if let Ok(id) = db_ref.insert_distraction_event(
+                            &now_str,
+                            &app,
+                            &title,
+                            &dtype,
+                            &dreason
+                        ) {
+                            current_distraction_id = Some(id);
+                            current_distraction_app = app.clone();
+                            current_distraction_title = title.clone();
+                        }
                     }
                 }
                 
-                if should_show {
+                let mut should_show_overlay = false;
+                {
+                    let mut has_shown = has_shown_fullscreen.lock().unwrap();
+                    if !*has_shown {
+                        should_show_overlay = true;
+                        *has_shown = true;
+                    }
+                }
+                
+                if should_show_overlay {
                     if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
                         let _ = overlay_win.hide();
                         let _ = overlay_win.show();
                         let _ = overlay_win.set_focus();
                     }
+                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                        let _ = toast_win.hide();
+                    }
                     let _ = app_handle.emit("distraction-detected", &title);
+                } else {
+                    let is_overlay_visible = app_handle.get_webview_window("overlay")
+                        .map(|w| w.is_visible().unwrap_or(false))
+                        .unwrap_or(false);
+                        
+                    if !is_overlay_visible {
+                        if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                            if !toast_win.is_visible().unwrap_or(false) {
+                                // Get primary monitor
+                                if let Ok(Some(monitor)) = toast_win.primary_monitor() {
+                                    let size = monitor.size();
+                                    let toast_size = toast_win.outer_size().unwrap_or(tauri::PhysicalSize::new(380, 140));
+                                    
+                                    // Calculate bottom right position with 24px padding
+                                    let x = (size.width.saturating_sub(toast_size.width)).saturating_sub(24);
+                                    let y = (size.height.saturating_sub(toast_size.height)).saturating_sub(24);
+                                    
+                                    let _ = toast_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
+                                }
+                                let _ = toast_win.show();
+                            }
+                            
+                            #[derive(serde::Serialize, Clone)]
+                            struct DistractionPayload {
+                                title: String,
+                                duration: i64,
+                            }
+                            let _ = app_handle.emit("distraction-tick", DistractionPayload {
+                                title: title.clone(),
+                                duration: parent_duration,
+                            });
+                        }
+                    }
                 }
-            } else if is_focus_mode_active {
-                // If they are not distracted (productive), instantly clear the snooze timer 
-                // so they can be immediately warned if they drift off again.
-                let mut last_time = last_overlay_time.lock().unwrap();
-                *last_time = std::time::Instant::now() - std::time::Duration::from_secs(60);
+            } else {
+                current_distraction_app.clear();
+                current_distraction_title.clear();
+                current_distraction_id = None;
+
+                if is_focus_mode_active {
+                    let mut has_shown = has_shown_fullscreen.lock().unwrap();
+                    *has_shown = false;
+                    
+                    if let Some(overlay_win) = app_handle.get_webview_window("overlay") {
+                        if overlay_win.is_visible().unwrap_or(false) {
+                            let _ = overlay_win.hide();
+                        }
+                    }
+                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                        if toast_win.is_visible().unwrap_or(false) {
+                            let _ = toast_win.hide();
+                        }
+                    }
+                }
             }
 
             if parent_app.is_empty() {
