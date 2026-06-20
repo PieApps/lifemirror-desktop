@@ -244,14 +244,18 @@ ${compileContextRollup()}`;
     const loadSettings = async () => {
       try {
         const url = await invoke<string>("get_db_setting", { key: "ollama_url" });
-        if (url && url !== "false" && url.trim() !== "") {
+        if (url === "disabled") {
+          setOllamaUrl("");
+        } else if (url && url !== "false" && url.trim() !== "") {
           setOllamaUrl(url);
         } else {
           setOllamaUrl("http://localhost:11434");
         }
 
         const model = await invoke<string>("get_db_setting", { key: "ollama_model" });
-        if (model && model !== "false" && model.trim() !== "") {
+        if (model === "disabled") {
+          setOllamaModel("");
+        } else if (model && model !== "false" && model.trim() !== "") {
           setOllamaModel(model);
         } else {
           setOllamaModel("llama3.2");
@@ -343,7 +347,7 @@ ${compileContextRollup()}`;
   };
 
   const updateOllamaUrl = async (url: string) => {
-    const sanitizedUrl = url.trim() === "" || url.trim() === "false" || url.trim() === "null" ? "false" : url.trim();
+    const sanitizedUrl = url.trim() === "" || url.trim() === "false" || url.trim() === "null" || url.trim() === "disabled" ? "disabled" : url.trim();
     setOllamaUrl(url);
     try {
       await invoke("set_db_setting", { key: "ollama_url", value: sanitizedUrl });
@@ -353,7 +357,7 @@ ${compileContextRollup()}`;
   };
 
   const updateOllamaModel = async (model: string) => {
-    const sanitizedModel = model.trim() === "" || model.trim() === "false" || model.trim() === "null" ? "false" : model.trim();
+    const sanitizedModel = model.trim() === "" || model.trim() === "false" || model.trim() === "null" || model.trim() === "disabled" ? "disabled" : model.trim();
     setOllamaModel(model);
     try {
       await invoke("set_db_setting", { key: "ollama_model", value: sanitizedModel });

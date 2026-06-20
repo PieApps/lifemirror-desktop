@@ -80,10 +80,13 @@ fn trigger_background_reflection(db: Arc<DbState>) {
             summary_text
         );
 
-        let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
-        let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let mut ollama_model = db.get_setting("ollama_model").unwrap_or_default();
+        if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
 
-        if ollama_model.is_empty() || ollama_model == "false" || ollama_url.is_empty() || ollama_url == "false" {
+        let mut ollama_url = db.get_setting("ollama_url").unwrap_or_default();
+        if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
+
+        if ollama_model == "disabled" || ollama_url == "disabled" {
             println!("[Background AI] Ollama config is disabled or empty. Skipping reflection card generation.");
             return;
         }
@@ -126,10 +129,13 @@ fn trigger_background_reflection(db: Arc<DbState>) {
 
 #[tauri::command]
 pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) -> Result<Vec<String>, String> {
-    let ollama_model = state.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
-    let ollama_url = state.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let mut ollama_model = state.get_setting("ollama_model").unwrap_or_default();
+    if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
+
+    let mut ollama_url = state.get_setting("ollama_url").unwrap_or_default();
+    if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
     
-    if ollama_model.is_empty() || ollama_model == "false" || ollama_url.is_empty() || ollama_url == "false" {
+    if ollama_model == "disabled" || ollama_url == "disabled" {
         return Err("Ollama is disabled".to_string());
     }
 

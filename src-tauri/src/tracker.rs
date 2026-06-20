@@ -482,13 +482,18 @@ pub fn start_window_tracker(
                     } else {
                         let mut pending = pending_evaluations.lock().unwrap();
                         if !pending.contains(&cache_key) {
-                            pending.insert(cache_key.clone());
+                            let mut ollama_url = db.get_setting("ollama_url").unwrap_or_default();
+                            if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
                             
-                            let llm_cache_clone = llm_cache.clone();
-                            let pending_clone = pending_evaluations.clone();
-                            let title_clone = title.clone();
-                            let ollama_url = db.get_setting("ollama_url").unwrap_or_else(|_| "http://localhost:11434".to_string());
-                            let ollama_model = db.get_setting("ollama_model").unwrap_or_else(|_| "llama3.2".to_string());
+                            let mut ollama_model = db.get_setting("ollama_model").unwrap_or_default();
+                            if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
+
+                            if ollama_url != "disabled" && ollama_model != "disabled" {
+                                pending.insert(cache_key.clone());
+                                
+                                let llm_cache_clone = llm_cache.clone();
+                                let pending_clone = pending_evaluations.clone();
+                                let title_clone = title.clone();
                             
                             std::thread::spawn(move || {
                                 let prompt = format!(
@@ -539,6 +544,7 @@ pub fn start_window_tracker(
                                     // on the next 1-second tick when it reads the updated cache.
                                 }
                             });
+                            }
                         }
                     }
                 }
