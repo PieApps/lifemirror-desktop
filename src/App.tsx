@@ -145,8 +145,8 @@ function App() {
         .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)}`)
         .join("\n");
 
-      // Up to 200 chronological window focus transitions, including user journal notes
-      const chronologicalFocus = [...activities].slice(0, 200).reverse();
+      // Up to 50 chronological window focus transitions to prevent context overflow and hanging
+      const chronologicalFocus = [...activities].slice(0, 50).reverse();
       const recentFocus = chronologicalFocus
         .map((node) => {
           const time = new Date(node.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -156,7 +156,7 @@ function App() {
         .join("\n");
         
       // Also provide sub-session (browser tab) events chronologically to detect tab switching patterns
-      const chronologicalSubSessions = [...subSessionEvents].slice(0, 200).reverse();
+      const chronologicalSubSessions = [...subSessionEvents].slice(0, 50).reverse();
       const recentSubSessions = chronologicalSubSessions.length > 0 
         ? "\n\nDetailed Browser Tab Switching Events:\n" + chronologicalSubSessions
             .map((e) => {
@@ -670,10 +670,15 @@ ${compileContextRollup()}`;
   }, [activeAiTab]);
 
   const handleSendChat = async (overrideText?: string) => {
+    console.log("[DEBUG Chat Flow] Starting chat request with overrideText:", overrideText, "chatInput:", chatInput);
     const textToSend = (overrideText || chatInput).trim();
-    if (!textToSend || chatLoading) return;
+    if (!textToSend || chatLoading) {
+      console.log("[DEBUG Chat Flow] Skipping request because text is empty or already loading.");
+      return;
+    }
 
-    if (!ollamaUrl || ollamaUrl === "false" || !ollamaModel || ollamaModel === "false") {
+    if (!ollamaUrl || ollamaUrl === "false" || ollamaUrl === "disabled" || !ollamaModel || ollamaModel === "false" || ollamaModel === "disabled") {
+      console.log("[DEBUG Chat Flow] Skipping request because Ollama is disabled or incomplete. URL:", ollamaUrl, "Model:", ollamaModel);
       const errMsg = "Ollama is disabled or configuration is incomplete.";
       if (isIncognito) {
         setVolatileChatHistory(prev => [
@@ -691,6 +696,7 @@ ${compileContextRollup()}`;
       return;
     }
 
+    console.log("[DEBUG Chat Flow] Preparing to send request. URL:", ollamaUrl, "Model:", ollamaModel);
     setChatLoading(true);
     setChatInput("");
     abortControllerRef.current?.abort();
@@ -728,8 +734,11 @@ ${compileContextRollup()}`;
     scrollToBottom();
 
     try {
+      console.log("[DEBUG Chat Flow] Compiling messages for context...");
       const systemContext = compileMessagesForOllama(currentHistory);
+      console.log(`[DEBUG Chat Flow] Context generated with ${systemContext.length} messages.`);
 
+      console.log(`[DEBUG Chat Flow] Executing fetch request to ${ollamaUrl}/api/chat`);
       const response = await fetch(`${ollamaUrl}/api/chat`, {
         method: "POST",
         headers: {
@@ -739,9 +748,14 @@ ${compileContextRollup()}`;
           model: ollamaModel,
           messages: systemContext,
           stream: true,
+          options: {
+            num_ctx: 4096
+          }
         }),
         signal: abortControllerRef.current.signal,
       });
+
+      console.log(`[DEBUG Chat Flow] Fetch response received. Status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         let errorMsg = `HTTP status ${response.status}`;
@@ -760,17 +774,28 @@ ${compileContextRollup()}`;
       }
 
       if (!response.body) {
+        console.error("[DEBUG Chat Flow] Response body is null.");
         throw new Error("No response body received from Ollama server.");
       }
 
+      console.log("[DEBUG Chat Flow] Starting to read response stream.");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let accumulatedResponse = "";
+      let chunkCount = 0;
 
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log("[DEBUG Chat Flow] Stream reading completed.");
+          break;
+        }
+
+        chunkCount++;
+        if (chunkCount === 1) {
+          console.log("[DEBUG Chat Flow] First data chunk received from stream.");
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -814,11 +839,14 @@ ${compileContextRollup()}`;
 
       // Finalize non-incognito message in SQLite
       if (!isIncognito) {
+        console.log("[DEBUG Chat Flow] Finalizing message to local database.");
         await invoke("add_chat_message", { date: selectedDate, role: "assistant", content: accumulatedResponse });
         const finalizedHistory = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
         setChatMessages(finalizedHistory);
       }
+      console.log("[DEBUG Chat Flow] Chat request finished successfully.");
     } catch (err: any) {
+      console.error("[DEBUG Chat Flow] Caught error during request:", err);
       if (err.name === "AbortError") {
         console.log("Chat stream request aborted.");
         return;
