@@ -1,18 +1,20 @@
 import React from "react";
-import { Search, ExternalLink, Calendar, Loader2 } from "lucide-react";
-import type { ActivityNode } from "../types";
+import { Search, ExternalLink, Calendar, Loader2, Brain } from "lucide-react";
+import type { ActivityNode, MemoryNode } from "../types";
 
 interface SearchResultsOverlayProps {
   searchQuery: string;
   searchResults: ActivityNode[];
+  memoryResults: MemoryNode[];
   isSearching: boolean;
-  onResultClick: (activity: ActivityNode) => void;
+  onResultClick: (activity: ActivityNode | MemoryNode) => void;
   onClose: () => void;
 }
 
 export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
   searchQuery,
   searchResults,
+  memoryResults,
   isSearching,
   onResultClick,
   onClose,
@@ -31,7 +33,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
             <Search className="w-4 h-4 text-[var(--text-muted)]" />
           )}
           <span className="text-sm font-semibold text-[var(--text-color)]">
-            {searchResults.length} results for "{searchQuery}"
+            {searchResults.length + memoryResults.length} results for "{searchQuery}"
           </span>
         </div>
         <button 
@@ -44,12 +46,62 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
 
       {/* Results List */}
       <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
-        {searchResults.length === 0 && !isSearching ? (
+        {searchResults.length === 0 && memoryResults.length === 0 && !isSearching ? (
           <div className="p-8 text-center text-[var(--text-muted)] text-sm">
             No matches found in your historical timeline.
           </div>
         ) : (
           <div className="flex flex-col gap-1">
+            {/* Semantic Memory Results Section */}
+            {memoryResults.length > 0 && (
+              <div className="mb-2">
+                <div className="text-xs font-bold text-violet-500 uppercase tracking-wider mb-2 px-2 flex items-center gap-1.5">
+                  <Brain className="w-3.5 h-3.5" />
+                  Semantic Memories
+                </div>
+                {memoryResults.map((mem, index) => {
+                  const d = new Date(mem.timestamp);
+                  const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                  return (
+                    <button
+                      key={`mem-${mem.id || index}-${mem.timestamp}`}
+                      onClick={() => onResultClick(mem)}
+                      className="flex flex-col text-left p-3 rounded-xl bg-violet-500/5 hover:bg-violet-500/15 transition-colors border border-violet-500/20 hover:border-violet-500/40 group cursor-pointer w-full mb-1"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <Brain className="w-4 h-4 text-violet-400" />
+                          <span className="text-sm font-bold text-[var(--text-color)] truncate max-w-[200px]">
+                            {mem.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-mono text-[var(--text-muted)] group-hover:text-violet-400 transition-colors">
+                          <Calendar className="w-3 h-3" />
+                          {dateStr}
+                        </div>
+                      </div>
+                      
+                      {mem.summary && (
+                        <span className="text-xs text-[var(--text-muted)] line-clamp-2 mb-1.5 leading-relaxed">
+                          {mem.summary}
+                        </span>
+                      )}
+
+                      <div className="absolute right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ExternalLink className="w-4 h-4 text-violet-400" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Raw Activity Results Section */}
+            {searchResults.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 mt-4 px-2">
+                  Raw Activities
+                </div>
             {searchResults.map((act, index) => {
               const d = new Date(act.start_time);
               const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -98,6 +150,8 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
                 </button>
               );
             })}
+              </div>
+            )}
           </div>
         )}
       </div>

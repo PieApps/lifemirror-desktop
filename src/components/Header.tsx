@@ -4,7 +4,7 @@ import {
 } from "lucide-react";
 import { useSearch } from "../hooks/useSearch";
 import { SearchResultsOverlay } from "./SearchResultsOverlay";
-import type { ActivityNode } from "../types";
+import type { ActivityNode, MemoryNode } from "../types";
 
 interface HeaderProps {
   theme: "dark" | "light";
@@ -13,7 +13,7 @@ interface HeaderProps {
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
   onRefresh: () => void;
-  onSearchSelect: (activity: ActivityNode) => void;
+  onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -58,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
         <SearchResultsOverlay
           searchQuery={search.searchQuery}
           searchResults={search.searchResults}
+          memoryResults={search.memoryResults}
           isSearching={search.isSearching}
           onResultClick={(act) => {
             search.setSearchQuery("");

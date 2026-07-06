@@ -6,7 +6,7 @@ import { SCurveTimeline } from "./SCurveTimeline";
 import { WeeklyView } from "./WeeklyView";
 import { MonthlyView } from "./MonthlyView";
 import { ExportJournalModal } from "./ExportJournalModal";
-import type { ActivityNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric } from "../types";
+import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric } from "../types";
 import { getWeekRange } from "../hooks/useActivityData";
 import type { ProductivityMetrics } from "../services/analytics";
 
@@ -23,6 +23,7 @@ interface TimelinePanelProps {
   isNextDisabled: () => boolean;
 
   // Data
+  memoryNodes: MemoryNode[];
   activities: ActivityNode[];
   subSessionEvents: SubSessionEvent[];
   distractionEvents: DistractionEvent[];
@@ -55,6 +56,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   handlePrevPeriod,
   handleNextPeriod,
   isNextDisabled,
+  memoryNodes,
   activities,
   subSessionEvents,
   distractionEvents,
@@ -211,6 +213,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         
         {viewMode === "daily" ? (
           <SCurveTimeline 
+            memoryNodes={memoryNodes}
             activities={[...activities].reverse()} 
             subSessionEvents={subSessionEvents}
             distractionEvents={distractionEvents}

@@ -1,6 +1,7 @@
 use rusqlite::{functions::FunctionFlags, params, Connection, Result};
 use std::path::Path;
 use std::sync::Mutex;
+use crate::memory_engine::collector::NormalizedEvent;
 
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +81,58 @@ pub struct DistractionEvent {
     pub interception_reason: String,
     pub duration_blocked: i64,
     pub action_taken: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryNode {
+    pub id: Option<i64>,
+    pub title: String,
+    pub summary: Option<String>,
+    pub node_type: String,
+    pub importance_score: f64,
+    pub confidence: f64,
+    pub embedding_id: Option<i64>,
+    pub status: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Project {
+    pub id: Option<i64>,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Repository {
+    pub id: Option<i64>,
+    pub path_or_url: String,
+    pub name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FileEntity {
+    pub id: Option<i64>,
+    pub file_path: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Website {
+    pub id: Option<i64>,
+    pub domain: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Technology {
+    pub id: Option<i64>,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryEmbedding {
+    pub id: Option<i64>,
+    pub embedding_blob: Vec<u8>,
 }
 
 pub fn extract_domain(url: &str) -> String {
@@ -170,22 +223,20 @@ impl DbState {
                 source TEXT NOT NULL,
                 url TEXT,
                 icon_url TEXT,
-                domain_tag TEXT
+                domain_tag TEXT,
+                notes TEXT,
+                processed BOOLEAN NOT NULL DEFAULT 0
             );",
             [],
         )?;
-
-        // Ensure newer columns are present for backward compatibility
-        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN icon_url TEXT;", []);
-        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN domain_tag TEXT;", []);
-        let _ = conn.execute("ALTER TABLE activity_logs ADD COLUMN notes TEXT;", []);
 
         // Create journal_entries table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS journal_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
-                notes TEXT NOT NULL
+                notes TEXT NOT NULL,
+                processed BOOLEAN NOT NULL DEFAULT 0
             );",
             [],
         )?;
@@ -287,82 +338,168 @@ impl DbState {
             [],
         )?;
 
-        // Migration from browser_tab_events to sub_session_events
-        let table_exists: i64 = conn
-            .query_row(
-                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='sub_session_events';",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sub_session_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_type TEXT NOT NULL,
+                parent_app_name TEXT,
+                title TEXT NOT NULL,
+                primary_uri TEXT,
+                icon_url TEXT,
+                context_tag TEXT,
+                metadata TEXT,
+                timestamp TEXT NOT NULL,
+                processed BOOLEAN NOT NULL DEFAULT 0
+            );",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);",
+            [],
+        )?;
 
-        if table_exists == 0 {
-            let old_exists: i64 = conn
-                .query_row(
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='browser_tab_events';",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
+        // --- Memory Graph Schema ---
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS memory_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                summary TEXT,
+                node_type TEXT NOT NULL,
+                importance_score REAL NOT NULL DEFAULT 0.0,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                embedding_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'raw',
+                timestamp TEXT NOT NULL
+            );",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_memory_nodes_timestamp ON memory_nodes (timestamp);",
+            [],
+        )?;
 
-            if old_exists > 0 {
-                let _ = conn.execute("ALTER TABLE browser_tab_events RENAME TO sub_session_events;", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN url TO primary_uri;", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN favicon_url TO icon_url;", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN domain TO context_tag;", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events RENAME COLUMN browser_name TO parent_app_name;", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN session_type TEXT DEFAULT 'Browser';", []);
-                let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN metadata TEXT;", []);
-                let _ = conn.execute("DROP INDEX IF EXISTS idx_browser_tab_events_timestamp;", []);
-                let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);", []);
-            } else {
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS sub_session_events (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        session_type TEXT NOT NULL,
-                        parent_app_name TEXT,
-                        title TEXT NOT NULL,
-                        primary_uri TEXT,
-                        icon_url TEXT,
-                        context_tag TEXT,
-                        metadata TEXT,
-                        timestamp TEXT NOT NULL
-                    );",
-                    [],
-                )?;
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);",
-                    [],
-                )?;
-            }
-        }
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS memory_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                embedding_blob BLOB NOT NULL,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                dimensions INTEGER NOT NULL
+            );",
+            [],
+        )?;
 
-        // One-time database migration from activity_logs to browser_tab_events
-        let migration_done: String = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'migration_tab_events_done'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or_else(|_| "false".to_string());
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                created_at TEXT NOT NULL
+            );",
+            [],
+        )?;
 
-        if migration_done != "true" {
-            let _ = conn.execute(
-                "INSERT INTO sub_session_events (session_type, parent_app_name, title, primary_uri, icon_url, context_tag, timestamp)
-                 SELECT 'Browser', app_name, window_title, url, icon_url, domain_tag, start_time
-                 FROM activity_logs
-                 WHERE source = 'Browser' AND duration <= 1 AND url IS NOT NULL;",
-                [],
-            );
-            let _ = conn.execute(
-                "DELETE FROM activity_logs WHERE source = 'Browser' AND duration <= 1;",
-                [],
-            );
-            let _ = conn.execute(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_tab_events_done', 'true');",
-                [],
-            );
-        }
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS repositories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_or_url TEXT NOT NULL UNIQUE,
+                name TEXT
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS websites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS technologies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+
+        // Edge tables
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_projects (
+                node_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (node_id, project_id)
+            );",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS session_activities (
+                node_id INTEGER NOT NULL,
+                raw_id INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                PRIMARY KEY (node_id, raw_id, source)
+            );",
+            [],
+        )?;
+        
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_entities (
+                node_id INTEGER NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                PRIMARY KEY (node_id, entity_type, entity_id)
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_repositories (
+                node_id INTEGER NOT NULL,
+                repository_id INTEGER NOT NULL,
+                PRIMARY KEY (node_id, repository_id)
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_files (
+                node_id INTEGER NOT NULL,
+                file_id INTEGER NOT NULL,
+                PRIMARY KEY (node_id, file_id)
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_websites (
+                node_id INTEGER NOT NULL,
+                website_id INTEGER NOT NULL,
+                PRIMARY KEY (node_id, website_id)
+            );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS node_technologies (
+                node_id INTEGER NOT NULL,
+                technology_id INTEGER NOT NULL,
+                confidence REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (node_id, technology_id)
+            );",
+            [],
+        )?;
 
         Ok(())
     }
@@ -560,6 +697,217 @@ impl DbState {
         Ok(entries)
     }
 
+    pub fn get_journal_entries_for_day(&self, date: &str) -> Result<Vec<JournalEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp, notes
+             FROM journal_entries
+             WHERE date(timestamp, 'localtime') = ?1
+             ORDER BY timestamp ASC",
+        )?;
+        let entry_iter = stmt.query_map([date], |row| {
+            Ok(JournalEntry {
+                id: Some(row.get(0)?),
+                timestamp: row.get(1)?,
+                notes: row.get(2)?,
+            })
+        })?;
+
+        let mut entries = Vec::new();
+        for entry in entry_iter {
+            entries.push(entry?);
+        }
+        Ok(entries)
+    }
+
+    pub fn insert_memory_node(&self, node: &MemoryNode) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "INSERT INTO memory_nodes (title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+        )?;
+        let row_id = stmt.insert(params![
+            node.title,
+            node.summary,
+            node.node_type,
+            node.importance_score,
+            node.confidence,
+            node.embedding_id,
+            node.status,
+            node.timestamp
+        ])?;
+        Ok(row_id)
+    }
+
+    pub fn insert_memory_embedding(&self, blob: &[u8], provider: &str, model_name: &str, dimensions: i64) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "INSERT INTO memory_embeddings (embedding_blob, provider, model_name, dimensions)
+             VALUES (?1, ?2, ?3, ?4)"
+        )?;
+        let row_id = stmt.insert(params![blob, provider, model_name, dimensions])?;
+        Ok(row_id)
+    }
+
+    pub fn update_memory_node_embedding(&self, node_id: i64, embedding_id: i64, status: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "UPDATE memory_nodes 
+             SET embedding_id = ?1, status = ?2 
+             WHERE id = ?3"
+        )?;
+        stmt.execute(params![embedding_id, status, node_id])?;
+        Ok(())
+    }
+
+    pub fn persist_built_sessions(&self, sessions: Vec<(MemoryNode, Vec<NormalizedEvent>)>) -> Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+
+        {
+            let mut insert_node = tx.prepare(
+                "INSERT INTO memory_nodes (title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+            )?;
+            let mut insert_activity = tx.prepare(
+                "INSERT OR IGNORE INTO session_activities (node_id, raw_id, source) VALUES (?1, ?2, ?3)"
+            )?;
+            let mut mark_os = tx.prepare("UPDATE activity_logs SET processed = 1 WHERE id = ?1")?;
+            let mut mark_browser = tx.prepare("UPDATE sub_session_events SET processed = 1 WHERE id = ?1")?;
+            let mut mark_journal = tx.prepare("UPDATE journal_entries SET processed = 1 WHERE id = ?1")?;
+
+            for (node, events) in sessions {
+                let node_id = insert_node.insert(params![
+                    node.title,
+                    node.summary,
+                    node.node_type,
+                    node.importance_score,
+                    node.confidence,
+                    node.embedding_id,
+                    node.status,
+                    node.timestamp
+                ])?;
+
+                for event in events {
+                    insert_activity.execute(params![node_id, event.raw_id, &event.source])?;
+                    match event.source.as_str() {
+                        "os" => { mark_os.execute([event.raw_id])?; },
+                        "browser" => { mark_browser.execute([event.raw_id])?; },
+                        "journal" => { mark_journal.execute([event.raw_id])?; },
+                        _ => {}
+                    }
+                }
+            }
+        }
+        
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_session_events(&self, node_id: i64) -> Result<Vec<NormalizedEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut events = Vec::new();
+
+        // 1. Fetch OS events
+        let mut os_stmt = conn.prepare(
+            "SELECT a.id, a.start_time, a.duration, a.app_name, a.window_title 
+             FROM activity_logs a
+             JOIN session_activities sa ON sa.raw_id = a.id AND sa.source = 'os'
+             WHERE sa.node_id = ?1"
+        )?;
+        let os_iter = os_stmt.query_map([node_id], |row| {
+            Ok(NormalizedEvent {
+                id: None,
+                source: "os".to_string(),
+                timestamp: row.get(1)?,
+                duration: row.get(2)?,
+                context: row.get(3)?,
+                detail: row.get(4)?,
+                raw_id: row.get(0)?,
+            })
+        })?;
+        for e in os_iter { events.push(e?); }
+
+        // 2. Fetch Browser events
+        let mut browser_stmt = conn.prepare(
+            "SELECT b.id, b.timestamp, b.parent_app_name, b.title, b.primary_uri
+             FROM sub_session_events b
+             JOIN session_activities sa ON sa.raw_id = b.id AND sa.source = 'browser'
+             WHERE sa.node_id = ?1"
+        )?;
+        let browser_iter = browser_stmt.query_map([node_id], |row| {
+            let parent_app: Option<String> = row.get(2)?;
+            let uri: Option<String> = row.get(4)?;
+            let context = format!("{} ({})", parent_app.unwrap_or_default(), uri.unwrap_or_default());
+            
+            Ok(NormalizedEvent {
+                id: None,
+                source: "browser".to_string(),
+                timestamp: row.get(1)?,
+                duration: 60,
+                context,
+                detail: row.get(3)?,
+                raw_id: row.get(0)?,
+            })
+        })?;
+        for e in browser_iter { events.push(e?); }
+
+        // 3. Fetch Journal events
+        let mut journal_stmt = conn.prepare(
+            "SELECT j.id, j.timestamp, j.notes
+             FROM journal_entries j
+             JOIN session_activities sa ON sa.raw_id = j.id AND sa.source = 'journal'
+             WHERE sa.node_id = ?1"
+        )?;
+        let journal_iter = journal_stmt.query_map([node_id], |row| {
+            Ok(NormalizedEvent {
+                id: None,
+                source: "journal".to_string(),
+                timestamp: row.get(1)?,
+                duration: 0,
+                context: "Journal Entry".to_string(),
+                detail: row.get(2)?,
+                raw_id: row.get(0)?,
+            })
+        })?;
+        for e in journal_iter { events.push(e?); }
+
+        // Sort chronologically
+        events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        Ok(events)
+    }
+
+    pub fn get_nodes_by_status(&self, status: &str, limit: i64) -> Result<Vec<MemoryNode>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+             FROM memory_nodes
+             WHERE status = ?1
+             ORDER BY timestamp ASC
+             LIMIT ?2"
+        )?;
+        
+        let iter = stmt.query_map(params![status, limit], |row| {
+            Ok(MemoryNode {
+                id: Some(row.get(0)?),
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+            })
+        })?;
+
+        let mut nodes = Vec::new();
+        for n in iter {
+            nodes.push(n?);
+        }
+        Ok(nodes)
+    }
+
     pub fn run_daily_rollup(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -676,6 +1024,170 @@ impl DbState {
             logs.push(log?);
         }
         Ok(logs)
+    }
+
+    pub fn get_memory_nodes_for_day(&self, date: &str) -> Result<Vec<MemoryNode>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+             FROM memory_nodes
+             WHERE date(timestamp, 'localtime') = ?1
+             ORDER BY timestamp DESC;",
+        )?;
+
+        let iter = stmt.query_map([date], |row| {
+            Ok(MemoryNode {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+            })
+        })?;
+
+        let mut nodes = Vec::new();
+        for node in iter {
+            nodes.push(node?);
+        }
+        Ok(nodes)
+    }
+
+    pub fn get_activities_for_node(&self, node_id: i64) -> Result<Vec<ActivityLog>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.app_name, a.window_title, a.start_time, a.duration, a.source, a.url, a.icon_url, a.domain_tag, a.notes
+             FROM activity_logs a
+             JOIN session_activities sa ON a.id = sa.raw_id
+             WHERE sa.node_id = ?1 AND sa.source = 'os'
+             ORDER BY a.start_time ASC",
+        )?;
+
+        let iter = stmt.query_map([node_id], |row| {
+            Ok(ActivityLog {
+                id: Some(row.get(0)?),
+                app_name: row.get(1)?,
+                window_title: row.get(2)?,
+                start_time: row.get(3)?,
+                duration: row.get(4)?,
+                source: row.get(5)?,
+                url: row.get(6)?,
+                icon_url: row.get(7)?,
+                domain_tag: row.get(8)?,
+                notes: row.get(9)?,
+            })
+        })?;
+
+        let mut logs = Vec::new();
+        for log in iter {
+            logs.push(log?);
+        }
+        Ok(logs)
+    }
+
+    pub fn get_sub_events_for_node(&self, node_id: i64) -> Result<Vec<crate::db::SubSessionEvent>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp
+             FROM sub_session_events s
+             JOIN session_activities sa ON s.id = sa.raw_id
+             WHERE sa.node_id = ?1 AND sa.source = 'browser'
+             ORDER BY s.timestamp ASC",
+        )?;
+
+        let iter = stmt.query_map([node_id], |row| {
+            Ok(crate::db::SubSessionEvent {
+                id: Some(row.get(0)?),
+                session_type: row.get(1)?,
+                parent_app_name: row.get(2)?,
+                title: row.get(3)?,
+                primary_uri: row.get(4)?,
+                icon_url: row.get(5)?,
+                context_tag: row.get(6)?,
+                metadata: row.get(7)?,
+                timestamp: row.get(8)?,
+            })
+        })?;
+
+        let mut events = Vec::new();
+        for ev in iter {
+            events.push(ev?);
+        }
+        Ok(events)
+    }
+
+    pub fn search_memory_nodes(&self, query: &str, limit: i64) -> Result<Vec<MemoryNode>> {
+        let conn = self.conn.lock().unwrap();
+        let search_pattern = format!("%{}%", query);
+        let mut stmt = conn.prepare(
+            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+             FROM memory_nodes
+             WHERE title LIKE ?1 OR summary LIKE ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2;",
+        )?;
+
+        let iter = stmt.query_map(params![search_pattern, limit], |row| {
+            Ok(MemoryNode {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+            })
+        })?;
+
+        let mut nodes = Vec::new();
+        for node in iter {
+            nodes.push(node?);
+        }
+        Ok(nodes)
+    }
+
+    pub fn get_all_embedded_nodes(&self) -> Result<Vec<(MemoryNode, Vec<f32>)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT n.id, n.title, n.summary, n.node_type, n.importance_score, n.confidence, n.embedding_id, n.status, n.timestamp, e.embedding_blob
+             FROM memory_nodes n
+             JOIN memory_embeddings e ON n.embedding_id = e.id
+             WHERE n.embedding_id IS NOT NULL",
+        )?;
+
+        let iter = stmt.query_map([], |row| {
+            let blob: Vec<u8> = row.get(9)?;
+            let mut vector = Vec::with_capacity(blob.len() / 4);
+            for chunk in blob.chunks_exact(4) {
+                let bytes: [u8; 4] = [chunk[0], chunk[1], chunk[2], chunk[3]];
+                vector.push(f32::from_le_bytes(bytes));
+            }
+
+            let node = MemoryNode {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+            };
+            
+            Ok((node, vector))
+        })?;
+
+        let mut results = Vec::new();
+        for res in iter {
+            results.push(res?);
+        }
+        Ok(results)
     }
 
     pub fn get_chat_messages_for_day(&self, date: &str) -> Result<Vec<ChatMessage>> {

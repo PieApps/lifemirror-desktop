@@ -1,16 +1,18 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityNode } from "../types";
+import type { ActivityNode, MemoryNode } from "../types";
 
 export function useSearch() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ActivityNode[]>([]);
+  const [memoryResults, setMemoryResults] = useState<MemoryNode[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     // If the query is too short, clear results immediately
     if (searchQuery.trim().length < 2) {
       setSearchResults([]);
+      setMemoryResults([]);
       setIsSearching(false);
       return;
     }
@@ -20,14 +22,29 @@ export function useSearch() {
     // Debounce the search invocation by 300ms
     const timer = setTimeout(async () => {
       try {
-        const results = await invoke<ActivityNode[]>("search_activities", {
-          query: searchQuery.trim(),
-          limit: 50, // Hard limit of 50 results to prevent overwhelming the UI
-        });
-        setSearchResults(results);
+        const query = searchQuery.trim();
+        
+        const [rawResultsResult, memoryResultsResult] = await Promise.allSettled([
+          invoke<ActivityNode[]>("search_activities", { query, limit: 30 }),
+          invoke<MemoryNode[]>("search_memory_nodes", { query, limit: 5 })
+        ]);
+
+        if (rawResultsResult.status === "fulfilled") {
+          setSearchResults(rawResultsResult.value);
+        } else {
+          console.error("Raw search failed:", rawResultsResult.reason);
+          setSearchResults([]);
+        }
+
+        if (memoryResultsResult.status === "fulfilled") {
+          setMemoryResults(memoryResultsResult.value);
+        } else {
+          console.error("Memory search failed:", memoryResultsResult.reason);
+          setMemoryResults([]);
+        }
+
       } catch (err) {
         console.error("Search failed:", err);
-        setSearchResults([]);
       } finally {
         setIsSearching(false);
       }
@@ -40,6 +57,7 @@ export function useSearch() {
     searchQuery,
     setSearchQuery,
     searchResults,
+    memoryResults,
     isSearching,
   };
 }

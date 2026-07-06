@@ -4,6 +4,7 @@ pub mod db;
 pub mod native_msg;
 pub mod tracker;
 pub mod window_provider;
+pub mod memory_engine;
 
 use db::{ActivityLog, ChatMessage, DailySummary, DbState, HourlyMetric, JournalEntry};
 use std::path::PathBuf;
@@ -284,6 +285,84 @@ fn get_daily_activities(
     state
         .get_raw_activities_for_day(&date)
         .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+pub struct FrontendMemoryNode {
+    #[serde(flatten)]
+    pub node: db::MemoryNode,
+    pub activities: Vec<db::ActivityLog>,
+    pub sub_events: Vec<db::SubSessionEvent>,
+}
+
+#[tauri::command]
+#[allow(dead_code)]
+fn get_memory_nodes_for_day(
+    state: State<'_, Arc<DbState>>,
+    date: String,
+) -> Result<Vec<FrontendMemoryNode>, String> {
+    let nodes = state.get_memory_nodes_for_day(&date).map_err(|e| e.to_string())?;
+    let mut frontend_nodes = Vec::new();
+    for node in nodes {
+        let node_id = node.id.unwrap_or(0);
+        let activities = state.get_activities_for_node(node_id).unwrap_or_default();
+        let sub_events = state.get_sub_events_for_node(node_id).unwrap_or_default();
+        frontend_nodes.push(FrontendMemoryNode { node, activities, sub_events });
+    }
+    Ok(frontend_nodes)
+}
+
+#[tauri::command]
+#[allow(dead_code)]
+async fn search_memory_nodes(
+    state: State<'_, Arc<DbState>>,
+    query: String,
+    limit: i64,
+) -> Result<Vec<FrontendMemoryNode>, String> {
+    use ai_ipc::OllamaProvider;
+    use memory_engine::retriever::Retriever;
+    let provider = OllamaProvider { db: state.inner().clone() };
+    match provider.embed(&query).await {
+        Ok((query_vector, _, _)) => {
+            let retriever = Retriever::new(state.inner().clone());
+            match retriever.retrieve(&query_vector, limit as usize).await {
+                Ok(scored_nodes) => {
+                    let mut frontend_nodes = Vec::new();
+                    for (node, _score) in scored_nodes {
+                        let node_id = node.id.unwrap_or(0);
+                        let activities = state.get_activities_for_node(node_id).unwrap_or_default();
+                        let sub_events = state.get_sub_events_for_node(node_id).unwrap_or_default();
+                        frontend_nodes.push(FrontendMemoryNode { node, activities, sub_events });
+                    }
+                    Ok(frontend_nodes)
+                },
+                Err(e) => {
+                    println!("[search_memory_nodes] Semantic retrieval failed: {}. Falling back to SQL LIKE.", e);
+                    let nodes = state.search_memory_nodes(&query, limit).map_err(|e| e.to_string())?;
+                    let mut frontend_nodes = Vec::new();
+                    for node in nodes {
+                        let node_id = node.id.unwrap_or(0);
+                        let activities = state.get_activities_for_node(node_id).unwrap_or_default();
+                        let sub_events = state.get_sub_events_for_node(node_id).unwrap_or_default();
+                        frontend_nodes.push(FrontendMemoryNode { node, activities, sub_events });
+                    }
+                    Ok(frontend_nodes)
+                }
+            }
+        },
+        Err(e) => {
+            println!("[search_memory_nodes] Embedding failed: {}. Falling back to SQL LIKE.", e);
+            let nodes = state.search_memory_nodes(&query, limit).map_err(|e| e.to_string())?;
+            let mut frontend_nodes = Vec::new();
+            for node in nodes {
+                let node_id = node.id.unwrap_or(0);
+                let activities = state.get_activities_for_node(node_id).unwrap_or_default();
+                let sub_events = state.get_sub_events_for_node(node_id).unwrap_or_default();
+                frontend_nodes.push(FrontendMemoryNode { node, activities, sub_events });
+            }
+            Ok(frontend_nodes)
+        }
+    }
 }
 
 #[tauri::command]
@@ -584,6 +663,11 @@ pub fn run() {
 
     // Spawn background idle state AI daily reflection builder
     ai::start_idle_ai_summarizer(db_arc.clone());
+    
+    // Spawn Memory Engine Background Queue
+    crate::memory_engine::queue::MemoryQueue::new(db_arc.clone()).start();
+
+    let db_arc_setup = db_arc.clone();
 
     // Build and run the Tauri app
     tauri::Builder::default()
@@ -596,6 +680,25 @@ pub fn run() {
             // Setup system tray menu and states
             let tray_menu_state = setup_system_tray(app)?;
             app.manage(tray_menu_state);
+
+            let app_handle = app.handle().clone();
+            let db_for_setup = db_arc_setup.clone();
+            tauri::async_runtime::spawn(async move {
+                let provider = ai_ipc::OllamaProvider { db: db_for_setup.clone() };
+                match provider.check_embedding_model_installed().await {
+                    Ok(true) => {},
+                    Ok(false) => {
+                        let mut model = db_for_setup.get_setting("ollama_embedding_model").unwrap_or_default();
+                        if model.is_empty() || model == "false" { model = "nomic-embed-text".to_string(); }
+                        let _ = app_handle.emit("embedding-model-missing", serde_json::json!({
+                            "model": model
+                        }));
+                    },
+                    Err(e) => {
+                        println!("[Startup] Failed to check Ollama embedding model: {}", e);
+                    }
+                }
+            });
 
             let app_handle = app.handle().clone();
             // Spawn OS window focus tracker background loop
@@ -655,6 +758,8 @@ pub fn run() {
             is_tracking_active,
             get_current_activity,
             get_daily_activities,
+            get_memory_nodes_for_day,
+            search_memory_nodes,
             get_weekly_summary,
             get_monthly_summary,
             get_hourly_heatmap,

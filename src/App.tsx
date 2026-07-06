@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useSettings } from "./hooks/useSettings";
 import { useActivityData } from "./hooks/useActivityData";
 import { useFocus } from "./hooks/useFocus";
@@ -39,10 +40,20 @@ function App() {
     return computeMetrics(data.activities, data.distractionEvents, focus.activeIntention);
   }, [data.activities, data.distractionEvents, focus.activeIntention]);
 
+  const [missingModel, setMissingModel] = useState<string | null>(null);
+
   // Load persisted intention and reflection on mount
   useEffect(() => {
     focus.loadIntention();
     ollama.loadReflection();
+
+    const unlisten = listen('embedding-model-missing', (event: any) => {
+      setMissingModel(event.payload.model);
+    });
+
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   return (
@@ -54,8 +65,28 @@ function App() {
         showSettings={settings.showSettings}
         setShowSettings={settings.setShowSettings}
         onRefresh={data.loadData}
-        onSearchSelect={data.setSelectedActivity}
+        onSearchSelect={(node) => {
+          const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
+          const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
+          data.setSelectedDate(dateStr);
+          data.setViewMode("daily");
+        }}
       />
+
+      {missingModel && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 text-center text-sm shadow-inner relative">
+          <p className="font-semibold mb-1">Semantic Search Unavailable: Missing Ollama Model</p>
+          <p className="opacity-90 max-w-2xl mx-auto">
+            To enable intelligent global search, please run <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono select-all">ollama pull {missingModel}</code> in your terminal.
+          </p>
+          <button 
+            onClick={() => setMissingModel(null)}
+            className="absolute top-3 right-4 text-xs font-semibold hover:text-amber-500 transition-colors"
+          >
+            ✕ DISMISS
+          </button>
+        </div>
+      )}
 
       {/* Main Grid Layout */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -68,6 +99,7 @@ function App() {
           handleNextPeriod={data.handleNextPeriod}
           isNextDisabled={data.isNextDisabled}
           activities={data.activities}
+          memoryNodes={data.memoryNodes}
           subSessionEvents={data.subSessionEvents}
           distractionEvents={data.distractionEvents}
           weeklySummaries={data.weeklySummaries}
@@ -129,12 +161,12 @@ function App() {
         </div>
       </div>
 
-      {/* Manual Reflection Journal Overlay */}
-      {data.selectedActivity && (
+      {/* Modals */}
+      {data.selectedActivity && 'app_name' in data.selectedActivity && (
         <JournalModal
-          activity={data.selectedActivity}
-          onClose={() => data.setSelectedActivity(null)}
+          activity={data.selectedActivity as ActivityNode}
           onSave={data.handleSaveJournal}
+          onClose={() => data.setSelectedActivity(null)}
         />
       )}
     </div>

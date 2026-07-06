@@ -5,6 +5,8 @@ import {
   Trash2, Video, ChevronDown, ChevronUp, ExternalLink, ShieldAlert
 } from "lucide-react";
 
+import { MemoryNode } from "../types";
+
 export interface ActivityNode {
   id: number;
   app_name: string;
@@ -42,6 +44,7 @@ export interface SubSessionEvent {
 }
 
 interface SCurveTimelineProps {
+  memoryNodes?: MemoryNode[];
   activities: ActivityNode[];
   subSessionEvents: SubSessionEvent[];
   distractionEvents: DistractionEvent[];
@@ -66,6 +69,8 @@ export interface TimelineNode {
   isShield?: boolean;
   distractionEvent?: DistractionEvent;
   distractionEvents?: DistractionEvent[];
+  isMemoryNode?: boolean;
+  memoryData?: MemoryNode;
 }
 
 // Brand SVG Icons
@@ -274,6 +279,9 @@ const AppIcon: React.FC<AppIconProps> = ({ appName, url, iconUrl, domainTag, sou
       } else {
         mainIcon = <Globe className="w-full h-full text-blue-500" />;
       }
+    } else if (nameLower === "ai memory" || nameLower === "semantic session" || nameLower === "memory") {
+      // Use the generic monitor or a special brain icon (here fallback to monitor but colored)
+      mainIcon = <Monitor className="w-full h-full text-violet-500" />;
     } else {
       mainIcon = <Monitor className="w-full h-full text-zinc-400 dark:text-zinc-500" />;
     }
@@ -319,6 +327,7 @@ const extractDomain = (url?: string): string => {
 };
 
 export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({ 
+  memoryNodes,
   activities, 
   subSessionEvents,
   distractionEvents,
@@ -334,6 +343,45 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
   // Group consecutive browser/editor usages together
   const processedNodes = useMemo(() => {
+    // 1. HYBRID APPROACH: If we have Semantic Memory Nodes, display them!
+    if (memoryNodes && memoryNodes.length > 0) {
+      const nodes: TimelineNode[] = memoryNodes.map(mn => ({
+        isGroupedSession: true,
+        id: mn.id || Math.random(), // fallback for id if none
+        app_name: mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory'),
+        window_title: mn.title,
+        start_time: mn.timestamp,
+        duration: 0, // AI memories don't have a rigid duration yet
+        source: 'AI Memory',
+        notes: mn.summary,
+        originalActivities: mn.activities || [],
+        subEvents: mn.sub_events || [],
+        isMemoryNode: true,
+        memoryData: mn
+      }));
+      
+      // We still want to show Distraction Events on the timeline even if AI Memories exist
+      distractionEvents.forEach(dEvent => {
+        nodes.push({
+          isGroupedSession: true,
+          id: -dEvent.id, // Negative ID to avoid collision
+          app_name: "Distraction Shield",
+          window_title: "Distractions Blocked",
+          start_time: dEvent.timestamp,
+          duration: dEvent.duration_blocked,
+          source: "Shield",
+          originalActivities: [],
+          subEvents: [],
+          isShield: true,
+          distractionEvent: dEvent,
+          distractionEvents: [dEvent]
+        });
+      });
+
+      return nodes.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    }
+
+    // 2. FALLBACK: Manual ActivityNode Grouping
     const isBrowserApp = (appName: string): boolean => {
       const lower = appName.toLowerCase();
       return lower.includes("chrome") ||
@@ -457,7 +505,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
     });
 
     return nodes;
-  }, [activities, subSessionEvents, distractionEvents]);
+  }, [memoryNodes, activities, subSessionEvents, distractionEvents]);
 
   // Helper to calculate coordinates of node at index with coordinate shifting
   const getBaseNodeCoords = (index: number) => {
@@ -680,7 +728,9 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
 
                   <div className="flex justify-between items-start gap-1">
                     <h4 className={`text-xs font-semibold line-clamp-2 mb-1 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={String(node.window_title)}>
-                      {node.isGroupedSession && !node.isShield ? `${node.app_name} Session` : node.window_title}
+                      {node.isMemoryNode 
+                        ? node.window_title 
+                        : (node.isGroupedSession && !node.isShield ? `${node.app_name} Session` : node.window_title)}
                     </h4>
                     {node.isGroupedSession && (
                       <span className="text-[var(--text-muted)] mt-0.5">
@@ -699,6 +749,18 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                         Multiple distractions intercepted
                       </p>
                     )
+                  ) : node.isMemoryNode ? (
+                    <div className="flex gap-2 text-[9px] font-mono mb-1.5">
+                      <span className="bg-violet-500/10 text-violet-500 dark:text-violet-400 px-1.5 py-0.5 rounded-full border border-violet-500/20">
+                        Score: {node.memoryData?.importance_score.toFixed(1)}
+                      </span>
+                      <span className="bg-blue-500/10 text-blue-500 dark:text-blue-400 px-1.5 py-0.5 rounded-full border border-blue-500/20">
+                        Conf: {(node.memoryData?.confidence || 0).toFixed(2)}
+                      </span>
+                      <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/20 capitalize">
+                        {node.memoryData?.status}
+                      </span>
+                    </div>
                   ) : (
                     <p className="text-[10px] text-blue-500 dark:text-blue-400 line-clamp-1 mb-1.5 select-all hover:underline cursor-pointer">
                       {node.isGroupedSession ? (isBrowser ? domainsText : "Multiple files") : node.url}
@@ -714,7 +776,11 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                   {/* Expanded Accordion list for sub sessions */}
                   {node.isGroupedSession && isExpanded && (
                     <div className="mt-2.5 pt-2 border-t border-[var(--border-color)] max-h-[160px] overflow-y-auto pr-1 select-text custom-scrollbar space-y-1.5">
-                      {node.isShield ? (
+                      {node.isMemoryNode ? (
+                        <div className="text-[11px] text-[var(--text-color)] leading-relaxed italic bg-black/5 dark:bg-white/5 p-2 rounded border border-black/5 dark:border-white/5">
+                          {node.memoryData?.summary || "No detailed summary available yet."}
+                        </div>
+                      ) : node.isShield ? (
                         node.distractionEvents?.map((event, idx) => (
                           <div 
                             key={event.id || idx} 
@@ -833,7 +899,7 @@ export const SCurveTimeline: React.FC<SCurveTimelineProps> = ({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          {!node.isShield && (
+                          {!node.isShield && !node.isMemoryNode && (
                           <button
                             onClick={() => {
                               onAddJournal(node.originalActivities[0] || (node as any));

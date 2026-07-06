@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ActivityNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric, ChatMessage } from "../types";
+import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric, ChatMessage } from "../types";
 
 // ─── Date Helpers ───────────────────────────────────────────
 
@@ -45,6 +45,7 @@ interface UseActivityDataOptions {
 }
 
 export function useActivityData({ trackingActive, isIncognito, setIsIncognito }: UseActivityDataOptions) {
+  const [memoryNodes, setMemoryNodes] = useState<MemoryNode[]>([]);
   const [activities, setActivities] = useState<ActivityNode[]>([]);
   const [subSessionEvents, setSubSessionEvents] = useState<SubSessionEvent[]>([]);
   const [distractionEvents, setDistractionEvents] = useState<DistractionEvent[]>([]);
@@ -61,7 +62,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   // Journal selection
-  const [selectedActivity, setSelectedActivity] = useState<ActivityNode | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityNode | MemoryNode | null>(null);
 
   // ─── Navigation ────────────────────────────────────────
 
@@ -132,6 +133,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
 
       if (viewMode === "daily") {
         const dbActivities = await invoke<ActivityNode[]>("get_daily_activities", { date: selectedDate });
+        const dbMemoryNodes = await invoke<MemoryNode[]>("get_memory_nodes_for_day", { date: selectedDate });
         let mergedActivities = [...dbActivities];
         
         const isToday = selectedDate === todayStr;
@@ -148,6 +150,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
         }
         
         setActivities(mergedActivities);
+        setMemoryNodes(dbMemoryNodes);
         try {
           const events = await invoke<SubSessionEvent[]>("get_sub_session_events_for_day", { date: selectedDate });
           setSubSessionEvents(events);
@@ -243,6 +246,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
 
   return {
     // Data
+    memoryNodes,
     activities,
     subSessionEvents,
     distractionEvents,
