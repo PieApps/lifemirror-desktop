@@ -80,65 +80,28 @@ fn trigger_background_reflection(db: Arc<DbState>) {
             summary_text
         );
 
-        let mut ollama_model = db.get_setting("ollama_model").unwrap_or_default();
-        if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
-
-        let mut ollama_url = db.get_setting("ollama_url").unwrap_or_default();
-        if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
-
-        if ollama_model == "disabled" || ollama_url == "disabled" {
-            println!("[Background AI] Ollama config is disabled or empty. Skipping reflection card generation.");
-            return;
-        }
-
-        // Prepare JSON payload
-        let payload = serde_json::json!({
-            "model": ollama_model,
-            "prompt": prompt,
-            "stream": false
-        });
-
-        // Run local curl command to send request to local Ollama
-        let output = std::process::Command::new("curl")
-            .args([
-                "-s",
-                "-X", "POST",
-                &format!("{}/api/generate", ollama_url),
-                "-H", "Content-Type: application/json",
-                "-d", &payload.to_string(),
-            ])
-            .output();
-
-        match output {
-            Ok(out) if out.status.success() => {
-                if let Ok(response_json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    if let Some(reflection) = response_json["response"].as_str() {
-                        let now_str = Utc::now().to_rfc3339();
-                        let _ = db.set_setting("last_ai_reflection", reflection);
-                        let _ = db.set_setting("last_ai_reflection_time", &now_str);
-                        println!("[Background AI] Successfully generated reflection card: \"{}\"", reflection);
-                    }
+        let db_arc = db.clone();
+        tauri::async_runtime::spawn(async move {
+            use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+            let provider = SmartFallbackProvider::new(db_arc.clone());
+            
+            match provider.prompt(&prompt).await {
+                Ok(reflection) => {
+                    let now_str = Utc::now().to_rfc3339();
+                    let _ = db_arc.set_setting("last_ai_reflection", &reflection);
+                    let _ = db_arc.set_setting("last_ai_reflection_time", &now_str);
+                    println!("[Background AI] Successfully generated reflection card: \"{}\"", reflection);
+                }
+                Err(e) => {
+                    eprintln!("[Background AI] Failed to generate reflection: {}", e);
                 }
             }
-            _ => {
-                eprintln!("[Background AI] Failed to contact local Ollama instance via curl.");
-            }
-        }
+        });
     });
 }
 
 #[tauri::command]
 pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) -> Result<Vec<String>, String> {
-    let mut ollama_model = state.get_setting("ollama_model").unwrap_or_default();
-    if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
-
-    let mut ollama_url = state.get_setting("ollama_url").unwrap_or_default();
-    if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
-    
-    if ollama_model == "disabled" || ollama_url == "disabled" {
-        return Err("Ollama is disabled".to_string());
-    }
-
     let logs = state.get_activity_logs(200).unwrap_or_default();
     if logs.is_empty() {
         return Ok(vec![
@@ -169,31 +132,19 @@ pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) ->
         current_time, oldest_time, oldest_time, summary_text
     );
 
-    let payload = serde_json::json!({
-        "model": ollama_model,
-        "prompt": prompt,
-        "stream": false,
-        "format": "json"
-    });
-
-    let output = std::process::Command::new("curl")
-        .args([
-            "-s",
-            "-X", "POST",
-            &format!("{}/api/generate", ollama_url),
-            "-H", "Content-Type: application/json",
-            "-d", &payload.to_string(),
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        if let Ok(response_json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
-            if let Some(text) = response_json["response"].as_str() {
-                if let Ok(parsed_arr) = serde_json::from_str::<Vec<String>>(text) {
-                    if !parsed_arr.is_empty() {
-                        return Ok(parsed_arr.into_iter().take(5).collect());
-                    }
+    use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+    let provider = SmartFallbackProvider::new(state.inner().clone());
+    
+    if let Ok(text) = provider.prompt(&prompt).await {
+        // Find JSON array in the response (sometimes AI outputs markdown code blocks)
+        let json_start = text.find('[').unwrap_or(0);
+        let json_end = text.rfind(']').unwrap_or_else(|| text.len().saturating_sub(1)) + 1;
+        
+        if json_start < json_end {
+            let json_str = &text[json_start..json_end];
+            if let Ok(parsed_arr) = serde_json::from_str::<Vec<String>>(json_str) {
+                if !parsed_arr.is_empty() {
+                    return Ok(parsed_arr.into_iter().take(5).collect());
                 }
             }
         }

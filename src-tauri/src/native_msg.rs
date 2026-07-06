@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize};
 use crate::db::{extract_domain, SubSessionEvent, DbState};
 use chrono::Utc;
@@ -6,6 +6,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
+use interprocess::local_socket::Stream as LocalSocketStream;
+use interprocess::local_socket::traits::Stream;
+use interprocess::TryClone;
+use crate::ai_ipc::IpcServer;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -22,7 +26,43 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     // Initialize DB connection for this process
     let db = Arc::new(DbState::new(db_path));
     
-    // Create FIFO queue channel
+    // Connect to the local IPC socket to communicate with the GUI process
+    let mut ipc_stream = match IpcServer::get_socket_name() {
+        Ok(socket_name) => match LocalSocketStream::connect(socket_name) {
+            Ok(stream) => Some(stream),
+            Err(e) => {
+                eprintln!("[native-host] Warning: Could not connect to GUI IPC server: {}", e);
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("[native-host] Warning: Could not create socket name: {}", e);
+            None
+        }
+    };
+
+    // If IPC connected, spawn a thread to read from IPC and write to stdout
+    if let Some(stream) = ipc_stream.take() {
+        let mut ipc_reader = stream.try_clone()?;
+        thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = std::io::BufReader::new(&mut ipc_reader);
+            for line in reader.lines() {
+                if let Ok(json_str) = line {
+                    if json_str.trim().is_empty() { continue; }
+                    let bytes = json_str.as_bytes();
+                    let length = bytes.len() as u32;
+                    let mut stdout = io::stdout();
+                    if stdout.write_all(&length.to_ne_bytes()).is_ok() && stdout.write_all(bytes).is_ok() {
+                        let _ = stdout.flush();
+                    }
+                }
+            }
+        });
+        ipc_stream = Some(stream); // Put it back for writing
+    }
+    
+    // Create FIFO queue channel for database writes
     let (tx, rx) = mpsc::channel::<TabPayload>();
     
     // Spawn consumer thread
@@ -104,8 +144,25 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             break;
         }
 
-        if let Ok(payload) = serde_json::from_slice::<TabPayload>(&text_buffer) {
-            let _ = tx.send(payload);
+        if let Ok(payload) = serde_json::from_slice::<serde_json::Value>(&text_buffer) {
+            // Check if it's an AI response or tab activity
+            if let Some(event_type) = payload.get("event").and_then(|v| v.as_str()) {
+                if event_type == "tab_activity" {
+                    if let Ok(tab_payload) = serde_json::from_value::<TabPayload>(payload) {
+                        let _ = tx.send(tab_payload);
+                    }
+                }
+            } else if let Some(msg_type) = payload.get("type").and_then(|v| v.as_str()) {
+                if msg_type.starts_with("ai_") {
+                    // Forward directly to the IPC stream
+                    if let Some(ref mut stream) = ipc_stream {
+                        let mut out = String::new();
+                        out.push_str(std::str::from_utf8(&text_buffer).unwrap_or("{}"));
+                        out.push('\n');
+                        let _ = stream.write_all(out.as_bytes());
+                    }
+                }
+            }
         }
     }
 

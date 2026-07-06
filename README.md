@@ -37,7 +37,17 @@ Browser tab sync operates over a secure, sandboxed stdin/stdout **Native Messagi
      ```
 3. See [USER.md](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) for more details.
 
-### 2. Local AI Integration (Ollama)
+### 2. Local AI Integration
+
+LifeMirror supports a dual-provider AI setup to ensure privacy and responsiveness. It utilizes Chrome's built-in **Gemini Nano** model as the primary fast provider, with a fallback to a locally running **Ollama** instance.
+
+#### Primary Provider: Gemini Nano
+LifeMirror utilizes Chrome's on-device Gemini Nano model directly via the `window.ai` API through the companion extension. To enable this:
+1. Open Chrome and navigate to `chrome://flags/#optimization-guide-on-device-model`. Set this to **Enabled BypassPrefCheck**.
+2. Navigate to `chrome://flags/#prompt-api-for-gemini-nano`. Set this to **Enabled**.
+3. Relaunch Chrome to apply the flags and allow it to download the model components.
+
+#### Fallback Provider: Ollama
 1. Download and run [Ollama](https://ollama.com) locally.
 2. Pull your model of choice (e.g. `llama3.2` or `llama3`):
    ```bash

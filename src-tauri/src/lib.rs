@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod ai_ipc;
 pub mod db;
 pub mod native_msg;
 pub mod tracker;
@@ -535,6 +536,17 @@ pub fn run() {
     std::thread::spawn(move || {
         if let Err(e) = db_rollup_clone.run_daily_rollup() {
             eprintln!("Failed to run daily rollup: {:?}", e);
+        }
+    });
+
+    // Generate IPC token and start IPC Server
+    let ipc_token = uuid::Uuid::new_v4().to_string();
+    let _ = db_arc.set_setting("ipc_token", &ipc_token);
+    
+    // Spawn the IPC Server
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = ai_ipc::IPC_SERVER.start().await {
+            eprintln!("Failed to start AI IPC Server: {:?}", e);
         }
     });
 

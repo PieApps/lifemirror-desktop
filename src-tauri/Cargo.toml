@@ -32,3 +32,6 @@ libc = "0.2"
 zbus = "4.4"
 
 regex = "1.10.4"
+interprocess = { version = "2.2.1", features = ["tokio"] }
+uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
+async-trait = "0.1.80"
