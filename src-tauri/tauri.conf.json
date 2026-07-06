@@ -39,7 +39,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb"],
+    "targets": "all",
     "shortDescription": "LifeMirror is a privacy-first, local productivity reflection tool.",
     "longDescription": "LifeMirror captures operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted database, and visualizes your day as a winding timeline serpentine infographic. It processes logs using a locally running AI model (Ollama) to compile daily mindfulness cards entirely offline, ensuring no user data ever leaves your computer.",
     "icon": [

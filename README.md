@@ -48,6 +48,39 @@ Browser tab sync operates over a secure, sandboxed stdin/stdout **Native Messagi
 
 ---
 
+## 📦 Packaging & Distribution
+
+LifeMirror uses Tauri's native bundler to easily create installation packages for Linux, Windows, and macOS. 
+
+To build the package for your current operating system, simply run:
+```bash
+npm run tauri build
+```
+This process compiles the Vite frontend and the Rust backend in release mode. The resulting package will be output to `src-tauri/target/release/bundle/`.
+
+### Platform Specifics
+
+#### Linux (Debian/Ubuntu)
+1. **Prerequisites:**
+   ```bash
+   sudo apt update
+   sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+   ```
+2. **Output:** `src-tauri/target/release/bundle/deb/lifemirror_0.1.11_amd64.deb`
+3. **Install:** `sudo apt install ./src-tauri/target/release/bundle/deb/lifemirror_0.1.11_amd64.deb`
+
+#### Windows (.msi / .exe)
+1. **Prerequisites:** 
+   - [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Usually pre-installed on Windows 11)
+2. **Output:** `src-tauri\target\release\bundle\msi\lifemirror_0.1.11_x64_en-US.msi`
+
+#### macOS (.dmg / .app)
+1. **Prerequisites:** Xcode Command Line Tools (`xcode-select --install`)
+2. **Output:** `src-tauri/target/release/bundle/dmg/lifemirror_0.1.11_x64.dmg`
+
+---
+
 ## 📖 Documentation Directory
 * [User Guide (`docs/USER.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md): Walks through initial installation, Chrome extension symlinking, and settings configurations.
 * [Ollama Configuration Guide (`docs/OLLAMA_SETUP.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md): Detailed installation, model management, and environment variable configuration instructions for different operating systems.
