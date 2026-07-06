@@ -20,10 +20,10 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
   if (searchQuery.trim().length < 2) return null;
 
   return (
-    <div className="absolute top-full right-0 mt-4 w-[500px] max-h-[600px] flex flex-col bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+    <div className="absolute top-full right-0 mt-4 w-[500px] max-h-[600px] flex flex-col bg-white/85 dark:bg-[#0d0d11]/85 backdrop-blur-2xl border border-[var(--border-color)] rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
       
       {/* Header */}
-      <div className="p-4 border-b border-[var(--border-color)] bg-[var(--bg-color)]/50 flex items-center justify-between">
+      <div className="p-4 border-b border-[var(--border-color)] bg-zinc-100/50 dark:bg-zinc-800/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {isSearching ? (
             <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />
