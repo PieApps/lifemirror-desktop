@@ -76,7 +76,7 @@ fn trigger_background_reflection(db: Arc<DbState>) {
         }).collect::<Vec<String>>().join("\n");
 
         let prompt = format!(
-            "You are a personal productivity coach. Below is a list of my recent desktop focus logs. Analyze them and provide a concise, beautiful 2-sentence summary/reflection highlighting my focus. Do not mention that you are compiling a list.\n\nActivity logs:\n{}\n\nResponse (Strictly max 2 sentences):",
+            "You are a personal productivity coach. Below is a list of my recent desktop focus logs. Provide exactly 3 specific, data-driven insights about my productivity. Each must include a concrete number from the logs. Format: one short sentence per insight, each on its own line. Be direct and specific. Examples:\n- \"Chrome stole 41 minutes today.\"\n- \"Your longest uninterrupted coding session was 52 minutes.\"\n\nActivity logs:\n{}\n\nInsights (exactly 3 lines):",
             summary_text
         );
 

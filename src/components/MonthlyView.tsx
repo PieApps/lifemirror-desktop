@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Clock, TrendingUp } from "lucide-react";
-import { DailySummary } from "../App";
+import { DailySummary } from "../types";
 import { mapAppToCategory, CATEGORIES, ActivityCategory } from "../utils/categoryMapper";
 
 interface MonthlyViewProps {

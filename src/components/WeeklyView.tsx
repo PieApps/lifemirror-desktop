@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Clock } from "lucide-react";
-import { DailySummary, HourlyMetric } from "../App";
+import { DailySummary, HourlyMetric } from "../types";
 import { mapAppToCategory, CATEGORIES, ActivityCategory } from "../utils/categoryMapper";
 
 interface WeeklyViewProps {

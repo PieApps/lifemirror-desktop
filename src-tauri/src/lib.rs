@@ -134,6 +134,11 @@ fn get_activities(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<Acti
 }
 
 #[tauri::command]
+fn search_activities(state: State<'_, Arc<DbState>>, query: String, limit: i64) -> Result<Vec<ActivityLog>, String> {
+    state.search_activities(&query, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_journals(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<JournalEntry>, String> {
     state.get_journal_entries(limit).map_err(|e| e.to_string())
 }
@@ -610,6 +615,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_activities,
+            search_activities,
             get_journals,
             get_distraction_events_for_day,
             delete_activity_log,

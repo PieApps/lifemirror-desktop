@@ -462,6 +462,40 @@ impl DbState {
         Ok(logs)
     }
 
+    pub fn search_activities(&self, query_str: &str, limit: i64) -> Result<Vec<ActivityLog>> {
+        let conn = self.conn.lock().unwrap();
+        let search_pattern = format!("%{}%", query_str);
+        
+        let mut stmt = conn.prepare(
+            "SELECT id, app_name, window_title, start_time, duration, source, url, icon_url, domain_tag, notes
+             FROM activity_logs
+             WHERE app_name LIKE ?1 OR window_title LIKE ?1 OR notes LIKE ?1
+             ORDER BY start_time DESC
+             LIMIT ?2",
+        )?;
+        
+        let log_iter = stmt.query_map(params![search_pattern, limit], |row| {
+            Ok(ActivityLog {
+                id: Some(row.get(0)?),
+                app_name: row.get(1)?,
+                window_title: row.get(2)?,
+                start_time: row.get(3)?,
+                duration: row.get(4)?,
+                source: row.get(5)?,
+                url: row.get(6)?,
+                icon_url: row.get(7)?,
+                domain_tag: row.get(8)?,
+                notes: row.get(9)?,
+            })
+        })?;
+
+        let mut logs = Vec::new();
+        for log in log_iter {
+            logs.push(log?);
+        }
+        Ok(logs)
+    }
+
     pub fn delete_activity_log(&self, id: i64) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let log_date: Option<String> = conn
