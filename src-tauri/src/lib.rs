@@ -381,6 +381,18 @@ fn hide_toast(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn hide_overlay(app: tauri::AppHandle) {
+    if let Some(overlay_win) = app.get_webview_window("overlay") {
+        let _ = overlay_win.hide();
+    }
+}
+
+#[tauri::command]
+fn log_debug(msg: String) {
+    println!("[Frontend Chat] {}", msg);
+}
+
+#[tauri::command]
 fn show_main(app: tauri::AppHandle) {
     if let Some(main_win) = app.get_webview_window("main") {
         let _ = main_win.show();
@@ -626,6 +638,8 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            log_debug,
+            hide_overlay,
             get_activities,
             search_activities,
             get_journals,

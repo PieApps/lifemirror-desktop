@@ -284,15 +284,22 @@ Insights (exactly 3 lines):`;
   }, [selectedDate, isIncognito]);
 
   const handleSendChat = async (overrideText?: string) => {
-    console.log("[DEBUG Chat Flow] Starting chat request with overrideText:", overrideText, "chatInput:", chatInput);
+    const startMsg = `[DEBUG Chat Flow] Starting chat request with overrideText: ${overrideText}, chatInput: ${chatInput}`;
+    console.log(startMsg);
+    invoke("log_debug", { msg: startMsg }).catch(console.error);
+
     const textToSend = (overrideText || chatInput).trim();
     if (!textToSend || chatLoading) {
-      console.log("[DEBUG Chat Flow] Skipping request because text is empty or already loading.");
+      const skipMsg = "[DEBUG Chat Flow] Skipping request because text is empty or already loading.";
+      console.log(skipMsg);
+      invoke("log_debug", { msg: skipMsg }).catch(console.error);
       return;
     }
 
     if (!ollamaUrl || ollamaUrl === "false" || ollamaUrl === "disabled" || !ollamaModel || ollamaModel === "false" || ollamaModel === "disabled") {
-      console.log("[DEBUG Chat Flow] Skipping request because Ollama is disabled or incomplete. URL:", ollamaUrl, "Model:", ollamaModel);
+      const skipMsg2 = `[DEBUG Chat Flow] Skipping request because Ollama is disabled or incomplete. URL: ${ollamaUrl}, Model: ${ollamaModel}`;
+      console.log(skipMsg2);
+      invoke("log_debug", { msg: skipMsg2 }).catch(console.error);
       const errMsg = "Ollama is disabled or configuration is incomplete.";
       if (isIncognito) {
         setVolatileChatHistory(prev => [
@@ -310,7 +317,9 @@ Insights (exactly 3 lines):`;
       return;
     }
 
-    console.log("[DEBUG Chat Flow] Preparing to send request. URL:", ollamaUrl, "Model:", ollamaModel);
+    const prepMsg = `[DEBUG Chat Flow] Preparing to send request. URL: ${ollamaUrl}, Model: ${ollamaModel}`;
+    console.log(prepMsg);
+    invoke("log_debug", { msg: prepMsg }).catch(console.error);
     setChatLoading(true);
     setChatInput("");
     abortControllerRef.current?.abort();
@@ -349,10 +358,15 @@ Insights (exactly 3 lines):`;
 
     try {
       console.log("[DEBUG Chat Flow] Compiling messages for context...");
+      invoke("log_debug", { msg: "[DEBUG Chat Flow] Compiling messages for context..." }).catch(console.error);
       const systemContext = compileMessagesForOllama(currentHistory);
-      console.log(`[DEBUG Chat Flow] Context generated with ${systemContext.length} messages.`);
+      const ctxMsg = `[DEBUG Chat Flow] Context generated with ${systemContext.length} messages.`;
+      console.log(ctxMsg);
+      invoke("log_debug", { msg: ctxMsg }).catch(console.error);
 
-      console.log(`[DEBUG Chat Flow] Executing fetch request to ${ollamaUrl}/api/chat`);
+      const fetchMsg = `[DEBUG Chat Flow] Executing fetch request to ${ollamaUrl}/api/chat`;
+      console.log(fetchMsg);
+      invoke("log_debug", { msg: fetchMsg }).catch(console.error);
       const response = await fetch(`${ollamaUrl}/api/chat`, {
         method: "POST",
         headers: {
@@ -369,7 +383,9 @@ Insights (exactly 3 lines):`;
         signal: abortControllerRef.current.signal,
       });
 
-      console.log(`[DEBUG Chat Flow] Fetch response received. Status: ${response.status} ${response.statusText}`);
+      const resMsg = `[DEBUG Chat Flow] Fetch response received. Status: ${response.status} ${response.statusText}`;
+      console.log(resMsg);
+      invoke("log_debug", { msg: resMsg }).catch(console.error);
 
       if (!response.ok) {
         let errorMsg = `HTTP status ${response.status}`;
@@ -389,10 +405,12 @@ Insights (exactly 3 lines):`;
 
       if (!response.body) {
         console.error("[DEBUG Chat Flow] Response body is null.");
+        invoke("log_debug", { msg: "[DEBUG Chat Flow] Error: Response body is null." }).catch(console.error);
         throw new Error("No response body received from Ollama server.");
       }
 
       console.log("[DEBUG Chat Flow] Starting to read response stream.");
+      invoke("log_debug", { msg: "[DEBUG Chat Flow] Starting to read response stream." }).catch(console.error);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -403,12 +421,14 @@ Insights (exactly 3 lines):`;
         const { value, done } = await reader.read();
         if (done) {
           console.log("[DEBUG Chat Flow] Stream reading completed.");
+          invoke("log_debug", { msg: "[DEBUG Chat Flow] Stream reading completed." }).catch(console.error);
           break;
         }
 
         chunkCount++;
         if (chunkCount === 1) {
           console.log("[DEBUG Chat Flow] First data chunk received from stream.");
+          invoke("log_debug", { msg: "[DEBUG Chat Flow] First data chunk received from stream." }).catch(console.error);
         }
 
         buffer += decoder.decode(value, { stream: true });
@@ -454,13 +474,16 @@ Insights (exactly 3 lines):`;
       // Finalize non-incognito message in SQLite
       if (!isIncognito) {
         console.log("[DEBUG Chat Flow] Finalizing message to local database.");
+        invoke("log_debug", { msg: "[DEBUG Chat Flow] Finalizing message to local database." }).catch(console.error);
         await invoke("add_chat_message", { date: selectedDate, role: "assistant", content: accumulatedResponse });
         const finalizedHistory = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
         setChatMessages(finalizedHistory);
       }
       console.log("[DEBUG Chat Flow] Chat request finished successfully.");
+      invoke("log_debug", { msg: "[DEBUG Chat Flow] Chat request finished successfully." }).catch(console.error);
     } catch (err: any) {
       console.error("[DEBUG Chat Flow] Caught error during request:", err);
+      invoke("log_debug", { msg: `[DEBUG Chat Flow] Caught error during request: ${err.message || err}` }).catch(console.error);
       if (err.name === "AbortError") {
         console.log("Chat stream request aborted.");
         return;
