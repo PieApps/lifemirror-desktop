@@ -42,6 +42,10 @@ pub fn start_idle_ai_summarizer(db: Arc<DbState>) {
                         };
 
                         if need_summary {
+                            // Update immediately to prevent duplicate concurrent generation attempts
+                            let now_str = Utc::now().to_rfc3339();
+                            let _ = db.set_setting("last_ai_reflection_time", &now_str);
+                            
                             trigger_background_reflection(db.clone());
                         }
                     }
@@ -87,9 +91,7 @@ fn trigger_background_reflection(db: Arc<DbState>) {
             
             match provider.prompt(&prompt).await {
                 Ok(reflection) => {
-                    let now_str = Utc::now().to_rfc3339();
                     let _ = db_arc.set_setting("last_ai_reflection", &reflection);
-                    let _ = db_arc.set_setting("last_ai_reflection_time", &now_str);
                     println!("[Background AI] Successfully generated reflection card: \"{}\"", reflection);
                 }
                 Err(e) => {
