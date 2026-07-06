@@ -50,7 +50,6 @@ export function useOllama({
   monthlySummaries,
   chatMessages,
   setChatMessages,
-  getPeriodLabel,
 }: UseOllamaOptions) {
   const [aiReflection, setAiReflection] = useState("");
   const [aiLoading, setAiLoading] = useState(false);

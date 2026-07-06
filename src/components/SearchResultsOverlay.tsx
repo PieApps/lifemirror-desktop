@@ -53,7 +53,6 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
             {searchResults.map((act, index) => {
               const d = new Date(act.start_time);
               const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-              const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const hasNotes = act.notes && act.notes.trim().length > 0;
 
               return (
