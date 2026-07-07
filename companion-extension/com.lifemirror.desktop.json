@@ -1,6 +1,6 @@
 {
   "name": "com.lifemirror.desktop",
-  "description": "LifeMirror Native Messaging Bridge",
+  "description": "LifeMirror Desktop Native Messaging Bridge",
   "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror",
   "type": "stdio",
   "allowed_origins": [

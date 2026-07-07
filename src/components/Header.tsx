@@ -35,10 +35,10 @@ export const Header: React.FC<HeaderProps> = ({
         <img 
           src="/icon.png" 
           className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
-          alt="LifeMirror Logo" 
+          alt="LifeMirror Desktop Logo" 
         />
         <div>
-          <h1 className="text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror</h1>
+          <h1 className="text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
           <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-wide">KNOW WHERE YOUR TIME WENT</span>
         </div>
       </div>

@@ -7,7 +7,7 @@ function getNativePort() {
   
   try {
     port = chrome.runtime.connectNative(hostName);
-    console.log("Connected to LifeMirror Native Messaging Host");
+    console.log("Connected to LifeMirror Desktop Native Messaging Host");
     
     port.onMessage.addListener(async (msg) => {
       console.log("Received from native host:", msg);

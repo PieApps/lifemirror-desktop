@@ -77,7 +77,7 @@ fn install_native_host_manifest() {
     let manifest = format!(
         r#"{{
   "name": "com.lifemirror.desktop",
-  "description": "LifeMirror Native Messaging Bridge",
+  "description": "LifeMirror Desktop Native Messaging Bridge",
   "path": "{exe}",
   "type": "stdio",
   "allowed_origins": [
@@ -489,7 +489,7 @@ async fn generate_resume_context(
 }
 
 fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
-    let open_i = MenuItem::with_id(app, "open", "Open LifeMirror", true, None::<&str>)?;
+    let open_i = MenuItem::with_id(app, "open", "Open LifeMirror Desktop", true, None::<&str>)?;
 
     let db = app.state::<Arc<DbState>>();
     let is_incog = db.get_setting("incognito").unwrap_or_default() == "true";
@@ -742,7 +742,7 @@ pub fn run() {
                     #[cfg(target_os = "linux")]
                     {
                         let _ = std::process::Command::new("notify-send")
-                            .args(["LifeMirror", "LifeMirror is still running in the background. You can quit from the system tray icon."])
+                            .args(["LifeMirror Desktop", "LifeMirror Desktop is still running in the background. You can quit from the system tray icon."])
                             .status();
                     }
                 }
