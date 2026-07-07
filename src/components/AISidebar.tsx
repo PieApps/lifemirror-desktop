@@ -57,7 +57,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
   clearChat,
 }) => {
   return (
-    <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left flex-1 overflow-y-auto">
+    <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left flex-1 overflow-hidden min-h-0">
       {/* Analytics Dashboard */}
       <ProductivityDashboard metrics={metrics} />
 
@@ -128,7 +128,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
         </div>
       ) : (
         /* Chat Tab Content */
-        <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-[300px]">
+        <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-0">
           {/* Context Banner */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-color)]/50 border border-[var(--border-color)]">
@@ -158,7 +158,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
           {/* Messages list */}
           <div 
             id="chat-messages-container"
-            className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px] max-h-[calc(100vh-250px)] scrollbar-thin"
+            className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0 scrollbar-thin"
           >
             {(isIncognito ? volatileChatHistory : chatMessages).length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-4">

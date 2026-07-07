@@ -141,7 +141,7 @@ function App() {
         />
 
         {/* Sidebar */}
-        <div className="space-y-6 flex flex-col lg:h-full lg:overflow-y-auto custom-scrollbar lg:pr-2 lg:pb-6">
+        <div className="space-y-6 flex flex-col lg:h-full lg:overflow-hidden lg:pr-2 lg:pb-6">
           {settings.showSettings ? (
             <SettingsPanel
               isIncognito={settings.isIncognito}
