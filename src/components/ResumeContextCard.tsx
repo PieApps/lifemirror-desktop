@@ -1,5 +1,5 @@
-import { ResumeContextResponse } from "../types/resume";
-import { open } from "@tauri-apps/plugin-opener";
+import type { ResumeContextResponse } from "../types/resume";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 interface Props {
   context: ResumeContextResponse;
@@ -12,7 +12,7 @@ export const ResumeContextCard = ({ context, projectName, onClose }: Props) => {
     try {
       // In a real app, this might use a custom rust command to open in VS Code specifically,
       // but tauri's shell open usually opens default associated app or folder.
-      await open(path);
+      await openPath(path);
     } catch (e) {
       console.error("Failed to open path:", e);
     }

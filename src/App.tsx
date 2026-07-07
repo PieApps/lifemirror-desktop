@@ -12,7 +12,8 @@ import { JournalModal } from "./components/JournalModal";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
-import { ResumeContextResponse } from "./types/resume";
+import type { ResumeContextResponse } from "./types/resume";
+import type { ActivityNode } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 
 function App() {

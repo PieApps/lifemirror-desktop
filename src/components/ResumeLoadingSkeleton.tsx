@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { ResumeContextResponse } from "../types/resume";
-
 export const ResumeLoadingSkeleton = () => {
   const [loadingText, setLoadingText] = useState("Analyzing recent sessions...");
 
