@@ -124,9 +124,9 @@ fn get_db_path() -> PathBuf {
     } else {
         PathBuf::from(".")
     };
-    path.push("lifemirror");
+    path.push("lifemirror-desktop");
     let _ = std::fs::create_dir_all(&path);
-    path.push("lifemirror.db");
+    path.push("lifemirror-desktop.db");
     path
 }
 
