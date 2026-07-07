@@ -7,3 +7,4 @@ pub mod project_classifier;
 pub mod embedding_engine;
 pub mod retriever;
 pub mod reflection_engine;
+pub mod resume_context;

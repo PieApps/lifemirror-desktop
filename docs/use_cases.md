@@ -60,6 +60,15 @@ The built-in AI assistant acts as a second brain that already knows everything y
 - **Action:** You ask: *"What was the exact terminal command I used to compile the Android build last Thursday?"*
 - **Result:** The AI queries your memory graph, finds the exact Semantic Session from Thursday, extracts the raw terminal window logs associated with it, and hands you the command without you ever needing to grep your bash history.
 
+## 7. Intelligent Resume Context
+LifeMirror completely eliminates the "What was I doing?" problem that occurs after switching contexts or returning from a vacation. It doesn't just show you a list of past events; it reconstructs your working context.
+
+**Example Use Case:**
+- **Scenario:** You return to the LifeMirror project codebase after a two-week vacation.
+- **Action:** You click the prominent "Resume Project" button on the dashboard.
+- **Result:** The system aggregates your most recent session summaries, the files you last touched (like `db.rs`), and relevant journal notes. The LLM instantly generates a comprehensive brief.
+- **Outcome:** A polished UI card appears telling you that your current status is "Refactoring the IPC Engine", your confidence-rated next task is "Handle the stale socket cleanup", and provides clickable links directly back to `src-tauri/src/ai_ipc.rs` and the Rust standard library documentation you had open. You are back in flow in under 30 seconds.
+
 ---
 
 ### Summary

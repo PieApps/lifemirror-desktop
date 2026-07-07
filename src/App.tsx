@@ -10,6 +10,10 @@ import { AISidebar } from "./components/AISidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { JournalModal } from "./components/JournalModal";
 import { computeMetrics } from "./services/analytics";
+import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
+import { ResumeContextCard } from "./components/ResumeContextCard";
+import { ResumeContextResponse } from "./types/resume";
+import { invoke } from "@tauri-apps/api/core";
 
 function App() {
   const settings = useSettings();
@@ -42,6 +46,23 @@ function App() {
 
   const [missingModel, setMissingModel] = useState<string | null>(null);
 
+  const [isResuming, setIsResuming] = useState(false);
+  const [resumeContext, setResumeContext] = useState<ResumeContextResponse | null>(null);
+
+  const handleResumeProject = async () => {
+    setIsResuming(true);
+    setResumeContext(null);
+    try {
+      const result = await invoke<ResumeContextResponse>("generate_resume_context", { projectId: null });
+      setResumeContext(result);
+    } catch (e) {
+      console.error("Failed to generate resume context:", e);
+      // Fallback or error handling can be shown here
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
   // Load persisted intention and reflection on mount
   useEffect(() => {
     focus.loadIntention();
@@ -71,6 +92,7 @@ function App() {
           data.setSelectedDate(dateStr);
           data.setViewMode("daily");
         }}
+        onResumeClick={handleResumeProject}
       />
 
       {missingModel && (
@@ -162,6 +184,20 @@ function App() {
       </div>
 
       {/* Modals */}
+      {(isResuming || resumeContext) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          {isResuming && !resumeContext ? (
+            <ResumeLoadingSkeleton />
+          ) : resumeContext ? (
+            <ResumeContextCard 
+              context={resumeContext} 
+              projectName="Recent Project" // In a real app we'd fetch the project name
+              onClose={() => setResumeContext(null)} 
+            />
+          ) : null}
+        </div>
+      )}
+
       {data.selectedActivity && 'app_name' in data.selectedActivity && (
         <JournalModal
           activity={data.selectedActivity as ActivityNode}

@@ -479,6 +479,15 @@ fn show_main(app: tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+async fn generate_resume_context(
+    state: State<'_, Arc<DbState>>,
+    project_id: Option<i64>
+) -> Result<memory_engine::resume_context::ResumeContextResponse, String> {
+    let builder = memory_engine::resume_context::ResumeBuilder::new(state.inner().clone());
+    builder.generate_context(project_id).await
+}
+
 fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
     let open_i = MenuItem::with_id(app, "open", "Open LifeMirror", true, None::<&str>)?;
 
@@ -772,6 +781,7 @@ pub fn run() {
             delete_distraction_rule,
             hide_toast,
             show_main,
+            generate_resume_context,
             ai::generate_chat_suggestions
         ])
         .run(tauri::generate_context!())

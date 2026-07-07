@@ -1392,4 +1392,89 @@ impl DbState {
         }
         Ok(events)
     }
+
+    pub fn get_recent_active_project(&self) -> Result<Option<Project>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT p.id, p.name, p.description, p.created_at 
+             FROM projects p 
+             JOIN node_projects np ON p.id = np.project_id 
+             JOIN memory_nodes mn ON np.node_id = mn.id 
+             ORDER BY mn.timestamp DESC 
+             LIMIT 1"
+        )?;
+        
+        let mut iter = stmt.query_map([], |row| {
+            Ok(Project {
+                id: Some(row.get(0)?),
+                name: row.get(1)?,
+                description: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+
+        if let Some(res) = iter.next() {
+            Ok(Some(res?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_recent_sessions_for_project(&self, project_id: i64, limit: i64) -> Result<Vec<MemoryNode>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT mn.id, mn.title, mn.summary, mn.node_type, mn.importance_score, mn.confidence, mn.embedding_id, mn.status, mn.timestamp 
+             FROM memory_nodes mn 
+             JOIN node_projects np ON mn.id = np.node_id 
+             WHERE np.project_id = ?1 AND mn.node_type = 'session' 
+             ORDER BY mn.timestamp DESC 
+             LIMIT ?2"
+        )?;
+        
+        let iter = stmt.query_map(params![project_id, limit], |row| {
+            Ok(MemoryNode {
+                id: Some(row.get(0)?),
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+            })
+        })?;
+        
+        let mut nodes = Vec::new();
+        for n in iter {
+            nodes.push(n?);
+        }
+        Ok(nodes)
+    }
+
+    pub fn get_recent_files_for_project(&self, project_id: i64, limit: i64) -> Result<Vec<FileEntity>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT f.id, f.file_path 
+             FROM files f 
+             JOIN node_files nf ON f.id = nf.file_id 
+             JOIN node_projects np ON nf.node_id = np.node_id 
+             WHERE np.project_id = ?1 
+             GROUP BY f.id 
+             LIMIT ?2"
+        )?;
+        
+        let iter = stmt.query_map(params![project_id, limit], |row| {
+            Ok(FileEntity {
+                id: Some(row.get(0)?),
+                file_path: row.get(1)?,
+            })
+        })?;
+        
+        let mut files = Vec::new();
+        for f in iter {
+            files.push(f?);
+        }
+        Ok(files)
+    }
 }

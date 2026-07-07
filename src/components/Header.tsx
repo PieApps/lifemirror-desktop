@@ -14,6 +14,7 @@ interface HeaderProps {
   setShowSettings: (show: boolean) => void;
   onRefresh: () => void;
   onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
+  onResumeClick: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   setShowSettings,
   onRefresh,
   onSearchSelect,
+  onResumeClick,
 }) => {
   const search = useSearch();
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,15 @@ export const Header: React.FC<HeaderProps> = ({
             <span>INCOGNITO ACTIVE</span>
           </div>
         )}
+
+        <button
+          onClick={onResumeClick}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold text-sm cursor-pointer"
+          title="Resume your context"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Resume Project
+        </button>
 
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
