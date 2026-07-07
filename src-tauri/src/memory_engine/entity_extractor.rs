@@ -87,6 +87,11 @@ impl EntityExtractor {
             }
         }
 
+        {
+            let conn = self.db.conn.lock().unwrap();
+            conn.execute("UPDATE memory_nodes SET status = 'processed' WHERE id = ?1", params![node_id]).unwrap_or(0);
+        }
+
         node.status = "processed".to_string();
         Ok(node)
     }
