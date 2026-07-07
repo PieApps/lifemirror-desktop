@@ -65,6 +65,8 @@ impl ReflectionEngine {
             embedding_id: None,
             status: "summarized".to_string(), // Step 6: Mark as summarized for now until embeddings are wired
             timestamp: Utc::now().to_rfc3339(),
+            activities: None,
+            sub_events: None,
         };
         
         // 5. Insert into database

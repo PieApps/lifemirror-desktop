@@ -71,6 +71,8 @@ impl SessionBuilder {
             embedding_id: None,
             status: "raw".to_string(), // Initial state for the Memory Queue
             timestamp: start_time.to_string(),
+            activities: None,
+            sub_events: None,
         }
     }
 

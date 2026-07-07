@@ -94,6 +94,8 @@ pub struct MemoryNode {
     pub embedding_id: Option<i64>,
     pub status: String,
     pub timestamp: String,
+    pub activities: Option<Vec<ActivityLog>>,
+    pub sub_events: Option<Vec<SubSessionEvent>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -898,6 +900,8 @@ impl DbState {
                 embedding_id: row.get(6)?,
                 status: row.get(7)?,
                 timestamp: row.get(8)?,
+                activities: None,
+                sub_events: None,
             })
         })?;
 
@@ -1027,33 +1031,47 @@ impl DbState {
     }
 
     pub fn get_memory_nodes_for_day(&self, date: &str) -> Result<Vec<MemoryNode>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
-             FROM memory_nodes
-             WHERE date(timestamp, 'localtime') = ?1
-             ORDER BY timestamp DESC;",
-        )?;
+        let mut tmp_nodes = Vec::new();
+        {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+                 FROM memory_nodes
+                 WHERE date(timestamp, 'localtime') = ?1
+                 ORDER BY timestamp DESC;",
+            )?;
 
-        let iter = stmt.query_map([date], |row| {
-            Ok(MemoryNode {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                summary: row.get(2)?,
-                node_type: row.get(3)?,
-                importance_score: row.get(4)?,
-                confidence: row.get(5)?,
-                embedding_id: row.get(6)?,
-                status: row.get(7)?,
-                timestamp: row.get(8)?,
-            })
-        })?;
+            let iter = stmt.query_map([date], |row| {
+                Ok(MemoryNode {
+                    id: Some(row.get(0)?),
+                    title: row.get(1)?,
+                    summary: row.get(2)?,
+                    node_type: row.get(3)?,
+                    importance_score: row.get(4)?,
+                    confidence: row.get(5)?,
+                    embedding_id: row.get(6)?,
+                    status: row.get(7)?,
+                    timestamp: row.get(8)?,
+                    activities: None,
+                    sub_events: None,
+                })
+            })?;
 
-        let mut nodes = Vec::new();
-        for node in iter {
-            nodes.push(node?);
+            for node in iter {
+                tmp_nodes.push(node?);
+            }
         }
-        Ok(nodes)
+
+        let mut final_nodes = Vec::new();
+        for mut node in tmp_nodes {
+            if let Some(id) = node.id {
+                node.activities = Some(self.get_activities_for_node(id).unwrap_or_default());
+                node.sub_events = Some(self.get_sub_events_for_node(id).unwrap_or_default());
+            }
+            final_nodes.push(node);
+        }
+
+        Ok(final_nodes)
     }
 
     pub fn get_activities_for_node(&self, node_id: i64) -> Result<Vec<ActivityLog>> {
@@ -1120,35 +1138,49 @@ impl DbState {
     }
 
     pub fn search_memory_nodes(&self, query: &str, limit: i64) -> Result<Vec<MemoryNode>> {
-        let conn = self.conn.lock().unwrap();
-        let search_pattern = format!("%{}%", query);
-        let mut stmt = conn.prepare(
-            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
-             FROM memory_nodes
-             WHERE title LIKE ?1 OR summary LIKE ?1
-             ORDER BY timestamp DESC
-             LIMIT ?2;",
-        )?;
+        let mut tmp_nodes = Vec::new();
+        {
+            let conn = self.conn.lock().unwrap();
+            let search_pattern = format!("%{}%", query);
+            let mut stmt = conn.prepare(
+                "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+                 FROM memory_nodes
+                 WHERE title LIKE ?1 OR summary LIKE ?1
+                 ORDER BY timestamp DESC
+                 LIMIT ?2;",
+            )?;
 
-        let iter = stmt.query_map(params![search_pattern, limit], |row| {
-            Ok(MemoryNode {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                summary: row.get(2)?,
-                node_type: row.get(3)?,
-                importance_score: row.get(4)?,
-                confidence: row.get(5)?,
-                embedding_id: row.get(6)?,
-                status: row.get(7)?,
-                timestamp: row.get(8)?,
-            })
-        })?;
+            let iter = stmt.query_map(params![search_pattern, limit], |row| {
+                Ok(MemoryNode {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    summary: row.get(2)?,
+                    node_type: row.get(3)?,
+                    importance_score: row.get(4)?,
+                    confidence: row.get(5)?,
+                    embedding_id: row.get(6)?,
+                    status: row.get(7)?,
+                    timestamp: row.get(8)?,
+                    activities: None,
+                    sub_events: None,
+                })
+            })?;
 
-        let mut nodes = Vec::new();
-        for node in iter {
-            nodes.push(node?);
+            for node in iter {
+                tmp_nodes.push(node?);
+            }
         }
-        Ok(nodes)
+
+        let mut final_nodes = Vec::new();
+        for mut node in tmp_nodes {
+            if let Some(id) = node.id {
+                node.activities = Some(self.get_activities_for_node(id).unwrap_or_default());
+                node.sub_events = Some(self.get_sub_events_for_node(id).unwrap_or_default());
+            }
+            final_nodes.push(node);
+        }
+
+        Ok(final_nodes)
     }
 
     pub fn get_all_embedded_nodes(&self) -> Result<Vec<(MemoryNode, Vec<f32>)>> {
@@ -1178,6 +1210,8 @@ impl DbState {
                 embedding_id: row.get(6)?,
                 status: row.get(7)?,
                 timestamp: row.get(8)?,
+                activities: None,
+                sub_events: None,
             };
             
             Ok((node, vector))
@@ -1442,6 +1476,8 @@ impl DbState {
                 embedding_id: row.get(6)?,
                 status: row.get(7)?,
                 timestamp: row.get(8)?,
+                activities: None,
+                sub_events: None,
             })
         })?;
         
