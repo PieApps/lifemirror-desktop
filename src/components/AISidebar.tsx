@@ -226,27 +226,43 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 </div>
               </div>
             ) : (
-              (isIncognito ? volatileChatHistory : chatMessages).map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex flex-col max-w-[85%] ${
-                    msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
-                  }`}
-                >
+              <>
+                {(isIncognito ? volatileChatHistory : chatMessages).map((msg, idx) => (
                   <div
-                    className={`p-3 rounded-2xl text-xs leading-normal font-medium shadow-sm ${
-                      msg.role === "user"
-                        ? "bg-violet-600 text-white rounded-tr-none"
-                        : "bg-[var(--bg-color)]/40 border border-[var(--border-color)] text-[var(--text-color)] rounded-tl-none"
+                    key={idx}
+                    className={`flex flex-col max-w-[85%] ${
+                      msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <div
+                      className={`p-3 rounded-2xl text-xs leading-normal font-medium shadow-sm ${
+                        msg.role === "user"
+                          ? "bg-violet-600 text-white rounded-tr-none"
+                          : "bg-[var(--bg-color)]/40 border border-[var(--border-color)] text-[var(--text-color)] rounded-tl-none"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                    <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
+                      {msg.role === "user" ? "You" : "Ollama"}
+                    </span>
                   </div>
-                  <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
-                    {msg.role === "user" ? "You" : "Ollama"}
-                  </span>
-                </div>
-              ))
+                ))}
+                
+                {/* Typing Indicator Bubble */}
+                {chatLoading && (
+                  <div className="flex flex-col max-w-[85%] mr-auto items-start">
+                    <div className="p-3.5 rounded-2xl text-xs leading-normal font-medium shadow-sm bg-[var(--bg-color)]/40 border border-[var(--border-color)] text-[var(--text-color)] rounded-tl-none flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                      <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                      <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+                    </div>
+                    <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
+                      Ollama is thinking...
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
