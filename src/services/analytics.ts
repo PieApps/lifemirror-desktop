@@ -9,6 +9,27 @@ import { mapAppToCategory, CATEGORIES } from "../utils/categoryMapper";
 
 // ─── Types ──────────────────────────────────────────────────
 
+export interface FocusSessionData {
+  appName: string;
+  windowTitle?: string;
+  duration: number;
+  startTime: string;
+}
+
+export interface SwitchEventData {
+  fromApp: string;
+  toApp: string;
+  timestamp: string;
+}
+
+export interface DistractionDetail {
+  appName: string;
+  windowTitle?: string;
+  duration: number;
+  reason?: string;
+  startTime: string;
+}
+
 export interface ProductivityMetrics {
   /** Overall score 0–100 based on focus quality */
   score: number;
@@ -46,6 +67,12 @@ export interface ProductivityMetrics {
   /** Time range */
   firstActivityTime: string | null;
   lastActivityTime: string | null;
+
+  /** Detailed lists for drill-downs */
+  focusBlocksList: FocusSessionData[];
+  communicationBlocksList: FocusSessionData[];
+  distractionEventsList: DistractionDetail[];
+  switchEventsList: SwitchEventData[];
 }
 
 export interface AppDuration {
@@ -109,6 +136,10 @@ export function computeMetrics(
     topApps: [],
     firstActivityTime: null,
     lastActivityTime: null,
+    focusBlocksList: [],
+    communicationBlocksList: [],
+    distractionEventsList: [],
+    switchEventsList: [],
   };
 
   if (activities.length === 0) return empty;
@@ -167,9 +198,15 @@ export function computeMetrics(
     (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   );
   let contextSwitches = 0;
+  const switchEventsList: SwitchEventData[] = [];
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i].app_name !== sorted[i - 1].app_name) {
       contextSwitches++;
+      switchEventsList.push({
+        fromApp: sorted[i - 1].app_name,
+        toApp: sorted[i].app_name,
+        timestamp: sorted[i].start_time,
+      });
     }
   }
 
@@ -180,28 +217,75 @@ export function computeMetrics(
   let longestFocusApp = "";
   let currentBlockDuration = 0;
   let currentBlockApp = "";
+  let currentBlockTitle = "";
+  let currentBlockStart = "";
+
+  const focusBlocksList: FocusSessionData[] = [];
+  const communicationBlocksList: FocusSessionData[] = [];
 
   for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i].app_name === currentBlockApp) {
+    const isSameApp = sorted[i].app_name === currentBlockApp;
+    
+    if (isSameApp) {
       currentBlockDuration += sorted[i].duration;
     } else {
       // End previous block
-      if (currentBlockDuration > 600) {
-        focusSessions++;
+      if (currentBlockApp) {
+        const cat = mapAppToCategory(currentBlockApp, currentBlockTitle);
+        const sessionData = {
+          appName: currentBlockApp,
+          windowTitle: currentBlockTitle,
+          duration: currentBlockDuration,
+          startTime: currentBlockStart,
+        };
+
+        if (cat === "development" || cat === "other") {
+          focusBlocksList.push(sessionData);
+        }
+        
+        if (currentBlockDuration > 600 && (cat === "development" || cat === "other" || cat === "browser")) {
+          focusSessions++;
+        }
+        
+        if (cat === "communication") {
+          communicationBlocksList.push(sessionData);
+        }
       }
+
       if (currentBlockDuration > longestFocusBlock) {
         longestFocusBlock = currentBlockDuration;
         longestFocusApp = currentBlockApp;
       }
       // Start new block
       currentBlockApp = sorted[i].app_name;
+      currentBlockTitle = sorted[i].window_title;
+      currentBlockStart = sorted[i].start_time;
       currentBlockDuration = sorted[i].duration;
     }
   }
   // Handle last block
-  if (currentBlockDuration > 600) {
-    focusSessions++;
+  if (currentBlockApp) {
+    const cat = mapAppToCategory(currentBlockApp, currentBlockTitle);
+    const sessionData = {
+      appName: currentBlockApp,
+      windowTitle: currentBlockTitle,
+      duration: currentBlockDuration,
+      startTime: currentBlockStart,
+    };
+
+    if (cat === "development" || cat === "other") {
+      focusBlocksList.push(sessionData);
+    }
+
+    if (currentBlockDuration > 600 && (cat === "development" || cat === "other" || cat === "browser")) {
+      focusSessions++;
+    }
+
+    if (cat === "communication") {
+      communicationBlocksList.push(sessionData);
+    }
   }
+
   if (currentBlockDuration > longestFocusBlock) {
     longestFocusBlock = currentBlockDuration;
     longestFocusApp = currentBlockApp;
@@ -210,10 +294,34 @@ export function computeMetrics(
   // ── Distraction metrics ───────────────────────────────
   let totalDistractionTime = 0;
   const distractionByApp: Record<string, number> = {};
+  const distractionEventsList: DistractionDetail[] = [];
+
   for (const evt of distractionEvents) {
     totalDistractionTime += evt.duration_blocked;
     distractionByApp[evt.app_name] = (distractionByApp[evt.app_name] || 0) + evt.duration_blocked;
+    distractionEventsList.push({
+      appName: evt.app_name,
+      windowTitle: evt.window_title,
+      duration: evt.duration_blocked,
+      reason: evt.interception_reason,
+      startTime: evt.start_time || new Date().toISOString(), // Fallback if missing
+    });
   }
+  
+  // Also add entertainment blocks as distractions
+  for (const node of sorted) {
+    const cat = mapAppToCategory(node.app_name, node.window_title, node.url || "");
+    if (cat === "entertainment") {
+      distractionEventsList.push({
+        appName: node.app_name,
+        windowTitle: node.window_title,
+        duration: node.duration,
+        reason: "Entertainment activity",
+        startTime: node.start_time,
+      });
+    }
+  }
+
 
   let biggestDistraction = "";
   let biggestDistractionTime = 0;
@@ -271,5 +379,9 @@ export function computeMetrics(
     topApps,
     firstActivityTime,
     lastActivityTime,
+    focusBlocksList: focusBlocksList.sort((a, b) => b.duration - a.duration),
+    communicationBlocksList: communicationBlocksList.sort((a, b) => b.duration - a.duration),
+    distractionEventsList: distractionEventsList.sort((a, b) => b.duration - a.duration),
+    switchEventsList: switchEventsList.reverse(), // most recent first
   };
 }
