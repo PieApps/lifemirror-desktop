@@ -77,7 +77,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [isExportOpen, setIsExportOpen] = useState(false);
 
   return (
-    <div className="lg:col-span-2 relative min-h-[500px] bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
+    <div className="lg:col-span-2 relative min-h-[500px] lg:min-h-0 lg:h-full bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
       <div className="p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* View Mode switcher */}
         <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] w-fit">
@@ -193,7 +193,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto relative">
+      <div className="flex-1 overflow-y-auto relative custom-scrollbar">
         {/* Visual Lock overlay for Incognito Mode */}
         {isIncognito && (
           <div className="absolute inset-0 bg-[var(--bg-color)]/90 backdrop-blur-md z-30 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-300">
