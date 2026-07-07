@@ -29,7 +29,7 @@ impl ResumeBuilder {
 
     pub async fn generate_context(&self, project_id: Option<i64>) -> Result<ResumeContextResponse, String> {
         let project = match project_id {
-            Some(id) => {
+            Some(_id) => {
                 self.db.get_recent_active_project().map_err(|e| e.to_string())?
             },
             None => self.db.get_recent_active_project().map_err(|e| e.to_string())?,

@@ -1,5 +1,5 @@
 import { ResumeContextResponse } from "../types/resume";
-import { open } from "@tauri-apps/plugin-shell";
+import { open } from "@tauri-apps/plugin-opener";
 
 interface Props {
   context: ResumeContextResponse;
