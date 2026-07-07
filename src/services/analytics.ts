@@ -304,7 +304,7 @@ export function computeMetrics(
       windowTitle: evt.window_title,
       duration: evt.duration_blocked,
       reason: evt.interception_reason,
-      startTime: evt.start_time || new Date().toISOString(), // Fallback if missing
+      startTime: evt.timestamp || new Date().toISOString(), // Fallback if missing
     });
   }
   
