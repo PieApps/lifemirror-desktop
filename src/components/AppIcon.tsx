@@ -1,6 +1,6 @@
 import React from 'react';
 import { Globe, Monitor, Terminal, MessageSquare, Video } from 'lucide-react';
-import { convertFileSrc } from '@tauri-apps/api/tauri';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 // Brand SVG Icons
 const VSCodeIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (

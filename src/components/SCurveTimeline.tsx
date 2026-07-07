@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 import { MemoryNode } from "../types";
-import AppIcon from './AppIcon';
+import AppIcon, { extractDomain } from './AppIcon';
 import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
 
 export interface ActivityNode {
@@ -75,34 +75,9 @@ export interface TimelineNode {
   memoryData?: MemoryNode;
 }
 
-const extractDomain = (url?: string): string => {
-  if (!url) return "";
-  try {
-    let host = url;
-    if (url.startsWith("https://")) {
-      host = url.substring(8);
-    } else if (url.startsWith("http://")) {
-      host = url.substring(7);
-    }
-    const end = host.indexOf("/");
-    const query = host.indexOf("?");
-    const colon = host.indexOf(":");
-    let limit = host.length;
-    if (end !== -1) limit = Math.min(limit, end);
-    if (query !== -1) limit = Math.min(limit, query);
-    if (colon !== -1) limit = Math.min(limit, colon);
-    
-    let hostname = host.substring(0, limit);
-    if (hostname.startsWith("www.")) {
-      hostname = hostname.substring(4);
-    }
-    return hostname;
-  } catch {
-    return "";
-  }
-};
+// extractDomain moved to AppIcon.tsx
 
-export default function SCurveTimeline({ 
+export function SCurveTimeline({ 
   memoryNodes,
   activities, 
   subSessionEvents,
@@ -110,7 +85,7 @@ export default function SCurveTimeline({
   onAddJournal, 
   onDeleteLog 
 }: SCurveTimelineProps) {
-  const rowHeight = 300;
+  const rowHeight = 200;
   const width = 800;
   const colXs = [130, 400, 670];
   const colPercentages = ['16.25%', '50%', '83.75%'];
@@ -122,23 +97,77 @@ export default function SCurveTimeline({
   const processedNodes = useMemo(() => {
     // 1. HYBRID APPROACH: If we have Semantic Memory Nodes, display them!
     if (memoryNodes && memoryNodes.length > 0) {
-      const nodes: TimelineNode[] = memoryNodes.map(mn => ({
-        isGroupedSession: true,
-        id: mn.id || Math.random(),
-        app_name: mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory'),
-        window_title: mn.title,
-        start_time: mn.timestamp,
-        duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
-        source: 'AI Memory',
-        notes: mn.summary,
-        originalActivities: mn.activities || [],
-        subEvents: mn.sub_events || [],
-        isMemoryNode: true,
-        memoryData: mn
-      }));
-      
+      const initialNodes: TimelineNode[] = memoryNodes.map(mn => {
+        let dominantAppName = mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory');
+        let dominantIcon = undefined;
+        let dominantUrl = undefined;
+        let dominantSource = 'AI Memory';
+        
+        if (mn.activities && mn.activities.length > 0) {
+           const durations: Record<string, number> = {};
+           mn.activities.forEach(a => {
+             durations[a.app_name] = (durations[a.app_name] || 0) + a.duration;
+           });
+           let maxApp = mn.activities[0].app_name;
+           let maxDur = 0;
+           for (const [app, dur] of Object.entries(durations)) {
+             if (dur > maxDur) { maxDur = dur; maxApp = app; }
+           }
+           const dominant = mn.activities.find(a => a.app_name === maxApp) || mn.activities[0];
+           dominantAppName = dominant.app_name;
+           dominantIcon = dominant.icon_url;
+           dominantUrl = dominant.url;
+           dominantSource = dominant.source;
+        }
+
+        return {
+          isGroupedSession: true,
+          id: mn.id || Math.random(),
+          app_name: dominantAppName,
+          window_title: mn.title,
+          start_time: mn.timestamp,
+          duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
+          source: dominantSource,
+          url: dominantUrl,
+          icon_url: dominantIcon,
+          notes: mn.summary,
+          originalActivities: mn.activities ? [...mn.activities] : [],
+          subEvents: mn.sub_events ? [...mn.sub_events] : [],
+          isMemoryNode: true,
+          memoryData: mn
+        };
+      });
+
+      initialNodes.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+      const groupedNodes: TimelineNode[] = [];
+      let currentGroup: TimelineNode | null = null;
+
+      initialNodes.forEach(node => {
+         if (!currentGroup) {
+           currentGroup = node;
+         } else {
+           const groupEnd = new Date(currentGroup.start_time).getTime() + currentGroup.duration * 1000;
+           const nodeStart = new Date(node.start_time).getTime();
+           const gap = (nodeStart - groupEnd) / 1000;
+           
+           if (currentGroup.app_name === node.app_name && gap < 1800) {
+             currentGroup.duration += node.duration;
+             currentGroup.originalActivities.push(...node.originalActivities);
+             currentGroup.subEvents.push(...node.subEvents);
+             if (node.notes) {
+                currentGroup.notes = (currentGroup.notes ? currentGroup.notes + "\n\n---\n\n" : "") + node.notes;
+             }
+           } else {
+             groupedNodes.push(currentGroup);
+             currentGroup = node;
+           }
+         }
+      });
+      if (currentGroup) groupedNodes.push(currentGroup);
+
       distractionEvents.forEach(dEvent => {
-        nodes.push({
+        groupedNodes.push({
           isGroupedSession: true,
           id: -dEvent.id,
           app_name: "Distraction Shield",
@@ -154,7 +183,7 @@ export default function SCurveTimeline({
         });
       });
 
-      return nodes.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      return groupedNodes.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
     }
 
     const isBrowserApp = (appName: string): boolean => {
@@ -403,7 +432,7 @@ export default function SCurveTimeline({
                   </div>
 
                   <div
-                    className={`absolute glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
+                    className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
                       node.isGroupedSession ? 'cursor-pointer hover:border-violet-500/50' : ''
                     }`}
                     style={{
@@ -424,6 +453,15 @@ export default function SCurveTimeline({
                       }
                     }}
                   >
+                    {/* Visual stack effect for grouped boxes */}
+                    {node.isGroupedSession && (node.originalActivities.length + node.subEvents.length > 1 || (node.distractionEvents && node.distractionEvents.length > 1)) && (
+                      <>
+                        <div className="absolute inset-0 glass-card rounded-xl border border-[var(--border-color)] transform translate-x-1 translate-y-1.5 -z-10 opacity-60 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-1.5 group-hover:translate-y-2"></div>
+                        {(node.originalActivities.length + node.subEvents.length > 2 || (node.distractionEvents && node.distractionEvents.length > 2)) && (
+                          <div className="absolute inset-0 glass-card rounded-xl border border-[var(--border-color)] transform translate-x-2 translate-y-3 -z-20 opacity-30 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-3 group-hover:translate-y-4"></div>
+                        )}
+                      </>
+                    )}
                     <div className="flex items-center justify-between gap-1 mb-1.5">
                       <div className="flex items-center gap-1 overflow-hidden max-w-[130px]">
                         {node.isShield ? (
@@ -448,7 +486,10 @@ export default function SCurveTimeline({
                           {node.isShield
                             ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Distraction Blocked')
                             : node.isGroupedSession 
-                              ? `${node.subEvents.length + node.originalActivities.length} items`
+                              ? (() => {
+                                  const count = node.subEvents.length + node.originalActivities.length;
+                                  return `${count} item${count === 1 ? '' : 's'}`;
+                                })()
                               : (node.domain_tag || (node.url ? node.url.split('/')[0] : '')) || node.app_name
                           }
                         </span>
@@ -510,7 +551,7 @@ export default function SCurveTimeline({
                         {(node.isGroupedSession || node.isMemoryNode) && (
                           <button
                             onClick={() => setSelectedNode(node)}
-                            className="text-[9px] font-medium text-violet-500 hover:text-violet-400 transition-colors px-1"
+                            className="text-[9px] font-medium text-violet-500 hover:text-violet-400 transition-colors px-1 cursor-pointer"
                           >
                             Details →
                           </button>

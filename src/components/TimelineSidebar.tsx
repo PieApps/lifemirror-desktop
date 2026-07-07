@@ -1,8 +1,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { TimelineNode, ActivityNode } from './SCurveTimeline';
-import AppIcon from './AppIcon';
-import { extractDomain } from '../utils/format';
+import AppIcon, { extractDomain } from './AppIcon';
 
 export const getFormatDuration = (seconds: number) => {
   if (seconds < 60) return `${seconds}s`;
@@ -23,12 +22,12 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
     <>
       {/* Backdrop overlay for clicking outside to close */}
       <div 
-        className="fixed inset-0 bg-black/10 dark:bg-black/40 z-40 transition-opacity"
+        className="fixed inset-0 bg-black/20 dark:bg-black/60 z-[50] transition-opacity backdrop-blur-sm"
         onClick={onClose}
       />
       
       {/* Sidebar Panel */}
-      <div className="fixed inset-y-0 right-0 w-[420px] bg-[var(--bg-primary)] border-l border-[var(--border-color)] shadow-2xl z-50 flex flex-col transform transition-transform duration-300 translate-x-0">
+      <div className="fixed inset-y-0 right-0 w-[420px] glass bg-[var(--bg-color)]/95 backdrop-blur-3xl border-l border-[var(--border-color)] shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 translate-x-0">
         <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={node.window_title}>
             {node.window_title}
