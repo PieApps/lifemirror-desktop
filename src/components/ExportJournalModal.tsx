@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { X, Copy, CheckCircle } from "lucide-react";
-import type { ActivityNode } from "../types";
+import type { ActivityNode, DailySummary } from "../types";
 import type { ProductivityMetrics } from "../services/analytics";
-import { generateMarkdownJournal } from "../services/reports";
+import { generateMarkdownJournal, generateAggregateJournal } from "../services/reports";
 
 interface ExportJournalModalProps {
   date: string;
-  activities: ActivityNode[];
-  metrics: ProductivityMetrics;
+  activities?: ActivityNode[];
+  metrics?: ProductivityMetrics;
+  weeklySummaries?: DailySummary[];
+  monthlySummaries?: DailySummary[];
+  viewMode: "daily" | "weekly" | "monthly";
   onClose: () => void;
 }
 
@@ -15,15 +18,25 @@ export const ExportJournalModal: React.FC<ExportJournalModalProps> = ({
   date,
   activities,
   metrics,
+  weeklySummaries,
+  monthlySummaries,
+  viewMode,
   onClose,
 }) => {
   const [markdown, setMarkdown] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const md = generateMarkdownJournal(date, activities, metrics);
+    let md = "";
+    if (viewMode === "daily" && activities && metrics) {
+      md = generateMarkdownJournal(date, activities, metrics);
+    } else if (viewMode === "weekly" && weeklySummaries) {
+      md = generateAggregateJournal(date, weeklySummaries, "Weekly");
+    } else if (viewMode === "monthly" && monthlySummaries) {
+      md = generateAggregateJournal(date, monthlySummaries, "Monthly");
+    }
     setMarkdown(md);
-  }, [date, activities, metrics]);
+  }, [date, activities, metrics, weeklySummaries, monthlySummaries, viewMode]);
 
   const handleCopy = async () => {
     try {
@@ -42,9 +55,15 @@ export const ExportJournalModal: React.FC<ExportJournalModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)] bg-[var(--bg-color)]/50">
           <div>
-            <h2 className="text-xl font-bold text-[var(--text-color)]">Export Daily Journal</h2>
+            <h2 className="text-xl font-bold text-[var(--text-color)]">Export {viewMode === "daily" ? "Daily" : viewMode === "weekly" ? "Weekly" : "Monthly"} Journal</h2>
             <p className="text-sm text-[var(--text-muted)] mt-1">
-              Your AI-generated markdown work log for {new Date(date).toLocaleDateString()}.
+              Your AI-generated markdown work log for {
+                viewMode === "daily" 
+                  ? new Date(date).toLocaleDateString()
+                  : viewMode === "weekly"
+                    ? "the week"
+                    : "the month"
+              }.
             </p>
           </div>
           <button

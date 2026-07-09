@@ -118,16 +118,14 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
         {/* Date Scrubber */}
         <div className="flex items-center gap-2">
-          {viewMode === "daily" && (
-            <button
-              onClick={() => setIsExportOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-xl border border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400 font-semibold text-xs transition-colors hover:bg-violet-500/20 cursor-pointer"
-              title="Generate Work Journal"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Export</span>
-            </button>
-          )}
+          <button
+            onClick={() => setIsExportOpen(true)}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-xl border border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400 font-semibold text-xs transition-colors hover:bg-violet-500/20 cursor-pointer"
+            title="Generate Work Journal"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Export</span>
+          </button>
           {viewMode === "daily" && distractionEvents.length > 0 && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 dark:text-red-400 font-mono text-xs shadow-sm" title="Distractions Deflected Today">
               <ShieldAlert className="w-3.5 h-3.5" />
@@ -240,11 +238,14 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
       </div>
       
       {/* Export Modal */}
-      {isExportOpen && viewMode === "daily" && (
+      {isExportOpen && (
         <ExportJournalModal
           date={selectedDate}
           activities={activities}
           metrics={metrics}
+          weeklySummaries={weeklySummaries}
+          monthlySummaries={monthlySummaries}
+          viewMode={viewMode}
           onClose={() => setIsExportOpen(false)}
         />
       )}
