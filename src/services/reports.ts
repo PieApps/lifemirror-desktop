@@ -74,7 +74,7 @@ export function generateMarkdownJournal(
  * Generates a Markdown-formatted weekly or monthly work journal.
  */
 export function generateAggregateJournal(
-  date: string,
+  _date: string,
   summaries: DailySummary[],
   period: "Weekly" | "Monthly"
 ): string {

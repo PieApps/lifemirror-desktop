@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { formatDuration, type ProductivityMetrics, type FocusSessionData, type DistractionDetail, type SwitchEventData } from "../services/analytics";
+import { formatDuration, type ProductivityMetrics } from "../services/analytics";
 import { Zap, Code, MessageCircle, AlertTriangle, Layers, TrendingUp, X, Clock } from "lucide-react";
 
 interface ProductivityDashboardProps {

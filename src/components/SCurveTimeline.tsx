@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { 
-  Monitor, Globe, Clock, Plus, Terminal, MessageSquare, 
-  Trash2, Video, ChevronDown, ChevronUp, ExternalLink, ShieldAlert
+  Clock, Plus, 
+  Trash2, ShieldAlert
 } from "lucide-react";
 
 import { MemoryNode } from "../types";
-import AppIcon, { extractDomain } from './AppIcon';
+import AppIcon from './AppIcon';
 import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
 
 export interface ActivityNode {
@@ -91,7 +90,7 @@ export function SCurveTimeline({
   const colPercentages = ['16.25%', '50%', '83.75%'];
 
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
-  const [isHovering, setIsHovering] = useState<number | null>(null);
+  const [_isHovering, setIsHovering] = useState<number | null>(null);
 
   // Group consecutive browser/editor usages together
   const processedNodes = useMemo(() => {

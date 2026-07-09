@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Clock, ShieldAlert } from "lucide-react";
+import { Clock } from "lucide-react";
 
 export function DistractionToast() {
   const [distractingTitle, setDistractingTitle] = useState("");

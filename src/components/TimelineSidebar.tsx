@@ -1,6 +1,5 @@
-import React from 'react';
 import { X } from 'lucide-react';
-import { TimelineNode, ActivityNode } from './SCurveTimeline';
+import { TimelineNode } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 
 export const getFormatDuration = (seconds: number) => {
