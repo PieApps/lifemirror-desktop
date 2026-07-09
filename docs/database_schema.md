@@ -110,13 +110,30 @@ These tables link `memory_nodes` to specific entities, establishing the relation
 | `technology_id` | `INTEGER` | FK to `technologies` |
 | `confidence` | `REAL` | AI confidence |
 
-*(All edge tables have a composite primary key on the two foreign keys).*
+### `node_entities`
+Generic edge table linking memory nodes to entities (projects, files, repositories, etc.) dynamically.
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `node_id` | `INTEGER` | FK to `memory_nodes` |
+| `entity_type` | `TEXT` | The type of entity |
+| `entity_id` | `INTEGER` | FK to the specific entity table |
+
+*(All edge tables have a composite primary key on their foreign keys).*
 
 ---
 
 ## 4. Raw Evidence & Legacy Tracking
 
 These tables remain as the "raw material" ingested by the Memory Engine. They provide deterministic evidence used to build `memory_nodes`.
+
+### `journal_entries`
+Stores raw user-submitted journal entries before they are processed into `memory_nodes`.
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `INTEGER PRIMARY KEY` | Auto-incrementing ID |
+| `timestamp` | `TEXT` | ISO 8601 creation time |
+| `notes` | `TEXT` | The actual journal text |
+| `processed` | `BOOLEAN` | Whether it has been turned into a memory node |
 
 ### `activity_logs`
 Stores the raw, granular OS window and application tracking.
@@ -127,11 +144,12 @@ Stores granular events like individual browser tab changes.
 *(Columns: id, session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp)*
 
 ### `session_activities` (Edge)
-Links a `memory_node` (type="session") to its constituent raw `activity_logs`.
+Links a `memory_node` (type="session") to its constituent raw events (like `activity_logs` or `sub_session_events`).
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `node_id` | `INTEGER` | FK to `memory_nodes` |
-| `activity_id` | `INTEGER` | FK to `activity_logs` |
+| `raw_id` | `INTEGER` | FK to the source table's ID |
+| `source` | `TEXT` | Indicates the source table (e.g., "activity", "sub_session") |
 
 ---
 
