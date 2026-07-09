@@ -274,7 +274,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
         
         <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-          When you open these applications or websites, a full-screen reminder will appear to help you stay focused and avoid distractions.
+          When you open these specific sites or applications, a full-screen reminder will appear to help you stay focused and avoid distractions.
         </p>
 
         <div className="flex gap-2">
@@ -283,7 +283,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             value={newRuleValue}
             onChange={(e) => setNewRuleValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleAddRule() }}
-            placeholder="Block rule (e.g., (?i).*youtube.*)"
+            placeholder="Block site or app (e.g., youtube.com, Discord)"
             className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-rose-500/50 focus:ring-1 focus:ring-rose-500/30 font-mono text-xs"
           />
           <button 

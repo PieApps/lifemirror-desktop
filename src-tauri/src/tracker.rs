@@ -287,8 +287,6 @@ pub fn start_window_tracker(
         let mut current_distraction_id: Option<i64> = None;
         let mut current_distraction_duration: i64 = 0;
 
-        let llm_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>> = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-        let pending_evaluations: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
 
         let db_ref = db.clone();
         let flush_editor_event = |duration: i64, title: &str, start_time: chrono::DateTime<Utc>, parent_app: &str, icon_url: Option<String>, min_dur: i64| {
@@ -449,108 +447,26 @@ pub fn start_window_tracker(
                         let rules = db.get_distraction_rules().unwrap_or_default();
                         compiled_rules.clear();
                         for r in rules {
-                            if let Ok(re) = regex::Regex::new(&r) {
+                            // We now store raw strings instead of compiled regexes in `compiled_rules`
+                            // The tuple format is kept the same for minimal diffs, but we use an empty regex
+                            if let Ok(re) = regex::Regex::new("") {
                                 compiled_rules.push((r, re));
                             }
                         }
                         last_rule_check = std::time::Instant::now();
                     }
 
-                for (r, re) in &compiled_rules {
-                    if re.is_match(&title) {
-                        is_distracted = true;
-                        distraction_type = Some("REGEX_RULE".to_string());
-                        distraction_reason = Some(r.clone());
-                        break;
-                    }
-                }
-
-                if !is_distracted {
-                    let cache_key = format!("{}::{}", title, intention);
-                    let mut cached_result = None;
-                    {
-                        let cache = llm_cache.lock().unwrap();
-                        if let Some(&res) = cache.get(&cache_key) {
-                            cached_result = Some(res);
-                        }
-                    }
-
-                    if let Some(res) = cached_result {
-                        is_distracted = res;
-                        if res {
-                            distraction_type = Some("LLM_EVALUATION".to_string());
-                            distraction_reason = Some(intention.clone());
-                        }
-                    } else {
-                        let mut pending = pending_evaluations.lock().unwrap();
-                        if !pending.contains(&cache_key) {
-                            let mut ollama_url = db.get_setting("ollama_url").unwrap_or_default();
-                            if ollama_url.is_empty() || ollama_url == "false" { ollama_url = "http://localhost:11434".to_string(); }
-                            
-                            let mut ollama_model = db.get_setting("ollama_model").unwrap_or_default();
-                            if ollama_model.is_empty() || ollama_model == "false" { ollama_model = "llama3.2".to_string(); }
-
-                            if ollama_url != "disabled" && ollama_model != "disabled" {
-                                pending.insert(cache_key.clone());
-                                
-                                let llm_cache_clone = llm_cache.clone();
-                                let pending_clone = pending_evaluations.clone();
-                                let title_clone = title.clone();
-                            
-                            std::thread::spawn(move || {
-                                let prompt = format!(
-                                    "You are an active distraction monitor. The user's current deep work intention is: \"{}\". They are currently looking at a window titled: \"{}\". Is this window a distraction from their goal? Reply with exactly YES or NO.",
-                                    intention, title_clone
-                                );
-                                
-                                let payload = serde_json::json!({
-                                    "model": ollama_model,
-                                    "prompt": prompt,
-                                    "stream": false
-                                });
-                                
-                                let output = std::process::Command::new("curl")
-                                    .args([
-                                        "-s",
-                                        "-X", "POST",
-                                        &format!("{}/api/generate", ollama_url),
-                                        "-H", "Content-Type: application/json",
-                                        "-d", &payload.to_string(),
-                                    ])
-                                    .output();
-                                
-                                let mut result_distracted = false;
-                                if let Ok(out) = output {
-                                    if out.status.success() {
-                                        if let Ok(response_json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                                            if let Some(response) = response_json["response"].as_str() {
-                                                if response.to_uppercase().contains("YES") {
-                                                    result_distracted = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                {
-                                    let mut cache = llm_cache_clone.lock().unwrap();
-                                    cache.insert(cache_key.clone(), result_distracted);
-                                }
-                                {
-                                    let mut pending_lock = pending_clone.lock().unwrap();
-                                    pending_lock.remove(&cache_key);
-                                }
-                                
-                                if result_distracted {
-                                    // The main synchronous loop will handle window visibility and logic 
-                                    // on the next 1-second tick when it reads the updated cache.
-                                }
-                            });
-                            }
+                    for (r, _) in &compiled_rules {
+                        let r_lower = r.to_lowercase();
+                        // Strict site/app blocking using simple substring match
+                        if title.to_lowercase().contains(&r_lower) || app.to_lowercase().contains(&r_lower) {
+                            is_distracted = true;
+                            distraction_type = Some("SITE_BLOCK".to_string());
+                            distraction_reason = Some(r.clone());
+                            break;
                         }
                     }
                 }
-            }
             }
 
             if is_distracted {
@@ -588,32 +504,40 @@ pub fn start_window_tracker(
                     current_distraction_id = None;
                 }
                 
-                // Show the toast reminder
-                if let Some(toast_win) = app_handle.get_webview_window("toast") {
-                    if !toast_win.is_visible().unwrap_or(false) {
-                        // Get primary monitor
-                        if let Ok(Some(monitor)) = toast_win.primary_monitor() {
-                            let size = monitor.size();
-                            let toast_size = toast_win.outer_size().unwrap_or(tauri::PhysicalSize::new(380, 140));
-                            
-                            // Calculate bottom right position with 24px padding
-                            let x = (size.width.saturating_sub(toast_size.width)).saturating_sub(24);
-                            let y = (size.height.saturating_sub(toast_size.height)).saturating_sub(24);
-                            
-                            let _ = toast_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
+                // Show the toast reminder only after 60 seconds of continuous distraction
+                if current_distraction_duration >= 60 {
+                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                        if !toast_win.is_visible().unwrap_or(false) {
+                            // Get primary monitor
+                            if let Ok(Some(monitor)) = toast_win.primary_monitor() {
+                                let size = monitor.size();
+                                let toast_size = toast_win.outer_size().unwrap_or(tauri::PhysicalSize::new(380, 140));
+                                
+                                // Calculate bottom right position with 24px padding
+                                let x = (size.width.saturating_sub(toast_size.width)).saturating_sub(24);
+                                let y = (size.height.saturating_sub(toast_size.height)).saturating_sub(24);
+                                
+                                let _ = toast_win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
+                            }
+                            let _ = toast_win.show();
                         }
-                        let _ = toast_win.show();
+                        
+                        #[derive(serde::Serialize, Clone)]
+                        struct DistractionPayload {
+                            title: String,
+                            duration: i64,
+                        }
+                        let _ = app_handle.emit("distraction-tick", DistractionPayload {
+                            title: title.clone(),
+                            duration: current_distraction_duration,
+                        });
                     }
-                    
-                    #[derive(serde::Serialize, Clone)]
-                    struct DistractionPayload {
-                        title: String,
-                        duration: i64,
+                } else {
+                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                        if toast_win.is_visible().unwrap_or(false) {
+                            let _ = toast_win.hide();
+                        }
                     }
-                    let _ = app_handle.emit("distraction-tick", DistractionPayload {
-                        title: title.clone(),
-                        duration: current_distraction_duration,
-                    });
                 }
             } else {
                 current_distraction_app.clear();
