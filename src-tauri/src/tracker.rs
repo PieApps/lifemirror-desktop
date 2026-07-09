@@ -443,16 +443,18 @@ pub fn start_window_tracker(
             let is_focus_mode_active = intention != "false" && !intention.is_empty();
 
             if is_focus_mode_active {
-                if last_rule_check.elapsed() > Duration::from_secs(5) {
-                    let rules = db.get_distraction_rules().unwrap_or_default();
-                    compiled_rules.clear();
-                    for r in rules {
-                        if let Ok(re) = regex::Regex::new(&r) {
-                            compiled_rules.push((r, re));
+                // Never block the LifeMirror app itself
+                if !app.to_lowercase().contains("lifemirror") && !title.to_lowercase().contains("lifemirror") {
+                    if last_rule_check.elapsed() > Duration::from_secs(5) {
+                        let rules = db.get_distraction_rules().unwrap_or_default();
+                        compiled_rules.clear();
+                        for r in rules {
+                            if let Ok(re) = regex::Regex::new(&r) {
+                                compiled_rules.push((r, re));
+                            }
                         }
+                        last_rule_check = std::time::Instant::now();
                     }
-                    last_rule_check = std::time::Instant::now();
-                }
 
                 for (r, re) in &compiled_rules {
                     if re.is_match(&title) {
@@ -549,6 +551,7 @@ pub fn start_window_tracker(
                     }
                 }
             }
+            }
 
             if is_distracted {
                 if app == current_distraction_app && title == current_distraction_title {
@@ -618,11 +621,9 @@ pub fn start_window_tracker(
                 current_distraction_duration = 0;
                 current_distraction_id = None;
 
-                if is_focus_mode_active {
-                    if let Some(toast_win) = app_handle.get_webview_window("toast") {
-                        if toast_win.is_visible().unwrap_or(false) {
-                            let _ = toast_win.hide();
-                        }
+                if let Some(toast_win) = app_handle.get_webview_window("toast") {
+                    if toast_win.is_visible().unwrap_or(false) {
+                        let _ = toast_win.hide();
                     }
                 }
             }
