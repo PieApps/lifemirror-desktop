@@ -521,15 +521,33 @@ pub fn start_window_tracker(
                             }
                             let _ = toast_win.show();
                         }
-                        
                         #[derive(serde::Serialize, Clone)]
                         struct DistractionPayload {
                             title: String,
                             duration: i64,
+                            custom_image: Option<String>,
+                            custom_quote: Option<String>,
                         }
+                        
+                        let custom_img = db_ref.get_setting("toast_custom_image").unwrap_or_default();
+                        let custom_image_opt = if custom_img.is_empty() || custom_img == "false" {
+                            None
+                        } else {
+                            Some(custom_img)
+                        };
+
+                        let custom_q = db_ref.get_setting("toast_custom_quote").unwrap_or_default();
+                        let custom_quote_opt = if custom_q.is_empty() || custom_q == "false" {
+                            None
+                        } else {
+                            Some(custom_q)
+                        };
+
                         let _ = app_handle.emit("distraction-tick", DistractionPayload {
                             title: title.clone(),
                             duration: current_distraction_duration,
+                            custom_image: custom_image_opt,
+                            custom_quote: custom_quote_opt,
                         });
                     }
                 } else {

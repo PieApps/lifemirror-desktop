@@ -6,12 +6,24 @@ import { Clock, ShieldAlert } from "lucide-react";
 export function DistractionToast() {
   const [distractingTitle, setDistractingTitle] = useState("");
   const [durationSecs, setDurationSecs] = useState(0);
+  const [customImage, setCustomImage] = useState<string | null>(null);
+  const [customQuote, setCustomQuote] = useState<string | null>(null);
 
   useEffect(() => {
     // Listen for the distraction event from Rust
-    const unlisten = listen<{ title: string; duration: number }>("distraction-tick", (event) => {
+    const unlisten = listen<{ title: string; duration: number; custom_image?: string; custom_quote?: string }>("distraction-tick", (event) => {
       setDistractingTitle(event.payload.title);
       setDurationSecs(event.payload.duration);
+      if (event.payload.custom_image && event.payload.custom_image.length > 0) {
+        setCustomImage(event.payload.custom_image);
+      } else {
+        setCustomImage(null);
+      }
+      if (event.payload.custom_quote && event.payload.custom_quote.length > 0) {
+        setCustomQuote(event.payload.custom_quote);
+      } else {
+        setCustomQuote(null);
+      }
     });
 
     return () => {
@@ -40,8 +52,20 @@ export function DistractionToast() {
     <div className="w-screen h-screen flex flex-col items-center justify-center bg-transparent overflow-hidden font-sans">
       <div 
         data-tauri-drag-region 
-        className="relative flex flex-col w-[340px] p-4 bg-gray-900/80 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl text-white"
+        className="relative flex flex-col w-[340px] p-4 bg-gray-900/80 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-xl text-white overflow-hidden"
       >
+        {customImage && (
+          <div 
+            className="absolute inset-0 z-0 opacity-40 mix-blend-screen" 
+            style={{ 
+              backgroundImage: `url(${customImage})`, 
+              backgroundSize: 'cover', 
+              backgroundPosition: 'center',
+              filter: 'blur(8px)'
+            }} 
+          />
+        )}
+        <div className="absolute inset-0 z-0 bg-gray-900/60 mix-blend-multiply pointer-events-none" />
 
         <style>
           {`
@@ -56,7 +80,7 @@ export function DistractionToast() {
             }
           `}
         </style>
-        <div className="flex items-start gap-3 pointer-events-none">
+        <div className="flex items-start gap-3 pointer-events-none z-10">
           <div className="mt-1 flex-shrink-0 relative">
             <div className="w-12 h-12 animate-angry-shake origin-bottom drop-shadow-xl">
               <svg viewBox="0 0 100 100" className="w-full h-full">
@@ -77,12 +101,18 @@ export function DistractionToast() {
             </div>
           </div>
           
-          <div className="flex flex-col flex-1 min-w-0 pr-6 justify-center pt-1">
+          <div className="flex flex-col flex-1 min-w-0 pr-6 justify-center pt-1 z-10">
             <h2 className="text-sm font-bold tracking-wide">Focus Police!</h2>
-            <p className="text-xs text-gray-300 mt-0.5 truncate">
-              Back to work! Drop the {distractingTitle || "Distracting App"}
+            <p className="text-xs text-gray-300 mt-1 truncate whitespace-normal drop-shadow-md">
+              {customQuote ? (
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400 font-extrabold text-base tracking-tight italic animate-pulse drop-shadow-sm">
+                  "{customQuote}"
+                </span>
+              ) : (
+                <span>Back to work! Drop the {distractingTitle || "Distracting App"}</span>
+              )}
             </p>
-            <div className="flex items-center gap-1.5 mt-2 text-indigo-300 font-mono text-xs font-bold bg-indigo-900/40 w-fit px-2 py-1 rounded-md">
+            <div className="flex items-center gap-1.5 mt-2 text-indigo-300 font-mono text-xs font-bold bg-indigo-900/40 w-fit px-2 py-1 rounded-md drop-shadow-sm">
               <Clock className="w-3.5 h-3.5 animate-pulse text-indigo-400" />
               <span className="text-indigo-200">{formatTime(durationSecs)} wasted</span>
             </div>

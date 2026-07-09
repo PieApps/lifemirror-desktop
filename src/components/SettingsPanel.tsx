@@ -1,7 +1,7 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Cpu, Sliders, Power, AlertCircle, X, Plus, Target } from "lucide-react";
+import { Settings, Shield, Cpu, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert } from "lucide-react";
 
 interface SettingsPanelProps {
   isIncognito: boolean;
@@ -42,6 +42,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [distractionRules, setDistractionRules] = React.useState<Array<{id: number, rule_type: string, value: string, is_active: boolean}>>([]);
   const [newRuleValue, setNewRuleValue] = React.useState("");
   const [appVersion, setAppVersion] = React.useState<string>("");
+  const [customImage, setCustomImage] = React.useState<string | null>(null);
+  const [customQuote, setCustomQuote] = React.useState<string>("");
+
+  const loadSettings = async () => {
+    try {
+      const img = await invoke<string>("get_db_setting", { key: "toast_custom_image" });
+      if (img && img.length > 0 && img !== "false") {
+        setCustomImage(img);
+      }
+      const quote = await invoke<string>("get_db_setting", { key: "toast_custom_quote" });
+      if (quote && quote !== "false") {
+        setCustomQuote(quote);
+      }
+    } catch (e) {
+      console.error("Failed to load toast custom image", e);
+    }
+  };
 
   const loadRules = async () => {
     try {
@@ -54,8 +71,70 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   React.useEffect(() => {
     loadRules();
+    loadSettings();
     getVersion().then(setAppVersion).catch(console.error);
   }, []);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        const resizedBase64 = canvas.toDataURL("image/jpeg", 0.8);
+        try {
+          await invoke("set_db_setting", { key: "toast_custom_image", value: resizedBase64 });
+          setCustomImage(resizedBase64);
+        } catch (err) {
+          console.error("Failed to save custom image", err);
+        }
+      };
+      img.src = base64String;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearCustomImage = async () => {
+    try {
+      await invoke("set_db_setting", { key: "toast_custom_image", value: "" });
+      setCustomImage(null);
+    } catch (err) {
+      console.error("Failed to clear custom image", err);
+    }
+  };
+
+  const handleCustomQuoteBlur = async () => {
+    try {
+      await invoke("set_db_setting", { key: "toast_custom_quote", value: customQuote.trim() });
+    } catch (err) {
+      console.error("Failed to save custom quote", err);
+    }
+  };
 
   React.useEffect(() => {
     setInputValue(String(minLogDuration));
@@ -309,6 +388,55 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {distractionRules.length === 0 && (
             <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">No interdiction rules configured.</div>
           )}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+          <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Custom Motivational Quote</label>
+          <input
+            type="text"
+            value={customQuote}
+            onChange={(e) => setCustomQuote(e.target.value)}
+            onBlur={handleCustomQuoteBlur}
+            placeholder="e.g., Don't give up what you want most..."
+            className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
+          />
+          <p className="text-[10px] text-[var(--text-muted)] mt-1">This message will replace the default 'Back to work' text.</p>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+          <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Custom Distraction Image</label>
+          <div className="flex items-center gap-4">
+            {customImage ? (
+              <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-[var(--border-color)]">
+                <img src={customImage} alt="Custom Toast" className="w-full h-full object-cover" />
+                <button 
+                  onClick={clearCustomImage}
+                  className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-lg border-2 border-dashed border-[var(--border-color)] flex items-center justify-center bg-[var(--bg-color)]/30">
+                <ShieldAlert className="w-5 h-5 text-[var(--text-muted)] opacity-50" />
+              </div>
+            )}
+            <div className="flex-1">
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={handleImageUpload}
+                className="block w-full text-xs text-[var(--text-muted)]
+                  file:mr-3 file:py-1.5 file:px-3
+                  file:rounded-lg file:border-0
+                  file:text-xs file:font-medium
+                  file:bg-violet-600 file:text-white
+                  hover:file:bg-violet-700
+                  file:cursor-pointer cursor-pointer transition-colors"
+              />
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">Upload a custom image (e.g., family photo) to display on the distraction toast. Max 2MB.</p>
+            </div>
+          </div>
         </div>
       </div>
 
