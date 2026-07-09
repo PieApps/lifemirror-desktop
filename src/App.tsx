@@ -49,16 +49,18 @@ function App() {
 
   const [isResuming, setIsResuming] = useState(false);
   const [resumeContext, setResumeContext] = useState<ResumeContextResponse | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const handleResumeProject = async () => {
     setIsResuming(true);
     setResumeContext(null);
+    setResumeError(null);
     try {
       const result = await invoke<ResumeContextResponse>("generate_resume_context", { projectId: null });
       setResumeContext(result);
     } catch (e) {
       console.error("Failed to generate resume context:", e);
-      // Fallback or error handling can be shown here
+      setResumeError(typeof e === "string" ? e : "Failed to generate context. Please check if Ollama is running and you have recent activity.");
     } finally {
       setIsResuming(false);
     }
@@ -185,10 +187,34 @@ function App() {
       </div>
 
       {/* Modals */}
-      {(isResuming || resumeContext) && (
+      {(isResuming || resumeContext || resumeError) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          {isResuming && !resumeContext ? (
+          {isResuming && !resumeContext && !resumeError ? (
             <ResumeLoadingSkeleton />
+          ) : resumeError ? (
+            <div className="bg-[var(--card-bg)] border border-red-500/50 rounded-xl p-8 max-w-md w-full shadow-2xl text-center relative">
+                <button 
+                  onClick={() => setResumeError(null)}
+                  className="absolute top-4 right-4 p-2 hover:bg-[var(--border-color)] rounded-full transition-colors"
+                >
+                  <svg className="w-5 h-5 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-[var(--text-color)] mb-2">Resume Failed</h3>
+                <p className="text-[var(--text-muted)] mb-8">{resumeError}</p>
+                <button
+                    onClick={() => setResumeError(null)}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg font-semibold transition-colors"
+                >
+                    Dismiss
+                </button>
+            </div>
           ) : resumeContext ? (
             <ResumeContextCard 
               context={resumeContext} 
