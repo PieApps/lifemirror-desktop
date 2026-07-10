@@ -56,16 +56,16 @@ export function DistractionToast() {
       >
         {customImage && (
           <div 
-            className="absolute inset-0 z-0 opacity-40 mix-blend-screen" 
+            className="absolute inset-0 z-0 opacity-60" 
             style={{ 
               backgroundImage: `url(${customImage})`, 
               backgroundSize: 'cover', 
               backgroundPosition: 'center',
-              filter: 'blur(8px)'
+              filter: 'blur(2px)'
             }} 
           />
         )}
-        <div className="absolute inset-0 z-0 bg-gray-900/60 mix-blend-multiply pointer-events-none" />
+        <div className="absolute inset-0 z-0 bg-gray-900/70 pointer-events-none" />
 
         <style>
           {`
