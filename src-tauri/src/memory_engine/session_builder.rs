@@ -54,11 +54,20 @@ impl SessionBuilder {
     }
 
     fn create_memory_node(&self, start_time: &str, events: &[NormalizedEvent]) -> MemoryNode {
-        // Derive a temporary title from the most frequent context
-        let title = if let Some(first) = events.first() {
-            format!("Session involving {}", first.context)
-        } else {
+        // Derive a meaningful title from the dominant context
+        let title = if events.is_empty() {
             "Unknown Session".to_string()
+        } else {
+            let mut durations = std::collections::HashMap::new();
+            for ev in events {
+                *durations.entry(ev.context.clone()).or_insert(0) += ev.duration;
+            }
+            let dominant_context = durations.into_iter()
+                .max_by_key(|&(_, dur)| dur)
+                .map(|(ctx, _)| ctx)
+                .unwrap_or_else(|| events[0].context.clone());
+
+            format!("{} Session", dominant_context)
         };
 
         MemoryNode {

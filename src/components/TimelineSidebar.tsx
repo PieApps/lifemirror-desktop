@@ -3,9 +3,18 @@ import { TimelineNode } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 
 export const getFormatDuration = (seconds: number) => {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  const roundedSeconds = Math.round(seconds);
+  if (roundedSeconds < 60) return `${roundedSeconds}s`;
+  
+  const mins = Math.floor(roundedSeconds / 60);
+  const secs = roundedSeconds % 60;
+  
+  if (mins >= 60) {
+    const hrs = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
+  }
+  
   return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
 };
 

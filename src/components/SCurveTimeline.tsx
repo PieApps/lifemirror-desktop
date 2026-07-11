@@ -119,11 +119,16 @@ export function SCurveTimeline({
            dominantSource = dominant.source;
         }
 
+        let displayTitle = mn.title;
+        if (displayTitle.startsWith("Session involving ")) {
+          displayTitle = `${dominantAppName} Session`;
+        }
+
         return {
           isGroupedSession: true,
           id: mn.id || Math.random(),
           app_name: dominantAppName,
-          window_title: mn.title,
+          window_title: displayTitle,
           start_time: mn.timestamp,
           duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
           source: dominantSource,
@@ -165,24 +170,77 @@ export function SCurveTimeline({
       });
       if (currentGroup) groupedNodes.push(currentGroup);
 
-      distractionEvents.forEach(dEvent => {
-        groupedNodes.push({
-          isGroupedSession: true,
-          id: -dEvent.id,
-          app_name: "Distraction Shield",
-          window_title: "Distractions Blocked",
-          start_time: dEvent.timestamp,
-          duration: dEvent.duration_blocked,
-          source: "Shield",
-          originalActivities: [],
-          subEvents: [],
-          isShield: true,
-          distractionEvent: dEvent,
-          distractionEvents: [dEvent]
-        });
-      });
+      const finalNodes: TimelineNode[] = [];
+      let currentDistractionGroup: TimelineNode | null = null;
 
-      return groupedNodes.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+      const allEvents = [
+        ...groupedNodes.map(n => ({ type: 'memory', time: new Date(n.start_time).getTime(), data: n })),
+        ...distractionEvents.map(d => ({ type: 'distraction', time: new Date(d.timestamp).getTime(), data: d as DistractionEvent }))
+      ].sort((a, b) => a.time - b.time);
+
+      allEvents.forEach(ev => {
+        if (ev.type === 'memory') {
+          if (currentDistractionGroup) {
+            finalNodes.push(currentDistractionGroup);
+            currentDistractionGroup = null;
+          }
+          finalNodes.push(ev.data as TimelineNode);
+        } else {
+          const dEvent = ev.data as DistractionEvent;
+          if (currentDistractionGroup) {
+            const firstEventTime = new Date(currentDistractionGroup.distractionEvents![0].timestamp).getTime();
+            const lastEvent = currentDistractionGroup.distractionEvents![currentDistractionGroup.distractionEvents!.length - 1];
+            const t1 = new Date(lastEvent.timestamp).getTime();
+            const t2 = new Date(dEvent.timestamp).getTime();
+            const gapSeconds = (t2 - t1) / 1000;
+            
+            if (gapSeconds < 1800) {
+              currentDistractionGroup.distractionEvents!.push(dEvent);
+              currentDistractionGroup.duration = Math.max(
+                currentDistractionGroup.duration,
+                ((t2 + dEvent.duration_blocked * 1000) - firstEventTime) / 1000
+              );
+            } else {
+              finalNodes.push(currentDistractionGroup);
+              currentDistractionGroup = {
+                isGroupedSession: true,
+                id: -dEvent.id,
+                app_name: "Distraction Shield",
+                window_title: "Distractions Blocked",
+                start_time: dEvent.timestamp,
+                duration: dEvent.duration_blocked,
+                source: "Shield",
+                originalActivities: [],
+                subEvents: [],
+                isShield: true,
+                distractionEvent: dEvent,
+                distractionEvents: [dEvent]
+              };
+            }
+          } else {
+            currentDistractionGroup = {
+              isGroupedSession: true,
+              id: -dEvent.id,
+              app_name: "Distraction Shield",
+              window_title: "Distractions Blocked",
+              start_time: dEvent.timestamp,
+              duration: dEvent.duration_blocked,
+              source: "Shield",
+              originalActivities: [],
+              subEvents: [],
+              isShield: true,
+              distractionEvent: dEvent,
+              distractionEvents: [dEvent]
+            };
+          }
+        }
+      });
+      
+      if (currentDistractionGroup) {
+        finalNodes.push(currentDistractionGroup);
+      }
+
+      return finalNodes;
     }
 
     const isBrowserApp = (appName: string): boolean => {
@@ -212,13 +270,19 @@ export function SCurveTimeline({
         const isGroupable = isBrowser || isEditor;
 
         if (isGroupable) {
-          const t1 = currentGroup ? new Date(currentGroup.originalActivities[currentGroup.originalActivities.length - 1]?.start_time || currentGroup.start_time).getTime() : 0;
+          const t1 = currentGroup && !currentGroup.isShield ? new Date(currentGroup.originalActivities[currentGroup.originalActivities.length - 1]?.start_time || currentGroup.start_time).getTime() : 0;
           const t2 = new Date(activity.start_time).getTime();
           const gapSeconds = (t2 - t1) / 1000;
 
-          if (currentGroup && !currentGroup.isShield && gapSeconds < 1800) {
-            currentGroup.duration += activity.duration;
+          if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
             currentGroup.originalActivities.push(activity);
+            
+            const firstEventTime = new Date(currentGroup.originalActivities[0].start_time).getTime();
+            currentGroup.duration = Math.max(
+              currentGroup.duration,
+              ((t2 + activity.duration * 1000) - firstEventTime) / 1000
+            );
+
             if (activity.notes) {
               currentGroup.notes = currentGroup.notes 
                 ? `${currentGroup.notes} | ${activity.notes}` 
@@ -263,9 +327,18 @@ export function SCurveTimeline({
         }
       } else {
         const dEvent = ev.data as DistractionEvent;
-        if (currentGroup && currentGroup.isShield) {
-          currentGroup.duration += dEvent.duration_blocked;
+        const t1 = currentGroup && currentGroup.isShield ? new Date(currentGroup.distractionEvents![currentGroup.distractionEvents!.length - 1].timestamp).getTime() : 0;
+        const t2 = new Date(dEvent.timestamp).getTime();
+        const gapSeconds = (t2 - t1) / 1000;
+
+        if (currentGroup && currentGroup.isShield && gapSeconds < 1800) {
           currentGroup.distractionEvents!.push(dEvent);
+          
+          const firstEventTime = new Date(currentGroup.distractionEvents![0].timestamp).getTime();
+          currentGroup.duration = Math.max(
+            currentGroup.duration,
+            ((t2 + dEvent.duration_blocked * 1000) - firstEventTime) / 1000
+          );
         } else {
           if (currentGroup) {
             nodes.push(currentGroup);
