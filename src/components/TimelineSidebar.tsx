@@ -1,4 +1,6 @@
-import { X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Edit2, Check } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 
@@ -24,6 +26,27 @@ interface TimelineSidebarProps {
 }
 
 export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+
+  useEffect(() => {
+    if (node?.isMemoryNode && node.memoryData) {
+      setSummaryText(node.memoryData.summary || "");
+    }
+    setIsEditing(false);
+  }, [node]);
+
+  const handleSaveSummary = async () => {
+    if (!node?.isMemoryNode || !node.memoryData?.id) return;
+    try {
+      await invoke("update_memory_node_summary", { id: node.memoryData.id, summary: summaryText });
+      node.memoryData.summary = summaryText;
+      setIsEditing(false);
+    } catch (e) {
+      console.error("Failed to update summary", e);
+    }
+  };
+
   if (!node) return null;
 
   return (
@@ -78,15 +101,47 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                 </span>
               </div>
 
-              <div className="p-4 rounded-xl bg-violet-500/5 dark:bg-violet-500/10 border border-violet-500/20 relative overflow-hidden">
+              <div className="p-4 rounded-xl bg-violet-500/5 dark:bg-violet-500/10 border border-violet-500/20 relative overflow-hidden group">
                 <div className="absolute top-0 right-0 w-16 h-16 bg-violet-500/10 rounded-bl-full -mr-8 -mt-8" />
-                <h3 className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <span className="w-1 h-1 rounded-full bg-violet-500"></span>
-                  AI Summary
-                </h3>
-                <p className="text-sm text-[var(--text-color)] leading-relaxed relative z-10">
-                  {node.memoryData.summary || "No summary available."}
-                </p>
+                <div className="flex items-center justify-between mb-3 relative z-10">
+                  <h3 className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-violet-500"></span>
+                    AI Summary
+                  </h3>
+                  {!isEditing ? (
+                    <button 
+                      onClick={() => setIsEditing(true)}
+                      className="p-1.5 rounded hover:bg-violet-500/10 text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Edit Summary"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleSaveSummary}
+                      className="p-1.5 rounded hover:bg-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400 transition-colors"
+                      title="Save Summary"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                
+                <div className="relative z-10">
+                  {!isEditing ? (
+                    <p className="text-sm text-[var(--text-color)] leading-relaxed min-h-[40px] whitespace-pre-wrap">
+                      {node.memoryData.summary || "No summary available."}
+                    </p>
+                  ) : (
+                    <textarea
+                      value={summaryText}
+                      onChange={(e) => setSummaryText(e.target.value)}
+                      className="w-full text-sm text-[var(--text-color)] leading-relaxed bg-white/50 dark:bg-black/20 border border-violet-500/30 rounded p-2 focus:outline-none focus:border-violet-500 custom-scrollbar resize-none"
+                      rows={4}
+                      autoFocus
+                    />
+                  )}
+                </div>
               </div>
             </div>
           )}

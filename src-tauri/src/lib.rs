@@ -297,6 +297,18 @@ pub struct FrontendMemoryNode {
 }
 
 #[tauri::command]
+async fn update_memory_node_summary(
+    id: i64,
+    summary: String,
+    state: tauri::State<'_, Arc<DbState>>,
+) -> Result<(), String> {
+    state
+        .update_memory_node_summary(id, &summary)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 #[allow(dead_code)]
 fn get_memory_nodes_for_day(
     state: State<'_, Arc<DbState>>,
@@ -782,6 +794,7 @@ pub fn run() {
             get_daily_activities,
             get_memory_nodes_for_day,
             search_memory_nodes,
+            update_memory_node_summary,
             get_weekly_summary,
             get_monthly_summary,
             get_hourly_heatmap,

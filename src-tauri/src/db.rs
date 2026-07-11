@@ -762,6 +762,15 @@ impl DbState {
         Ok(())
     }
 
+    pub fn update_memory_node_summary(&self, node_id: i64, summary: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "UPDATE memory_nodes SET summary = ?1 WHERE id = ?2"
+        )?;
+        stmt.execute(params![summary, node_id])?;
+        Ok(())
+    }
+
     pub fn persist_built_sessions(&self, sessions: Vec<(MemoryNode, Vec<NormalizedEvent>)>) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
