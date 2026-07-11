@@ -14,7 +14,9 @@ import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
 import type { ResumeContextResponse } from "./types/resume";
-import type { ActivityNode } from "./types";
+import type { ActivityNode, MemoryNode } from "./types";
+import TimelineSidebar from "./components/TimelineSidebar";
+import type { TimelineNode } from "./components/SCurveTimeline";
 
 function App() {
   const settings = useSettings();
@@ -126,6 +128,7 @@ function App() {
           const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
           data.setSelectedDate(dateStr);
           data.setViewMode("daily");
+          data.setSelectedActivity(node);
         }}
         onResumeClick={handleResumeProject}
       />
@@ -292,6 +295,58 @@ function App() {
         <JournalModal
           activity={data.selectedActivity as ActivityNode}
           onSave={data.handleSaveJournal}
+          onClose={() => data.setSelectedActivity(null)}
+        />
+      )}
+
+      {data.selectedActivity && !('app_name' in data.selectedActivity) && (
+        <TimelineSidebar
+          node={(() => {
+            const mn = data.selectedActivity as MemoryNode;
+            let dominantAppName = mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory');
+            let dominantIcon = undefined;
+            let dominantUrl = undefined;
+            let dominantSource = 'AI Memory';
+            
+            if (mn.activities && mn.activities.length > 0) {
+               const durations: Record<string, number> = {};
+               mn.activities.forEach(a => {
+                 durations[a.app_name] = (durations[a.app_name] || 0) + a.duration;
+               });
+               let maxApp = mn.activities[0].app_name;
+               let maxDur = 0;
+               for (const [app, dur] of Object.entries(durations)) {
+                 if (dur > maxDur) { maxDur = dur; maxApp = app; }
+               }
+               const dominant = mn.activities.find(a => a.app_name === maxApp) || mn.activities[0];
+               dominantAppName = dominant.app_name;
+               dominantIcon = dominant.icon_url;
+               dominantUrl = dominant.url;
+               dominantSource = dominant.source;
+            }
+
+            let displayTitle = mn.title;
+            if (displayTitle.startsWith("Session involving ")) {
+              displayTitle = `${dominantAppName} Session`;
+            }
+
+            return {
+              isGroupedSession: true,
+              id: mn.id || Math.random(),
+              app_name: dominantAppName,
+              window_title: displayTitle,
+              start_time: mn.timestamp,
+              duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
+              source: dominantSource,
+              url: dominantUrl,
+              icon_url: dominantIcon,
+              notes: mn.summary,
+              originalActivities: mn.activities ? [...mn.activities] : [],
+              subEvents: mn.sub_events ? [...mn.sub_events] : [],
+              isMemoryNode: true,
+              memoryData: mn
+            } as TimelineNode;
+          })()}
           onClose={() => data.setSelectedActivity(null)}
         />
       )}
