@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::db::DbState;
-use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+use crate::inference::get_inference_provider;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ResumeContextResponse {
@@ -84,8 +84,8 @@ Your output MUST be valid JSON matching this schema:
             journal_notes
         );
 
-        let provider = SmartFallbackProvider::new(self.db.clone());
-        let response_text = provider.prompt(&prompt).await?;
+        let provider = get_inference_provider(self.db.clone());
+        let response_text = provider.prompt(&prompt).await.map_err(|e| e.to_string())?;
 
         let json_start = response_text.find('{').unwrap_or(0);
         let json_end = response_text.rfind('}').unwrap_or_else(|| response_text.len().saturating_sub(1)) + 1;

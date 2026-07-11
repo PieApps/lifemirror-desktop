@@ -364,7 +364,7 @@ LifeMirror Desktop features a parallel multi-agent development and validation pi
 Execution is divided among five specialized AI subagents coordinated concurrently via [scripts/orchestrate_agents.py](file:///var/www/pieapps/lifemirror-desktop/scripts/orchestrate_agents.py):
 * **Rust Tauri Core Agent:** Focuses on native window hook loops (`tracker.rs`) and native messaging bridges (`native_msg.rs`).
 * **Frontend Web UI Agent:** Implements React UI, SVG serpentine geometry calculus, and timeline pages.
-* **Local AI & Data Agent:** Owns SQLite schema layouts, migrations, and Ollama reflection completion prompts.
+* **Local AI & Data Agent:** Owns SQLite schema layouts, migrations, and Local AI reflection completion prompts.
 * **QA & Security Agent:** Inspects database skip behaviors during Incognito Mode and runs offline audits.
 * **Project Documenter Agent:** Compiles Developer and User documentation.
 
@@ -390,8 +390,8 @@ The following table outlines the purpose of each skill in the `skills/` director
 | Skill Directory | Skill Name | Primary Use Case & Triggers | Key Instructions |
 | :--- | :--- | :--- | :--- |
 | [rust_tauri_core](file:///var/www/pieapps/lifemirror-desktop/skills/rust_tauri_core) | `rust_tauri_core` | Modifying Tauri backend code, active window focus tracking (`tracker.rs`), or Native Messaging communication (`native_msg.rs`). | Read native-endian browser frames, check session type (Wayland/X11), enforce thread-safe Incognito checks. |
-| [frontend_ui_web](file:///var/www/pieapps/lifemirror-desktop/skills/frontend_ui_web) | `frontend_ui_web` | Working on React dashboard UI, SVG S-curve coordinate maths, styling/glassmorphism, or browser-side Ollama hooks. | Winding S-curve geometry formulas, violet/dark aesthetics, call local Ollama completion endpoints. |
-| [local_ai_data](file:///var/www/pieapps/lifemirror-desktop/skills/local_ai_data) | `local_ai_data` | Modifying database schemas (`db.rs`), SQLCipher page-level encryption, database migrations, or Ollama prompt templates. | SQLCipher encryption setup, database key initialization (`PRAGMA key`), two-sentence reflection summaries. |
+| [frontend_ui_web](file:///var/www/pieapps/lifemirror-desktop/skills/frontend_ui_web) | `frontend_ui_web` | Working on React dashboard UI, SVG S-curve coordinate maths, styling/glassmorphism, or browser-side Local AI hooks. | Winding S-curve geometry formulas, violet/dark aesthetics, call local AI completion endpoints. |
+| [local_ai_data](file:///var/www/pieapps/lifemirror-desktop/skills/local_ai_data) | `local_ai_data` | Modifying database schemas (`db.rs`), SQLCipher page-level encryption, database migrations, or AI prompt templates. | SQLCipher encryption setup, database key initialization (`PRAGMA key`), two-sentence reflection summaries. |
 | [qa_security](file:///var/www/pieapps/lifemirror-desktop/skills/qa_security) | `qa_security` | Auditing local privacy behavior, checking for potential port leaks, or validating data isolation. | Ensure zero remote telemetry, confirm no local listening sockets (exclusive stdio messaging), assert zero database writes in incognito. |
 | [project_documenter](file:///var/www/pieapps/lifemirror-desktop/skills/project_documenter) | `project_documenter` | Drafting, styling, or updating markdown developer documentation or user setup instructions. | Maintain architectural accuracy in `DEVELOPER.md`, update setup instructions in `USER.md`, document workflows. |
 
@@ -419,8 +419,8 @@ The first line of defense is a hyper-fast Regex Evaluation Engine integrated dir
 ### Phase 2: AI-Powered Intention Lock
 To catch "soft" distractions that evade regex blacklists (e.g., reading a generic blog when you should be coding), an asynchronous local LLM evaluator serves as the second line of defense.
 1. **Active Intention Goal:** The user sets an `active_intention` goal via the React Dashboard (e.g., "Writing Rust code"). This sets a flag in the SQLite database.
-2. **Asynchronous LLM Threading:** If a window title passes the regex check, the `tracker.rs` loop checks for an `active_intention`. If present, it spawns an isolated background thread (`std::thread::spawn`) to ping the local Ollama instance without blocking the primary OS focus polling interval.
-3. **Thread-Safe LRU Caching:** To prevent spamming the local LLM and spiking CPU/battery usage, evaluations are cached in a thread-safe `Arc<Mutex<HashMap<String, bool>>>`. Once Ollama determines if a window title + intention pair is a distraction, the result is cached instantly. Subsequent visits to that window resolve via the in-memory cache at zero computational cost.
+2. **Asynchronous LLM Threading:** If a window title passes the regex check, the `tracker.rs` loop checks for an `active_intention`. If present, it spawns an isolated background thread (`std::thread::spawn`) to ping the local AI instance via the `InferenceProvider` without blocking the primary OS focus polling interval.
+3. **Thread-Safe LRU Caching:** To prevent spamming the local LLM and spiking CPU/battery usage, evaluations are cached in a thread-safe `Arc<Mutex<HashMap<String, bool>>>`. Once the AI determines if a window title + intention pair is a distraction, the result is cached instantly. Subsequent visits to that window resolve via the in-memory cache at zero computational cost.
 4. **Dynamic Overlay Injection:** If the LLM thread concludes the window is a distraction, it updates the cache and dynamically emits the `"distraction-detected"` Tauri event, dropping the overlay over the active window.
 
 ### Persistent Shield Analytics

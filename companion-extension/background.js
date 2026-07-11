@@ -9,41 +9,6 @@ function getNativePort() {
     port = chrome.runtime.connectNative(hostName);
     console.log("Connected to LifeMirror Desktop Native Messaging Host");
     
-    port.onMessage.addListener(async (msg) => {
-      console.log("Received from native host:", msg);
-      if (msg && msg.type === "ai_request") {
-        try {
-          if (!self.ai) {
-            throw new Error("self.ai is not available in this browser.");
-          }
-          
-          let session;
-          if (self.ai.languageModel && self.ai.languageModel.create) {
-            session = await self.ai.languageModel.create();
-          } else if (self.ai.createTextSession) {
-            session = await self.ai.createTextSession();
-          } else {
-            throw new Error("No known AI session creation method found.");
-          }
-
-          const result = await session.prompt(msg.prompt);
-          port.postMessage({
-            version: msg.version,
-            type: "ai_response",
-            id: msg.id,
-            text: result
-          });
-        } catch (e) {
-          port.postMessage({
-            version: msg.version,
-            type: "ai_error",
-            id: msg.id,
-            error: e.message || String(e)
-          });
-        }
-      }
-    });
-
     port.onDisconnect.addListener(() => {
       console.log("Disconnected from Native Messaging Host: ", chrome.runtime.lastError?.message);
       port = null;

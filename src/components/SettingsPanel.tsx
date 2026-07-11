@@ -1,15 +1,15 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Cpu, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
 interface SettingsPanelProps {
   isIncognito: boolean;
   onToggleIncognito: () => void;
-  ollamaUrl: string;
-  setOllamaUrl: (url: string) => void;
-  ollamaModel: string;
-  setOllamaModel: (model: string) => void;
+  aiUrl: string;
+  setAiUrl: (url: string) => void;
+  aiModel: string;
+  setAiModel: (model: string) => void;
   trackingActive: boolean;
   setTrackingActive: (active: boolean) => void;
   minLogDuration: number;
@@ -23,10 +23,10 @@ interface SettingsPanelProps {
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   isIncognito,
   onToggleIncognito,
-  ollamaUrl,
-  setOllamaUrl,
-  ollamaModel,
-  setOllamaModel,
+  aiUrl,
+  setAiUrl,
+  aiModel,
+  setAiModel,
   trackingActive,
   setTrackingActive,
   minLogDuration,
@@ -44,6 +44,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [appVersion, setAppVersion] = React.useState<string>("");
   const [customImage, setCustomImage] = React.useState<string | null>(null);
   const [customQuote, setCustomQuote] = React.useState<string>("");
+  const [connectionStatus, setConnectionStatus] = React.useState<'idle' | 'testing' | 'connected' | 'disconnected'>('idle');
+  const [connectionMessage, setConnectionMessage] = React.useState<string>("");
 
   const loadSettings = async () => {
     try {
@@ -189,6 +191,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       console.error("Failed to delete rule:", err);
     }
   };
+
+  const handleTestConnection = async () => {
+    const urlToTest = aiUrl === "false" || !aiUrl ? "http://localhost:11434" : aiUrl;
+    setConnectionStatus('testing');
+    setConnectionMessage('');
+    try {
+      const res = await fetch(`${urlToTest.replace(/\/$/, '')}/api/version`);
+      if (res.ok) {
+        setConnectionStatus('connected');
+        setConnectionMessage('Successfully connected to local AI.');
+      } else {
+        setConnectionStatus('disconnected');
+        setConnectionMessage(`Connection failed (Status: ${res.status}).`);
+      }
+    } catch (err: any) {
+      setConnectionStatus('disconnected');
+      setConnectionMessage('Failed to connect. Make sure it is running.');
+    }
+  };
+
+  // Auto-test connection when settings panel is opened
+  React.useEffect(() => {
+    handleTestConnection();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="glass rounded-2xl p-6 border border-[var(--border-color)] max-w-md w-full mx-auto text-left flex flex-col flex-1 max-h-[calc(100vh-120px)] overflow-y-auto custom-scrollbar">
@@ -441,38 +468,69 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
 
-      {/* Ollama reflection details */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-          <Cpu className="w-4 h-4 text-violet-400" />
-          <span>Local AI Extension</span>
-        </div>
+      {/* AI reflection details */}
+      {!isIncognito && trackingActive && (
+        <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] space-y-4">
+          <div className="flex items-center space-x-2 text-[var(--accent-color)] font-semibold mb-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            <h3>Mindfulness AI Features</h3>
+          </div>
+          
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Local AI Endpoint</label>
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                value={aiUrl === "false" ? "" : aiUrl}
+                onChange={(e) => {
+                  setAiUrl(e.target.value);
+                  setConnectionStatus('idle');
+                  setConnectionMessage('');
+                }}
+                placeholder="http://localhost:11434"
+                className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
+              />
+              <button 
+                onClick={handleTestConnection}
+                disabled={connectionStatus === 'testing'}
+                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-3 py-2 rounded-xl border border-zinc-700 transition-colors text-xs font-medium flex items-center gap-1 min-w-[80px] justify-center"
+              >
+                {connectionStatus === 'testing' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  'Test'
+                )}
+              </button>
+            </div>
+            {connectionStatus !== 'idle' && (
+              <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
+                connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
+              }`}>
+                {connectionStatus === 'connected' ? (
+                  <CheckCircle className="w-3.5 h-3.5" />
+                ) : (
+                  <XCircle className="w-3.5 h-3.5" />
+                )}
+                <span>{connectionMessage}</span>
+              </div>
+            )}
+          </div>
 
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Ollama Server Endpoint</label>
-          <input
-            type="text"
-            value={ollamaUrl === "false" ? "" : ollamaUrl}
-            onChange={(e) => setOllamaUrl(e.target.value)}
-            placeholder="http://localhost:11434"
-            className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
-          />
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Text Generation Model</label>
+            <input 
+              type="text" 
+              value={aiModel === "false" ? "" : aiModel}
+              onChange={(e) => setAiModel(e.target.value)}
+              placeholder="e.g. llama3.2" 
+              className="w-full px-3 py-2 text-sm bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg text-[var(--text-color)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] focus:border-transparent transition-all"
+            />
+            <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
+              Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {aiModel === "false" || !aiModel ? 'llama3.2' : aiModel}</code> in your terminal.
+            </p>
+          </div>
         </div>
-
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Ollama Model</label>
-          <input
-            type="text"
-            value={ollamaModel === "false" ? "" : ollamaModel}
-            onChange={(e) => setOllamaModel(e.target.value)}
-            placeholder="llama3.2"
-            className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
-          />
-          <p className="text-[10px] text-[var(--text-muted)] mt-1">
-            Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {ollamaModel === "false" || !ollamaModel ? 'llama3.2' : ollamaModel}</code> in your terminal.
-          </p>
-        </div>
-      </div>
+      )}
 
       <div className="mt-8 pt-4 border-t border-[var(--border-color)] text-center">
         <p className="text-xs text-[var(--text-muted)] font-mono">v{appVersion}</p>

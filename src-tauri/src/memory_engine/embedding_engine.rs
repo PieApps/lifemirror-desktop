@@ -1,5 +1,5 @@
 use crate::db::{DbState, MemoryNode};
-use crate::ai_ipc::OllamaProvider;
+use crate::inference::get_inference_provider;
 use std::sync::Arc;
 
 // Batch generates embeddings via AI providers and stores them in SQLite
@@ -23,8 +23,8 @@ impl EmbeddingEngine {
         );
 
         // 2. Call local AI (Ollama) to generate the vector
-        let provider = OllamaProvider { db: self.db.clone() };
-        let (vector, provider_name, model_name) = provider.embed(&text_to_embed).await?;
+        let provider = get_inference_provider(self.db.clone());
+        let (vector, provider_name, model_name) = provider.embed(&text_to_embed).await.map_err(|e| e.to_string())?;
         let dimensions = vector.len() as i64;
 
         // 3. Serialize f32 vector to little-endian byte array

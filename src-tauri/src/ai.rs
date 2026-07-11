@@ -86,8 +86,8 @@ fn trigger_background_reflection(db: Arc<DbState>) {
 
         let db_arc = db.clone();
         tauri::async_runtime::spawn(async move {
-            use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
-            let provider = SmartFallbackProvider::new(db_arc.clone());
+            use crate::inference::get_inference_provider;
+            let provider = get_inference_provider(db_arc.clone());
             
             match provider.prompt(&prompt).await {
                 Ok(reflection) => {
@@ -134,8 +134,8 @@ pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) ->
         current_time, oldest_time, oldest_time, summary_text
     );
 
-    use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
-    let provider = SmartFallbackProvider::new(state.inner().clone());
+    use crate::inference::get_inference_provider;
+    let provider = get_inference_provider(state.inner().clone());
     
     if let Ok(text) = provider.prompt(&prompt).await {
         // Find JSON array in the response (sometimes AI outputs markdown code blocks)

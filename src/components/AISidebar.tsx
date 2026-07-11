@@ -70,7 +70,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
             <MessageSquare className="w-5 h-5 text-violet-400" />
           )}
           <h3 className="text-sm font-bold tracking-wider text-[var(--text-muted)] uppercase">
-            {activeAiTab === "reflection" ? "Ollama Reflection" : "Ollama Chat"}
+            {activeAiTab === "reflection" ? "AI Reflection" : "AI Chat"}
           </h3>
         </div>
         
@@ -106,7 +106,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
             {aiLoading ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs text-[var(--text-muted)]">Querying local Ollama...</span>
+                <span className="text-xs text-[var(--text-muted)]">Querying local AI...</span>
               </div>
             ) : aiReflection ? (
               <p className="italic font-medium">"{aiReflection}"</p>
@@ -123,7 +123,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all disabled:opacity-50 cursor-pointer shadow-lg shadow-violet-500/10"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Reflect with Ollama</span>
+            <span>Reflect with AI</span>
           </button>
         </div>
       ) : (
@@ -244,7 +244,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                       <p className="whitespace-pre-wrap">{msg.content}</p>
                     </div>
                     <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
-                      {msg.role === "user" ? "You" : "Ollama"}
+                      {msg.role === "user" ? "You" : "AI"}
                     </span>
                   </div>
                 ))}
@@ -258,7 +258,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                       <div className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
                     </div>
                     <span className="text-[8px] text-[var(--text-muted)] font-mono mt-1 px-1">
-                      Ollama is thinking...
+                      AI is thinking...
                     </span>
                   </div>
                 )}
@@ -286,7 +286,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 }
               }}
               disabled={chatLoading}
-              placeholder={chatLoading ? "Ollama is typing..." : "Ask Ollama..."}
+              placeholder={chatLoading ? "AI is typing..." : "Ask AI..."}
               className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 disabled:opacity-50"
             />
             <button

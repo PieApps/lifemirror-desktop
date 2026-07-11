@@ -1,5 +1,6 @@
 pub mod ai;
-pub mod ai_ipc;
+#[path = "inference/mod.rs"]
+pub mod inference;
 pub mod db;
 pub mod native_msg;
 pub mod tracker;
@@ -319,9 +320,9 @@ async fn search_memory_nodes(
     query: String,
     limit: i64,
 ) -> Result<Vec<FrontendMemoryNode>, String> {
-    use ai_ipc::OllamaProvider;
+    use crate::inference::get_inference_provider;
     use memory_engine::retriever::Retriever;
-    let provider = OllamaProvider { db: state.inner().clone() };
+    let provider = get_inference_provider(state.inner().clone());
     match provider.embed(&query).await {
         Ok((query_vector, _, _)) => {
             let retriever = Retriever::new(state.inner().clone());
@@ -607,6 +608,23 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
     })
 }
 
+#[tauri::command]
+async fn pull_ai_model(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<DbState>>,
+    purpose: String,
+) -> Result<(), String> {
+    use crate::inference::{get_inference_provider, ModelPurpose};
+    
+    let model_purpose = match purpose.as_str() {
+        "embedding" => ModelPurpose::Embedding,
+        _ => ModelPurpose::TextGeneration,
+    };
+
+    let provider = get_inference_provider(state.inner().clone());
+    provider.pull_model(model_purpose, app).await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -636,17 +654,6 @@ pub fn run() {
     std::thread::spawn(move || {
         if let Err(e) = db_rollup_clone.run_daily_rollup() {
             eprintln!("Failed to run daily rollup: {:?}", e);
-        }
-    });
-
-    // Generate IPC token and start IPC Server
-    let ipc_token = uuid::Uuid::new_v4().to_string();
-    let _ = db_arc.set_setting("ipc_token", &ipc_token);
-    
-    // Spawn the IPC Server
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = ai_ipc::IPC_SERVER.start().await {
-            eprintln!("Failed to start AI IPC Server: {:?}", e);
         }
     });
 
@@ -699,8 +706,8 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let db_for_setup = db_arc_setup.clone();
             tauri::async_runtime::spawn(async move {
-                let provider = ai_ipc::OllamaProvider { db: db_for_setup.clone() };
-                match provider.check_embedding_model_installed().await {
+                let provider = crate::inference::get_inference_provider(db_for_setup.clone());
+                match provider.check_health(crate::inference::ModelPurpose::Embedding).await {
                     Ok(true) => {},
                     Ok(false) => {
                         let mut model = db_for_setup.get_setting("ollama_embedding_model").unwrap_or_default();
@@ -788,7 +795,8 @@ pub fn run() {
             hide_toast,
             show_main,
             generate_resume_context,
-            ai::generate_chat_suggestions
+            ai::generate_chat_suggestions,
+            pull_ai_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

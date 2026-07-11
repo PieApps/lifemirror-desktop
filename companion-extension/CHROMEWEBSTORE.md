@@ -15,7 +15,6 @@ LifeMirror Companion Tracker is the secure bridge between your web browsing and 
 
 Key features:
 - Automatically tracks your active web tab to build your personal timeline in the LifeMirror Desktop app.
-- Processes AI prompts securely on your device using Chrome's built-in AI capabilities.
 - 100% Local: Connects exclusively to the LifeMirror native desktop app installed on your machine.
 
 How to use it:
@@ -53,7 +52,7 @@ English
 | Permission | Type | Justification |
 |------------|------|---------------|
 | tabs | permissions | Required to read the URL, title, and favicon of the active tab when the user switches tabs or navigates, in order to securely log this activity to their local LifeMirror timeline. |
-| nativeMessaging | permissions | Required to establish a secure, local connection with the user's installed LifeMirror Desktop application to send tab activity and process local AI prompts. |
+| nativeMessaging | permissions | Required to establish a secure, local connection with the user's installed LifeMirror Desktop application to send tab activity. |
 
 ## Privacy & Data Use
 
@@ -106,5 +105,4 @@ https://github.com/your-username/lifemirror-desktop/blob/main/companion-extensio
 ## Review Notes
 
 ### Known Issues / Limitations
-- AI Prompts: The extension uses Chrome's built-in `window.ai` / `LanguageModel` API. Prompts are processed strictly locally via Gemini Nano and are never transmitted to external servers.
 - Native Messaging: The extension requires the LifeMirror Desktop native application to be installed. It securely pipes data to this local host without involving any network requests.

@@ -19,7 +19,6 @@ The extension uses Chrome's Native Messaging API to transmit your active tab inf
 
 - **No Cloud Storage:** We do not store your data on any cloud servers, remote databases, or external infrastructure.
 - **No Remote Transmission:** Your browsing history and tab activity never leave your computer.
-- **On-Device AI:** Any AI processing performed by the extension utilizes Chrome's built-in, local AI models (Gemini Nano). Prompts and responses are processed entirely on your device and are never sent to external servers.
 
 ## How Data Is Used
 
@@ -28,7 +27,7 @@ The collected data is used exclusively for the following purpose:
 
 ## Third-Party Services
 
-This extension does not use any third-party analytics, tracking, or cloud services. The AI features rely solely on Google Chrome's built-in local AI capabilities.
+This extension does not use any third-party analytics, tracking, or cloud services.
 
 ## Data Sharing
 

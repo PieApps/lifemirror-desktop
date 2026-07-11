@@ -1,5 +1,5 @@
 use crate::db::{DbState, MemoryNode};
-use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+use crate::inference::get_inference_provider;
 use std::sync::Arc;
 use rusqlite::params;
 
@@ -73,7 +73,7 @@ impl EntityExtractor {
         let context_str = events.iter().take(50).map(|e| format!("{} in {}", e.detail, e.context)).collect::<Vec<_>>().join("\n");
         let prompt = format!("Given the following user activity log, extract 3-5 comma-separated semantic tags (technologies, topics, or intent) that describe what the user is doing. ONLY output the comma-separated list, nothing else.\n\nLogs:\n{}", context_str);
         
-        let provider = SmartFallbackProvider::new(self.db.clone());
+        let provider = get_inference_provider(self.db.clone());
         if let Ok(tags_resp) = provider.prompt(&prompt).await {
             let conn = self.db.conn.lock().unwrap();
             let tags: Vec<&str> = tags_resp.split(',').map(|s| s.trim()).collect();

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./hooks/useSettings";
 import { useActivityData } from "./hooks/useActivityData";
 import { useFocus } from "./hooks/useFocus";
-import { useOllama } from "./hooks/useOllama";
+import { useLocalAI } from "./hooks/useLocalAI";
 import { Header } from "./components/Header";
 import { TimelinePanel } from "./components/TimelinePanel";
 import { AISidebar } from "./components/AISidebar";
@@ -14,7 +15,6 @@ import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode } from "./types";
-import { invoke } from "@tauri-apps/api/core";
 
 function App() {
   const settings = useSettings();
@@ -26,9 +26,13 @@ function App() {
     setIsIncognito: settings.setIsIncognito,
   });
 
-  const ollama = useOllama({
-    ollamaUrl: settings.ollamaUrl,
-    ollamaModel: settings.ollamaModel,
+  const [pullProgress, setPullProgress] = useState<{status: string, total: number, completed: number} | null>(null);
+  const [pullingModel, setPullingModel] = useState(false);
+  const [pullError, setPullError] = useState<string | null>(null);
+
+  const localAI = useLocalAI({
+    aiUrl: settings.ollamaUrl,
+    aiModel: settings.ollamaModel,
     isIncognito: settings.isIncognito,
     selectedDate: data.selectedDate,
     viewMode: data.viewMode,
@@ -60,7 +64,7 @@ function App() {
       setResumeContext(result);
     } catch (e) {
       console.error("Failed to generate resume context:", e);
-      setResumeError(typeof e === "string" ? e : "Failed to generate context. Please check if Ollama is running and you have recent activity.");
+      setResumeError(typeof e === "string" ? e : "Failed to generate context. Please check if Local AI is running and you have recent activity.");
     } finally {
       setIsResuming(false);
     }
@@ -69,16 +73,44 @@ function App() {
   // Load persisted intention and reflection on mount
   useEffect(() => {
     focus.loadIntention();
-    ollama.loadReflection();
+    localAI.loadReflection();
 
     const unlisten = listen('embedding-model-missing', (event: any) => {
       setMissingModel(event.payload.model);
     });
 
+    const unlistenPull = listen('model-pull-progress', (event: any) => {
+      const p = event.payload;
+      setPullProgress({
+        status: p.status,
+        total: p.total || 0,
+        completed: p.completed || 0
+      });
+      if (p.status === "success") {
+        setMissingModel(null);
+        setPullingModel(false);
+        setPullProgress(null);
+        window.location.reload();
+      }
+    });
+
     return () => {
-      unlisten.then((f) => f());
+      unlisten.then(f => f());
+      unlistenPull.then(f => f());
     };
   }, []);
+
+  const handlePullModel = async () => {
+    if (!missingModel) return;
+    setPullingModel(true);
+    setPullError(null);
+    try {
+      await invoke("pull_ai_model", { purpose: "embedding" });
+    } catch (e) {
+      setPullError(typeof e === "string" ? e : "Failed to pull model");
+      setPullingModel(false);
+    }
+  };
 
   return (
     <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col transition-colors duration-300">
@@ -100,10 +132,41 @@ function App() {
 
       {missingModel && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 text-center text-sm shadow-inner relative">
-          <p className="font-semibold mb-1">Semantic Search Unavailable: Missing Ollama Model</p>
-          <p className="opacity-90 max-w-2xl mx-auto">
-            To enable intelligent global search, please run <code className="bg-amber-500/20 px-1.5 py-0.5 rounded font-mono select-all">ollama pull {missingModel}</code> in your terminal.
+          <p className="font-semibold mb-1">Semantic Search Unavailable: Missing AI Model</p>
+          <p className="opacity-90 max-w-2xl mx-auto mb-3">
+            To enable intelligent global search, you need the <span className="font-mono">{missingModel}</span> model installed locally.
           </p>
+          {pullError && <p className="text-red-500 mb-2 font-semibold text-xs">{pullError}</p>}
+          
+          <button 
+            onClick={handlePullModel}
+            disabled={pullingModel}
+            className="px-4 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 font-medium rounded-lg text-sm transition-colors border border-amber-500/30 flex items-center justify-center mx-auto min-w-[200px]"
+          >
+            {pullingModel ? (
+              <span className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                {pullProgress?.total ? 
+                  `Downloading... ${Math.round((pullProgress.completed / pullProgress.total) * 100)}%` : 
+                  pullProgress?.status || "Starting..."
+                }
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Download Model Native
+              </span>
+            )}
+          </button>
+          
+          {pullingModel && pullProgress && pullProgress.total > 0 && (
+            <div className="mt-3 max-w-sm mx-auto bg-amber-500/10 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-amber-500 h-full transition-all duration-300"
+                style={{ width: `${(pullProgress.completed / pullProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          )}
           <button 
             onClick={() => setMissingModel(null)}
             className="absolute top-3 right-4 text-xs font-semibold hover:text-amber-500 transition-colors"
@@ -148,10 +211,10 @@ function App() {
             <SettingsPanel
               isIncognito={settings.isIncognito}
               onToggleIncognito={settings.handleToggleIncognito}
-              ollamaUrl={settings.ollamaUrl}
-              setOllamaUrl={settings.updateOllamaUrl}
-              ollamaModel={settings.ollamaModel}
-              setOllamaModel={settings.updateOllamaModel}
+              aiUrl={settings.ollamaUrl}
+              setAiUrl={settings.updateOllamaUrl}
+              aiModel={settings.ollamaModel}
+              setAiModel={settings.updateOllamaModel}
               trackingActive={settings.trackingActive}
               setTrackingActive={settings.handleToggleTracking}
               minLogDuration={settings.minLogDuration}
@@ -166,21 +229,21 @@ function App() {
               metrics={metrics}
               isIncognito={settings.isIncognito}
               getPeriodLabel={data.getPeriodLabel}
-              aiReflection={ollama.aiReflection}
-              aiLoading={ollama.aiLoading}
-              generateAIReflection={ollama.generateAIReflection}
-              activeAiTab={ollama.activeAiTab}
-              setActiveAiTab={ollama.setActiveAiTab}
+              aiReflection={localAI.aiReflection}
+              aiLoading={localAI.aiLoading}
+              generateAIReflection={localAI.generateAIReflection}
+              activeAiTab={localAI.activeAiTab}
+              setActiveAiTab={localAI.setActiveAiTab}
               chatMessages={data.chatMessages}
-              volatileChatHistory={ollama.volatileChatHistory}
-              chatInput={ollama.chatInput}
-              setChatInput={ollama.setChatInput}
-              chatLoading={ollama.chatLoading}
-              chatSuggestions={ollama.chatSuggestions}
-              loadingSuggestions={ollama.loadingSuggestions}
-              handleSendChat={ollama.handleSendChat}
-              handleGenerateSuggestions={ollama.handleGenerateSuggestions}
-              clearChat={ollama.clearChat}
+              volatileChatHistory={localAI.volatileChatHistory}
+              chatInput={localAI.chatInput}
+              setChatInput={localAI.setChatInput}
+              chatLoading={localAI.chatLoading}
+              chatSuggestions={localAI.chatSuggestions}
+              loadingSuggestions={localAI.loadingSuggestions}
+              handleSendChat={localAI.handleSendChat}
+              handleGenerateSuggestions={localAI.handleGenerateSuggestions}
+              clearChat={localAI.clearChat}
             />
           )}
         </div>

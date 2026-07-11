@@ -57,7 +57,13 @@ This guide details how to install, configure, and manage **Ollama** on different
 
 ## 2. Managing Models for LifeMirror
 
-Once Ollama is installed and running, you need to download (pull) a model. By default, LifeMirror uses **`llama3.2`** (a fast, lightweight 3-billion parameter model ideal for local summaries).
+## 2. Pulling the Language Model
+
+Once Ollama is installed and running, you need to download (pull) a model. By default, LifeMirror uses **`llama3.2`** (a fast, lightweight 3-billion parameter model ideal for local summaries) and **`nomic-embed-text`** for semantic search.
+
+> **💡 New in LifeMirror:** You no longer need to use the terminal to pull models! Simply open the LifeMirror Desktop application, and click the **Download Model Native** button on the dashboard to install the required models directly within the app.
+
+If you prefer to use the terminal, you can pull the model manually:
 
 * **Pull (Download) Model:**
   ```bash

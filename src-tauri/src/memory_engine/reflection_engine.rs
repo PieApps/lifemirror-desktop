@@ -1,5 +1,5 @@
 use crate::db::{DbState, MemoryNode};
-use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+use crate::inference::get_inference_provider;
 use std::sync::Arc;
 use chrono::Utc;
 
@@ -51,8 +51,8 @@ impl ReflectionEngine {
             prompt.push_str("\n");
         }
 
-        let provider = SmartFallbackProvider::new(self.db.clone());
-        let llm_summary = provider.prompt(&prompt).await?;
+        let provider = get_inference_provider(self.db.clone());
+        let llm_summary = provider.prompt(&prompt).await.map_err(|e| e.to_string())?;
 
         // 4. Create a new MemoryNode of type="daily_summary"
         let node = MemoryNode {

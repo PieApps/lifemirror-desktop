@@ -1,5 +1,5 @@
 use crate::db::{DbState, MemoryNode};
-use crate::ai_ipc::{SmartFallbackProvider, AIProvider};
+use crate::inference::get_inference_provider;
 use std::sync::Arc;
 use rusqlite::params;
 
@@ -43,7 +43,7 @@ impl Summarizer {
         );
         
         // 2. Call LLM
-        let provider = SmartFallbackProvider::new(self.db.clone());
+        let provider = get_inference_provider(self.db.clone());
         let (summary, importance, confidence) = match provider.prompt(&prompt).await {
             Ok(resp) => {
                 let mut s = "Could not generate summary.".to_string();

@@ -36,3 +36,6 @@ regex = "1.10.4"
 interprocess = { version = "2.2.1", features = ["tokio"] }
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
 async-trait = "0.1.80"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+thiserror = "1.0"
+futures-util = "0.3"
