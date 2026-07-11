@@ -192,8 +192,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
-  const handleTestConnection = async () => {
-    const urlToTest = aiUrl === "false" || !aiUrl ? "http://localhost:11434" : aiUrl;
+  const handleTestConnection = async (isManualClick: boolean = false) => {
+    let urlToTest = aiUrl;
+    
+    if (!aiUrl || aiUrl === "false") {
+      if (isManualClick) {
+        urlToTest = "http://localhost:11434";
+        setAiUrl(urlToTest);
+        if (!aiModel || aiModel === "false") {
+          setAiModel("llama3.2");
+        }
+      } else {
+        setConnectionStatus('disconnected');
+        setConnectionMessage('Local AI is not configured.');
+        return;
+      }
+    }
+
     setConnectionStatus('testing');
     setConnectionMessage('');
     try {
@@ -213,7 +228,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Auto-test connection when settings panel is opened
   React.useEffect(() => {
-    handleTestConnection();
+    handleTestConnection(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -478,30 +493,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           
           <div>
             <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Local AI Endpoint</label>
-            <div className="flex gap-2">
-              <input 
-                type="text" 
-                value={aiUrl === "false" ? "" : aiUrl}
-                onChange={(e) => {
-                  setAiUrl(e.target.value);
-                  setConnectionStatus('idle');
-                  setConnectionMessage('');
-                }}
-                placeholder="http://localhost:11434"
-                className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
-              />
-              <button 
-                onClick={handleTestConnection}
-                disabled={connectionStatus === 'testing'}
-                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white px-3 py-2 rounded-xl border border-zinc-700 transition-colors text-xs font-medium flex items-center gap-1 min-w-[80px] justify-center"
-              >
-                {connectionStatus === 'testing' ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  'Test'
-                )}
-              </button>
-            </div>
+            <input 
+              type="text" 
+              value={aiUrl === "false" ? "" : aiUrl}
+              onChange={(e) => {
+                setAiUrl(e.target.value);
+                setConnectionStatus('idle');
+                setConnectionMessage('');
+              }}
+              placeholder="http://localhost:11434"
+              className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
+            />
             {connectionStatus !== 'idle' && (
               <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
                 connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
@@ -528,6 +530,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
               Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {aiModel === "false" || !aiModel ? 'llama3.2' : aiModel}</code> in your terminal.
             </p>
+          </div>
+
+          <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">
+            <button 
+              onClick={() => {
+                if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
+                if (!aiModel || aiModel === "false") setAiModel("llama3.2");
+                handleTestConnection(true);
+              }}
+              disabled={connectionStatus === 'testing'}
+              className="group bg-violet-600 hover:bg-violet-500 disabled:bg-violet-600/50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-xs font-medium transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-md shadow-violet-900/20 hover:shadow-lg hover:shadow-violet-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+            >
+              {connectionStatus === 'testing' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <svg className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {connectionStatus === 'testing' ? 'Saving & Testing...' : 'Save & Test Configuration'}
+            </button>
           </div>
         </div>
       )}
