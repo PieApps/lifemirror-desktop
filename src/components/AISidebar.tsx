@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  ShieldAlert, Sparkles, Calendar, Send, Trash2, MessageSquare, ArrowRight,
+  ShieldAlert, Sparkles, Calendar, Send, Trash2, MessageSquare, ArrowRight, Info
 } from "lucide-react";
 import type { ChatMessage } from "../types";
 import { ProductivityDashboard } from "./ProductivityDashboard";
@@ -69,9 +69,21 @@ export const AISidebar: React.FC<AISidebarProps> = ({
           ) : (
             <MessageSquare className="w-5 h-5 text-violet-400" />
           )}
-          <h3 className="text-sm font-bold tracking-wider text-[var(--text-muted)] uppercase">
-            {activeAiTab === "reflection" ? "AI Reflection" : "AI Chat"}
-          </h3>
+          <div className="flex items-center gap-2">
+            {activeAiTab === "chat" && (
+              <>
+                <span className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-sm">
+                  {getPeriodLabel()}
+                </span>
+                <div 
+                  className="flex items-center"
+                  title="Note: Context is limited to your 50 most recent focus and tab events to ensure fast, stable local AI performance."
+                >
+                  <Info className="w-4 h-4 text-[var(--text-muted)] hover:text-violet-500 transition-colors cursor-help" />
+                </div>
+              </>
+            )}
+          </div>
         </div>
         
         {/* Tabs Toggle buttons */}
@@ -129,21 +141,6 @@ export const AISidebar: React.FC<AISidebarProps> = ({
       ) : (
         /* Chat Tab Content */
         <div className="flex flex-col gap-3 flex-1 overflow-hidden min-h-0">
-          {/* Context Banner */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-color)]/50 border border-[var(--border-color)]">
-              <Calendar className="w-4 h-4 text-violet-400" />
-              <span className="text-xs font-semibold text-[var(--text-muted)]">
-                Chat Context: <span className="text-[var(--text-color)]">{getPeriodLabel()}</span>
-              </span>
-            </div>
-            <div className="flex items-start gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/5 border border-violet-500/10 text-[10px] text-[var(--text-muted)] leading-tight">
-              <Sparkles className="w-3 h-3 flex-shrink-0 mt-0.5 text-violet-400/70" />
-              <span>
-                Note: Context is limited to your 50 most recent focus and tab events to ensure fast, stable local AI performance.
-              </span>
-            </div>
-          </div>
 
           {/* Warning banner for Incognito mode */}
           {isIncognito && (

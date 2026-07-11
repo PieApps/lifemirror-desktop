@@ -77,7 +77,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [isExportOpen, setIsExportOpen] = useState(false);
 
   return (
-    <div className="lg:col-span-2 relative min-h-[500px] lg:min-h-0 lg:h-full bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
+    <div className="lg:col-span-3 relative min-h-[500px] lg:min-h-0 lg:h-full bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
       <div className="p-6 border-b border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* View Mode switcher */}
         <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] w-fit">

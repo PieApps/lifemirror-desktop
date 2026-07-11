@@ -243,18 +243,7 @@ Insights (exactly 3 lines):`;
 
   // ─── Chat ──────────────────────────────────────────────
 
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      const container = document.getElementById("chat-messages-container");
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
-    }, 50);
-  };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages, volatileChatHistory]);
 
   const handleGenerateSuggestions = async () => {
     if (!aiUrl || aiUrl === "false" || !aiModel || aiModel === "false") return;
@@ -354,7 +343,7 @@ Insights (exactly 3 lines):`;
       }
     }
 
-    scrollToBottom();
+
 
     try {
       console.log("[DEBUG Chat Flow] Compiling messages for context...");
@@ -517,7 +506,7 @@ Insights (exactly 3 lines):`;
     } finally {
       setChatLoading(false);
       abortControllerRef.current = null;
-      scrollToBottom();
+
     }
   };
 
