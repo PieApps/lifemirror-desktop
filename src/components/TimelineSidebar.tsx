@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Edit2, Check } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode } from './SCurveTimeline';

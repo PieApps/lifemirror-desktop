@@ -19,19 +19,24 @@ struct PullProgress {
 }
 
 impl OllamaProvider {
-    /// Helper to grab DB config and validate it
     fn get_config(&self, purpose: ModelPurpose) -> Result<(String, String), InferenceError> {
-        let ai_url = self.db.get_setting("ollama_url")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let mut ai_url = self.db.get_setting("ollama_url").unwrap_or_default();
+        if ai_url == "false" || ai_url.is_empty() {
+            ai_url = "http://localhost:11434".to_string();
+        }
             
         let ai_model = match purpose {
-            ModelPurpose::TextGeneration => self.db.get_setting("ollama_model")
-                .unwrap_or_else(|_| "llama3.2".to_string()),
+            ModelPurpose::TextGeneration => {
+                let mut m = self.db.get_setting("ollama_model").unwrap_or_default();
+                if m == "false" || m.is_empty() {
+                    m = "llama3.2".to_string();
+                }
+                m
+            },
             ModelPurpose::Embedding => "nomic-embed-text".to_string(), // Can be made dynamic later
         };
 
-        if ai_url.is_empty() || ai_url == "false" || ai_url == "disabled" ||
-           ai_model.is_empty() || ai_model == "false" || ai_model == "disabled" {
+        if ai_url == "disabled" || ai_model == "disabled" {
             return Err(InferenceError::Config("Local AI is disabled or configuration is incomplete.".into()));
         }
 

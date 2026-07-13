@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  ShieldAlert, Sparkles, Calendar, Send, Trash2, MessageSquare, ArrowRight, Info
+  ShieldAlert, Sparkles, Send, Trash2, MessageSquare, ArrowRight, Info
 } from "lucide-react";
 import type { ChatMessage } from "../types";
 import { ProductivityDashboard } from "./ProductivityDashboard";

@@ -1438,6 +1438,7 @@ impl DbState {
 
     pub fn get_recent_active_project(&self) -> Result<Option<Project>> {
         let conn = self.conn.lock().unwrap();
+        println!("[DbState] get_recent_active_project query starting");
         let mut stmt = conn.prepare(
             "SELECT p.id, p.name, p.description, p.created_at 
              FROM projects p 
@@ -1457,8 +1458,11 @@ impl DbState {
         })?;
 
         if let Some(res) = iter.next() {
-            Ok(Some(res?))
+            let p = res?;
+            println!("[DbState] get_recent_active_project returning project: {:?}", p);
+            Ok(Some(p))
         } else {
+            println!("[DbState] get_recent_active_project returned None");
             Ok(None)
         }
     }

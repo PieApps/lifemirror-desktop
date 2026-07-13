@@ -48,7 +48,6 @@ export function useLocalAI({
   subSessionEvents,
   weeklySummaries,
   monthlySummaries,
-  chatMessages,
   setChatMessages,
 }: UseLocalAIOptions) {
   const [aiReflection, setAiReflection] = useState("");

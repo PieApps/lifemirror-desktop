@@ -669,6 +669,44 @@ pub fn run() {
         }
     });
 
+    // Temp Backfill: Reclassify all existing nodes to populate projects
+    let db_backfill = db_arc.clone();
+    tauri::async_runtime::spawn(async move {
+        println!("[Backfill] Starting project classification backfill...");
+        let classifier = memory_engine::project_classifier::ProjectClassifier::new(db_backfill.clone());
+        
+        // Scope the database lock strictly to avoid Send errors across the await boundary
+        let nodes = {
+            if let Ok(conn) = db_backfill.conn.lock() {
+                let mut stmt = conn.prepare("SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp FROM memory_nodes").unwrap();
+                let iter = stmt.query_map([], |row| {
+                    Ok(crate::db::MemoryNode {
+                        id: Some(row.get(0)?),
+                        title: row.get(1)?,
+                        summary: row.get(2)?,
+                        node_type: row.get(3)?,
+                        importance_score: row.get(4)?,
+                        confidence: row.get(5)?,
+                        embedding_id: row.get(6)?,
+                        status: row.get(7)?,
+                        timestamp: row.get(8)?,
+                        activities: None,
+                        sub_events: None,
+                    })
+                }).unwrap();
+                iter.filter_map(Result::ok).collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            }
+        }; // conn and stmt are completely dropped here
+        
+        println!("[Backfill] Found {} nodes to reclassify", nodes.len());
+        for node in nodes {
+            let _ = classifier.classify_node(node).await;
+        }
+        println!("[Backfill] Project classification backfill complete.");
+    });
+
     // Load initial configuration safely keeping radio logic intact
     let is_incognito_init = db_arc
         .get_setting("incognito")

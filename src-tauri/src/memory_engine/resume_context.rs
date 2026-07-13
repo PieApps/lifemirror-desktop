@@ -28,6 +28,7 @@ impl ResumeBuilder {
     }
 
     pub async fn generate_context(&self, project_id: Option<i64>) -> Result<ResumeContextResponse, String> {
+        println!("[ResumeContext] generate_context called with project_id: {:?}", project_id);
         let project = match project_id {
             Some(_id) => {
                 self.db.get_recent_active_project().map_err(|e| e.to_string())?
@@ -35,12 +36,20 @@ impl ResumeBuilder {
             None => self.db.get_recent_active_project().map_err(|e| e.to_string())?,
         };
 
+        if let Some(ref p) = project {
+            println!("[ResumeContext] Found project: {:?}", p);
+        } else {
+            println!("[ResumeContext] No project found!");
+        }
+
         let project = project.ok_or("No recent project found to resume.")?;
         let p_id = project.id.unwrap_or(0);
 
         let recent_sessions = self.db.get_recent_sessions_for_project(p_id, 3).unwrap_or_default();
         let recent_files = self.db.get_recent_files_for_project(p_id, 10).unwrap_or_default();
         let recent_journals = self.db.get_journal_entries(5).unwrap_or_default();
+        
+        println!("[ResumeContext] Found {} recent sessions, {} recent files, {} recent journals", recent_sessions.len(), recent_files.len(), recent_journals.len());
 
         let session_summaries: String = recent_sessions.iter().filter_map(|s| s.summary.clone()).collect::<Vec<_>>().join("\n\n");
         let file_paths: String = recent_files.iter().map(|f| f.file_path.clone()).collect::<Vec<_>>().join("\n");
@@ -85,18 +94,44 @@ Your output MUST be valid JSON matching this schema:
         );
 
         let provider = get_inference_provider(self.db.clone());
-        let response_text = provider.prompt(&prompt).await.map_err(|e| e.to_string())?;
-
-        let json_start = response_text.find('{').unwrap_or(0);
-        let json_end = response_text.rfind('}').unwrap_or_else(|| response_text.len().saturating_sub(1)) + 1;
-        
-        if json_start < json_end {
-            let json_str = &response_text[json_start..json_end];
-            let parsed: ResumeContextResponse = serde_json::from_str(json_str)
-                .map_err(|e| format!("Failed to parse LLM JSON response: {}", e))?;
-            return Ok(parsed);
+        if let Ok(response_text) = provider.prompt(&prompt).await {
+            let json_start = response_text.find('{').unwrap_or(0);
+            let json_end = response_text.rfind('}').unwrap_or_else(|| response_text.len().saturating_sub(1)) + 1;
+            
+            if json_start < json_end {
+                let json_str = &response_text[json_start..json_end];
+                if let Ok(parsed) = serde_json::from_str::<ResumeContextResponse>(json_str) {
+                    return Ok(parsed);
+                }
+            }
+        } else {
+            println!("[ResumeContext] AI generation failed or disabled. Using fallback context.");
         }
 
-        Err("Failed to extract valid JSON from LLM response".to_string())
+        // Fallback rule-based context
+        let mut fallback_files = Vec::new();
+        for f in recent_files.iter().take(5) {
+            fallback_files.push(f.file_path.clone());
+        }
+
+        let fallback_summary = if !recent_sessions.is_empty() {
+            format!("Recent activities include: {}", recent_sessions.iter().map(|s| s.title.clone()).collect::<Vec<String>>().join(", "))
+        } else {
+            "No recent activity recorded for this project.".to_string()
+        };
+
+        Ok(ResumeContextResponse {
+            status: "Resuming project (Offline / AI Disabled)".to_string(),
+            progress: 50,
+            branch: "main".to_string(),
+            summary: fallback_summary,
+            next_task: "Review your recent files to continue where you left off.".to_string(),
+            confidence: 50,
+            blockers: vec![],
+            files: fallback_files,
+            documentation: vec![],
+            journal: recent_journals.iter().take(3).map(|j| j.notes.clone()).collect(),
+            time_to_resume: "N/A".to_string(),
+        })
     }
 }
