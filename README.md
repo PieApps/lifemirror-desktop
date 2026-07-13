@@ -14,7 +14,14 @@ Ensure you have Node.js and Rust installed, then install package dependencies:
 npm install
 ```
 
-### 2. Run the Development Server
+### 2. Update Extension Key
+Before creating a build or running the development server, load the `companion-extension/` directory as an unpacked extension in your browser, copy the generated Extension ID, and update it in the code:
+- Update `"allowed_origins"` in `companion-extension/com.lifemirror.desktop.json`
+- Update `allowed_origin` in `src-tauri/src/lib.rs` (around line 76)
+
+For full details, see the [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md).
+
+### 3. Run the Development Server
 This spins up the Vite frontend and compiles the Tauri 2.0 Rust core in dev mode:
 ```bash
 npm run tauri dev
