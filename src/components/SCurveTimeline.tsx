@@ -156,7 +156,11 @@ export function SCurveTimeline({
            const gap = (nodeStart - groupEnd) / 1000;
            
            if (currentGroup.app_name === node.app_name && gap < 1800) {
-             currentGroup.duration += node.duration;
+             const groupStartTime = new Date(currentGroup.start_time).getTime();
+             currentGroup.duration = Math.max(
+               currentGroup.duration,
+               ((nodeStart + node.duration * 1000) - groupStartTime) / 1000
+             );
              currentGroup.originalActivities.push(...node.originalActivities);
              currentGroup.subEvents.push(...node.subEvents);
              if (node.notes) {

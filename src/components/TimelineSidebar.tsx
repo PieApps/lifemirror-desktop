@@ -186,8 +186,9 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                 .map((event, idx, arr) => {
                   let dur = event.duration;
                   if (dur === 0) {
-                    if (idx < arr.length - 1) {
-                      dur = Math.max(0, (new Date(arr[idx + 1].timestamp).getTime() - new Date(event.timestamp).getTime()) / 1000);
+                    const nextSubEvent = arr.slice(idx + 1).find(e => e.duration === 0);
+                    if (nextSubEvent) {
+                      dur = Math.max(0, (new Date(nextSubEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) / 1000);
                     } else {
                       const groupStart = new Date(node.start_time).getTime();
                       const groupEnd = groupStart + node.duration * 1000;
