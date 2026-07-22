@@ -1,12 +1,90 @@
 import React, { useState, useMemo } from "react";
 import { 
   Clock, Plus, 
-  Trash2, ShieldAlert
+  Trash2, ShieldAlert, MessageSquare
 } from "lucide-react";
 
 import { MemoryNode } from "../types";
 import AppIcon from './AppIcon';
 import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
+
+export function formatCleanTitle(
+  rawTitle?: string,
+  appName?: string,
+  domainTag?: string,
+  url?: string
+): string {
+  let title = (rawTitle || "").trim();
+
+  // If title is generic like "Session involving ..." or ends with " session"
+  if (!title || title.toLowerCase().includes("session involving") || title.toLowerCase().endsWith(" session")) {
+    if (domainTag) return domainTag;
+    if (url) {
+      try {
+        const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
+        const host = parsed.hostname.replace(/^www\./, "");
+        return host.charAt(0).toUpperCase() + host.slice(1);
+      } catch {
+        // fallback
+      }
+    }
+  }
+
+  // Remove URL wrapper in Chrome titles: Chrome (https://notebooklm.google.com/...)
+  const chromeUrlMatch = title.match(/^Chrome\s*\((https?:\/\/[^\s\)]+)\)$/i);
+  if (chromeUrlMatch) {
+    try {
+      const parsed = new URL(chromeUrlMatch[1]);
+      const host = parsed.hostname.replace(/^www\./, "");
+      return host.charAt(0).toUpperCase() + host.slice(1);
+    } catch {
+      title = chromeUrlMatch[1];
+    }
+  }
+
+  // Strip generic browser/app prefixes & suffixes
+  title = title
+    .replace(/^(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Evince|Visual Studio Code|VS Code)\s*[-–—:]\s*/i, "")
+    .replace(/\s*[-–—:]\s*(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Visual Studio Code|VS Code)$/i, "")
+    .replace(/^Session involving\s+/i, "");
+
+  if (!title.trim()) {
+    if (domainTag) return domainTag;
+    if (appName) return appName;
+    return "Activity Session";
+  }
+
+  return title.trim();
+}
+
+export function getGroupedSessionTitle(node: TimelineNode): string {
+  if (node.isShield) return "Distraction Shield";
+  if (node.isMemoryNode && node.window_title && !node.window_title.toLowerCase().endsWith(" session") && !node.window_title.toLowerCase().startsWith("session involving")) {
+    return formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
+  }
+
+  if (node.originalActivities && node.originalActivities.length > 0) {
+    let topAct = node.originalActivities[0];
+    for (const act of node.originalActivities) {
+      if (act.duration > topAct.duration) {
+        topAct = act;
+      }
+    }
+    const cleaned = formatCleanTitle(topAct.window_title, topAct.app_name, topAct.domain_tag, topAct.url);
+    if (cleaned && cleaned !== topAct.app_name && !cleaned.toLowerCase().endsWith(" session")) {
+      return cleaned;
+    }
+  }
+
+  if (node.subEvents && node.subEvents.length > 0) {
+    const topSub = node.subEvents[0];
+    const cleaned = formatCleanTitle(topSub.title, topSub.parent_app_name || node.app_name, topSub.context_tag, topSub.primary_uri);
+    if (cleaned) return cleaned;
+  }
+
+  return formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
+}
+
 
 export interface ActivityNode {
   id: number;
@@ -576,11 +654,17 @@ export function SCurveTimeline({
                       </div>
                     </div>
 
-                    <h4 className={`text-xs font-semibold line-clamp-2 mb-2 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={String(node.window_title)}>
-                      {node.isMemoryNode 
-                        ? node.window_title 
-                        : (node.isGroupedSession && !node.isShield ? `${node.app_name} Session` : node.window_title)}
+                    <h4 className={`text-xs font-semibold line-clamp-2 mb-1 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={getGroupedSessionTitle(node)}>
+                      {getGroupedSessionTitle(node)}
                     </h4>
+
+                    {node.notes && (
+                      <div className="mt-1 pt-1 border-t border-[var(--border-color)] text-[10px] text-violet-600 dark:text-violet-300 font-medium italic flex items-center gap-1.5 truncate" title={node.notes}>
+                        <MessageSquare className="w-3 h-3 text-violet-500 shrink-0" />
+                        <span className="truncate">{node.notes}</span>
+                      </div>
+                    )}
+
 
                     <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-[var(--border-color)]">
                       <span className="text-[9px] text-[var(--text-muted)] font-mono">

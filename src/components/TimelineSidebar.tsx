@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, Edit2, Check } from 'lucide-react';
+import { X, Edit2, Check, MessageSquare } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { TimelineNode } from './SCurveTimeline';
+import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 
 export const getFormatDuration = (seconds: number) => {
@@ -60,8 +60,8 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
       {/* Sidebar Panel */}
       <div className="fixed inset-y-0 right-0 w-[420px] glass bg-[var(--bg-color)]/95 backdrop-blur-3xl border-l border-[var(--border-color)] shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 translate-x-0">
         <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)]">
-          <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={node.window_title}>
-            {node.window_title}
+          <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={getGroupedSessionTitle(node)}>
+            {getGroupedSessionTitle(node)}
           </h2>
           <button onClick={onClose} className="p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors shrink-0">
             <X className="w-5 h-5 text-[var(--text-muted)]" />
@@ -165,23 +165,25 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                 {[...node.originalActivities.map(a => ({
                   id: a.id,
                   timestamp: a.start_time,
-                  title: a.window_title,
+                  title: formatCleanTitle(a.window_title, a.app_name, a.domain_tag, a.url),
                   context: a.domain_tag || extractDomain(a.url),
                   app: a.app_name,
                   icon: a.icon_url,
                   url: a.url,
                   source: a.source,
-                  duration: a.duration
+                  duration: a.duration,
+                  notes: a.notes
                 })), ...node.subEvents.map(s => ({
                   id: s.id,
                   timestamp: s.timestamp,
-                  title: s.title,
+                  title: formatCleanTitle(s.title, s.parent_app_name || node.app_name, s.context_tag, s.primary_uri),
                   context: s.context_tag || extractDomain(s.primary_uri),
                   app: s.parent_app_name || node.app_name,
                   icon: s.icon_url,
                   url: s.primary_uri,
                   source: s.session_type,
-                  duration: 0
+                  duration: 0,
+                  notes: undefined
                 }))].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((event, idx, arr) => {
                   let dur = event.duration;
@@ -232,6 +234,12 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                             </a>
                           )}
                         </span>
+                        {event.notes && (
+                          <div className="mt-1.5 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[11px] text-violet-600 dark:text-violet-300 italic flex items-center gap-1.5">
+                            <MessageSquare className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                            <span>"{event.notes}"</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
