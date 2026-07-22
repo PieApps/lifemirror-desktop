@@ -20,16 +20,16 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
     app: string;
     duration: number;
     category: ActivityCategory;
-    x: number;
-    y: number;
+    x: number; // viewport clientX
+    y: number; // viewport clientY
   } | null>(null);
 
   const [hoveredHeatCell, setHoveredHeatCell] = useState<{
     dayName: string;
     hour: number;
     duration: number;
-    x: number;
-    y: number;
+    x: number; // viewport clientX
+    y: number; // viewport clientY
   } | null>(null);
 
   // Generate date list for the week (7 days) starting at startDate
@@ -170,14 +170,13 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
                           }}
                           onMouseEnter={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
-                            const parentRect = e.currentTarget.parentElement?.parentElement?.getBoundingClientRect();
                             setHoveredStack({
                               day: new Date(dateStr).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }),
                               app: app.name,
                               duration: app.duration,
                               category: app.category,
-                              x: rect.left - (parentRect?.left || 0) + rect.width / 2,
-                              y: rect.top - (parentRect?.top || 0) - 10,
+                              x: rect.left + rect.width / 2,
+                              y: rect.top - 10,
                             });
                           }}
                           onMouseLeave={() => setHoveredStack(null)}
@@ -197,10 +196,10 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
           })}
         </div>
 
-        {/* Hover Stack Tooltip */}
+        {/* Hover Stack Tooltip — fixed positioning so it escapes overflow/stacking contexts */}
         {hoveredStack && (
           <div
-            className="absolute z-50 glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-1 select-none transform -translate-x-1/2 -translate-y-full"
+            className="fixed z-[9999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-1 select-none transform -translate-x-1/2 -translate-y-full"
             style={{ left: hoveredStack.x, top: hoveredStack.y }}
           >
             <div className="font-bold text-[var(--text-color)]">{hoveredStack.day}</div>
@@ -268,13 +267,12 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
                         }}
                         onMouseEnter={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
-                          const parentRect = e.currentTarget.parentElement?.parentElement?.parentElement?.getBoundingClientRect();
                           setHoveredHeatCell({
                             dayName: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dayIdx],
                             hour,
                             duration,
-                            x: rect.left - (parentRect?.left || 0) + rect.width / 2,
-                            y: rect.top - (parentRect?.top || 0) - 10,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top - 10,
                           });
                         }}
                         onMouseLeave={() => setHoveredHeatCell(null)}
@@ -287,10 +285,10 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
           </div>
         </div>
 
-        {/* Heatmap Tooltip */}
+        {/* Heatmap Tooltip — fixed positioning so it escapes overflow/stacking contexts */}
         {hoveredHeatCell && (
           <div
-            className="absolute z-50 glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-0.5 select-none transform -translate-x-1/2 -translate-y-full"
+            className="fixed z-[9999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-0.5 select-none transform -translate-x-1/2 -translate-y-full"
             style={{ left: hoveredHeatCell.x, top: hoveredHeatCell.y }}
           >
             <div className="font-bold text-[var(--text-color)]">{hoveredHeatCell.dayName}</div>
