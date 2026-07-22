@@ -35,4 +35,9 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 
+# Native messaging manifest (generated from template — do not commit)
+companion-extension/com.lifemirror.desktop.json
+
+# Local environment (contains extension ID — do not commit)
+.env
 

@@ -1,6 +1,6 @@
 # 📋 LifeMirror Desktop
 
-LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, and visualizes your day as a beautiful serpentine "S-Curve" timeline infographic. 
+LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, and visualizes your day as a beautiful serpentine "S-Curve" timeline infographic.
 
 Additionally, LifeMirror interfaces with a locally running AI to compile daily mindfulness reflection cards entirely offline, ensuring no telemetry or analytical data leaves your host machine.
 
@@ -8,89 +8,217 @@ Additionally, LifeMirror interfaces with a locally running AI to compile daily m
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
-Ensure you have Node.js and Rust installed, then install package dependencies:
+### 1. Install Prerequisites
+
+| Tool | Version | Link |
+|------|---------|------|
+| **Node.js** | ≥ 18 | https://nodejs.org |
+| **Rust** | stable | https://rustup.rs |
+| **WebView2** *(Windows only)* | latest | Pre-installed on Windows 11; [download for Windows 10](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) |
+
+> [!NOTE]
+> **Windows** users also need the [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/). During installation, select the **"Desktop development with C++"** workload.
+
+### 2. Install Node dependencies
+
 ```bash
 npm install
 ```
 
-### 2. Update Extension Key
-Before creating a build or running the development server, load the `companion-extension/` directory as an unpacked extension in your browser, copy the generated Extension ID, and update it in the code:
-- Update `"allowed_origins"` in `companion-extension/com.lifemirror.desktop.json`
-- Update `allowed_origin` in `src-tauri/src/lib.rs` (around line 76)
+### 3. Set your Chrome Extension ID
 
-For full details, see the [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md).
+Load the `companion-extension/` folder as an unpacked extension in Chrome (`chrome://extensions` → enable **Developer Mode** → **Load unpacked**), then copy the generated Extension ID.
 
-### 3. Run the Development Server
-This spins up the Vite frontend and compiles the Tauri 2.0 Rust core in dev mode:
+Add it to a `.env` file in the project root (create it if it doesn't exist):
+
+```
+EXTENSION_ID=your32characterextensionid
+```
+
+You only need to do this **once**. When the extension is published to the Chrome Web Store, its ID becomes permanent and you can commit it to the template directly.
+
+### 4. Install the Native Messaging Host
+
+This one command works on **Windows, macOS, and Linux**:
+
+```bash
+npm run install-host
+```
+
+What it does:
+- Reads `EXTENSION_ID` from `.env`
+- Generates `companion-extension/com.lifemirror.desktop.json` from the template
+- **Linux / macOS** — copies the manifest to the browser's `NativeMessagingHosts` folder
+- **Windows** — copies the manifest and writes the required Windows Registry key automatically
+
+> [!TIP]
+> If you haven't added `EXTENSION_ID` to `.env`, the script will prompt you to enter it interactively.
+
+### 5. Run the Development Server
+
 ```bash
 npm run tauri dev
 ```
+
+This compiles the Vite frontend and the Rust/Tauri backend in dev (debug) mode.
+
+---
+
+## 🪟 Windows — Step-by-Step Installation
+
+> [!IMPORTANT]
+> Follow these steps in order on a Windows machine. All commands are run in **Command Prompt** or **PowerShell** (no admin required unless noted).
+
+#### Step 1 — Install Rust
+
+Open PowerShell and run:
+```powershell
+winget install Rustlang.Rust.MSVC
+```
+Or download the installer from https://rustup.rs and follow the prompts.  
+When asked, choose **option 1** (default installation with MSVC toolchain).
+
+#### Step 2 — Install Visual Studio C++ Build Tools
+
+Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+
+During setup, check **"Desktop development with C++"** and click Install.
+
+#### Step 3 — Install Node.js
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+Or download from https://nodejs.org (choose the LTS version).
+
+#### Step 4 — Install WebView2 (Windows 10 only)
+
+Windows 11 ships with WebView2 pre-installed. On Windows 10:
+```powershell
+winget install Microsoft.EdgeWebView2Runtime
+```
+
+#### Step 5 — Clone the project and install dependencies
+
+```powershell
+git clone https://github.com/your-org/lifemirror-desktop.git
+cd lifemirror-desktop
+npm install
+```
+
+#### Step 6 — Set your Extension ID
+
+Create a `.env` file in the project root:
+
+```
+EXTENSION_ID=your32characterextensionid
+```
+
+*(Find the ID at `chrome://extensions` → enable Developer Mode → load `companion-extension/` as unpacked → copy the ID shown)*
+
+#### Step 7 — Build the app (once) so the binary exists
+
+```powershell
+npm run tauri dev
+```
+Wait until you see the app window open, then press `Ctrl+C` to stop it. This creates the `lifemirror.exe` binary used by the native host.
+
+#### Step 8 — Install the native messaging host
+
+```powershell
+npm run install-host
+```
+
+This automatically:
+- Generates the native host manifest with your extension ID
+- Copies it to `%LOCALAPPDATA%\LifeMirror\NativeMessagingHosts\`
+- Writes the registry key `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop`
+
+> [!NOTE]
+> If the registry step fails (rare), the script prints the exact `reg add` command to run manually. No administrator rights are required for `HKCU` registry keys.
+
+#### Step 9 — Reload the extension
+
+Go to `chrome://extensions`, find **LifeMirror Companion**, and click **↺ Reload**.
 
 ---
 
 ## ⚙️ Configuration Guides
 
-Detailed configuration guides can be found in the documentation folder:
+### Browser Tab Tracking (Chrome Extension)
 
-### 1. Browser Tab Tracking (Chrome Extension)
 Browser tab sync operates over a secure, sandboxed stdin/stdout **Native Messaging** channel.
-1. Load the `companion-extension/` directory as an unpacked extension in Chrome Developer settings (`chrome://extensions/`).
-2. Register the native host manifest file `com.lifemirror.desktop.json` in your browser's registry directory.
-   - **Linux**:
-     ```bash
-     mkdir -p ~/.config/google-chrome/NativeMessagingHosts
-     ln -sf /var/www/pieapps/lifemirror-desktop/companion-extension/com.lifemirror.desktop.json ~/.config/google-chrome/NativeMessagingHosts/com.lifemirror.desktop.json
-     ```
-3. See [USER.md](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) for more details.
+
+| Platform | After running `npm run install-host`, the manifest is placed at… |
+|----------|------------------------------------------------------------------|
+| **Windows** | `%LOCALAPPDATA%\LifeMirror\NativeMessagingHosts\com.lifemirror.desktop.json` |
+| **macOS** | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` |
+| **Linux** | `~/.config/google-chrome/NativeMessagingHosts/` |
+
+The Windows Registry key is also written automatically:
+```
+HKCU\Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop
+```
 
 ### Pluggable Local AI (No Cloud APIs)
 
-LifeMirror features an abstracted `InferenceProvider` allowing you to securely plug in Local AI models without sending your timeline telemetry to the cloud. Currently, **Ollama** is the default supported backend.
+LifeMirror features an abstracted `InferenceProvider` allowing you to securely plug in local AI models without sending your timeline data to the cloud. Currently, **Ollama** is the default supported backend.
 
 1. Download and run [Ollama](https://ollama.com) locally.
-2. In the LifeMirror app, open Settings (top-right cog) and specify the Local AI Endpoint (`http://localhost:11434`) and Text Generation Model (e.g., `llama3.2`).
-3. Return to the dashboard and click the **Download Model Native** button to fetch the model without needing the terminal!
+2. In the LifeMirror app, open **Settings** (top-right cog) and set:
+   - **Local AI Endpoint**: `http://localhost:11434`
+   - **Model**: e.g. `llama3.2`
+3. Click **Download Model Native** to fetch the model without needing the terminal.
 
-For detailed cross-OS setup, environment variables, and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
+For detailed cross-OS setup and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
 
 ---
 
 ## 📦 Packaging & Distribution
 
-LifeMirror uses Tauri's native bundler to easily create installation packages for Linux, Windows, and macOS. 
+LifeMirror uses Tauri's native bundler to create installers for each platform.
 
-To build the package for your current operating system, simply run:
+**Build for your current OS:**
 ```bash
 npm run tauri build
 ```
-This process compiles the Vite frontend and the Rust backend in release mode. The resulting package will be output to `src-tauri/target/release/bundle/`.
 
-### Platform Specifics
+Output goes to `src-tauri/target/release/bundle/`.
 
-#### Linux (Debian/Ubuntu)
-1. **Prerequisites:**
-   ```bash
-   sudo apt update
-   sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-   ```
-2. **Output:** `src-tauri/target/release/bundle/deb/lifemirror_0.1.11_amd64.deb`
-3. **Install:** `sudo apt install ./src-tauri/target/release/bundle/deb/lifemirror_0.1.11_amd64.deb`
+After building, install the native host pointing at the **release** binary:
+```bash
+npm run install-host:release
+```
 
-#### Windows (.msi / .exe)
-1. **Prerequisites:** 
-   - [Microsoft Visual Studio C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-   - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (Usually pre-installed on Windows 11)
-2. **Output:** `src-tauri\target\release\bundle\msi\lifemirror_0.1.11_x64_en-US.msi`
+### Platform Outputs
 
-#### macOS (.dmg / .app)
-1. **Prerequisites:** Xcode Command Line Tools (`xcode-select --install`)
-2. **Output:** `src-tauri/target/release/bundle/dmg/lifemirror_0.1.11_x64.dmg`
+#### 🪟 Windows
+| Format | Path |
+|--------|------|
+| NSIS installer (`.exe`) | `src-tauri\target\release\bundle\nsis\lifemirror-desktop_x.x.x_x64-setup.exe` |
+| MSI package | `src-tauri\target\release\bundle\msi\lifemirror-desktop_x.x.x_x64_en-US.msi` |
+
+#### 🐧 Linux (Debian/Ubuntu)
+```bash
+sudo apt update
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
+  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+Output: `src-tauri/target/release/bundle/deb/lifemirror-desktop_x.x.x_amd64.deb`
+
+#### 🍎 macOS
+```bash
+xcode-select --install
+```
+Output: `src-tauri/target/release/bundle/dmg/lifemirror-desktop_x.x.x_x64.dmg`
 
 ---
 
-## 📖 Documentation Directory
-* [User Guide (`docs/USER.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md): Walks through initial installation, Chrome extension symlinking, and settings configurations.
-* [Ollama Configuration Guide (`docs/OLLAMA_SETUP.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md): Detailed installation, model management, and environment variable configuration instructions for different operating systems.
-* [Developer Documentation (`docs/DEVELOPER.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md): Details database schemas, active Wayland focus hooks, S-curve geometry math, and packaging scripts.
-* [Feature & Change Workflow (`docs/WORKFLOW.md`)](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md): Step-by-step instructions for developers and coding assistants to safely implement future changes.
+## 📖 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) | Initial installation, Chrome extension setup, and settings |
+| [Ollama Setup](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md) | Model management and environment variable configuration |
+| [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | Database schemas, Wayland focus hooks, S-curve geometry, packaging |
+| [Workflow Guide](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md) | Step-by-step instructions for safely implementing future changes |
