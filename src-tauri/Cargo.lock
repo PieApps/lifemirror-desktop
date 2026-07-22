@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "lifemirror"
-version = "0.1.0"
+version = "0.1.14"
 dependencies = [
  "active-win-pos-rs",
  "async-trait",
