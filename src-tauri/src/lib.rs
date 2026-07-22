@@ -3,6 +3,7 @@ pub mod ai;
 pub mod inference;
 pub mod db;
 pub mod native_msg;
+pub mod providers;
 pub mod tracker;
 pub mod window_provider;
 pub mod memory_engine;

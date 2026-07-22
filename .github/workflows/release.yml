@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Only semantic version tags e.g. v0.1.13, not vtest or vfoo
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false # Windows/macOS still ship even if Linux fails
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+          - platform: windows-latest
+          - platform: macos-13 # Intel; cheaper, broader compatibility
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.85.0 # Pinned Rust version; separate from the action version
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxcb-ewmh-dev \
+            libxcb-randr0-dev \
+            libdbus-1-dev
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'LifeMirror ${{ github.ref_name }}'
+          releaseDraft: true # Publish manually after verifying installers on all platforms
+          prerelease: false
+          generateReleaseNotes: true # GitHub generates notes from commits automatically
+          args: --locked # Enforce exact Cargo.lock dependency versions in release builds
