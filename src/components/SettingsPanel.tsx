@@ -1,7 +1,8 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2 } from "lucide-react";
+import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 
 interface SettingsPanelProps {
   isIncognito: boolean;
@@ -46,6 +47,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [customQuote, setCustomQuote] = React.useState<string>("");
   const [connectionStatus, setConnectionStatus] = React.useState<'idle' | 'testing' | 'connected' | 'disconnected'>('idle');
   const [connectionMessage, setConnectionMessage] = React.useState<string>("");
+  const [categoryOverrides, setCategoryOverrides] = React.useState<CategoryOverrides>(getCategoryOverrides);
+  const [newOverrideApp, setNewOverrideApp] = React.useState("");
+  const [newOverrideCategory, setNewOverrideCategory] = React.useState<ActivityCategory>("development");
+
+  const handleAddOverride = () => {
+    if (!newOverrideApp.trim()) return;
+    const key = newOverrideApp.trim().toLowerCase();
+    const updated = { ...categoryOverrides, [key]: newOverrideCategory };
+    setCategoryOverrides(updated);
+    saveCategoryOverrides(updated);
+    setNewOverrideApp("");
+  };
+
+  const handleRemoveOverride = (appKey: string) => {
+    const updated = { ...categoryOverrides };
+    delete updated[appKey];
+    setCategoryOverrides(updated);
+    saveCategoryOverrides(updated);
+  };
 
   const loadSettings = async () => {
     try {
@@ -482,6 +502,82 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       </div>
 
+      {/* Custom Category Overrides Card */}
+      <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] min-w-0">
+        <div className="flex items-center gap-2 font-semibold text-[var(--text-color)] mb-2">
+          <Tag className="w-4 h-4 text-violet-400" />
+          <h3 className="text-sm font-semibold">Custom Category Rules</h3>
+        </div>
+        <p className="text-xs text-[var(--text-muted)] mb-3">
+          Override auto-assigned activity categories for specific app names or domain keywords.
+        </p>
+
+        <div className="space-y-2 mb-3">
+          <input
+            type="text"
+            value={newOverrideApp}
+            onChange={(e) => setNewOverrideApp(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddOverride(); }}
+            placeholder="App / domain name (e.g. chrome, figma.com)..."
+            className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50"
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={newOverrideCategory}
+              onChange={(e) => setNewOverrideCategory(e.target.value as ActivityCategory)}
+              className="flex-1 bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-2.5 py-1.5 text-xs text-[var(--text-color)] focus:outline-none cursor-pointer min-w-0"
+            >
+              {Object.entries(CATEGORIES).map(([key, info]) => (
+                <option key={key} value={key}>
+                  {info.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleAddOverride}
+              disabled={!newOverrideApp.trim()}
+              className="px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1 cursor-pointer shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Rule
+            </button>
+          </div>
+        </div>
+
+        {/* Existing Overrides List */}
+        <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar pr-0.5">
+          {Object.entries(categoryOverrides).map(([appKey, catKey]) => {
+            const catInfo = CATEGORIES[catKey];
+            return (
+              <div
+                key={appKey}
+                className="flex items-center justify-between bg-[var(--bg-color)]/40 border border-[var(--border-color)]/60 rounded-xl px-3 py-1.5 text-xs min-w-0"
+              >
+                <div className="flex items-center gap-2 min-w-0 truncate pr-2">
+                  <span className="font-mono text-[var(--text-color)] font-medium truncate">{appKey}</span>
+                  <span className="text-[var(--text-muted)] text-[10px] shrink-0">→</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={{ backgroundColor: `${catInfo.color}20`, color: catInfo.color }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catInfo.color }} />
+                    {catInfo.name}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleRemoveOverride(appKey)}
+                  className="text-[var(--text-muted)] hover:text-red-400 p-1 transition-colors cursor-pointer shrink-0"
+                  title="Remove Rule"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            );
+          })}
+          {Object.keys(categoryOverrides).length === 0 && (
+            <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">
+              No custom category rules added yet.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* AI reflection details */}
       {!isIncognito && trackingActive && (

@@ -15,6 +15,7 @@ interface TimelinePanelProps {
   viewMode: "daily" | "weekly" | "monthly";
   setViewMode: (mode: "daily" | "weekly" | "monthly") => void;
   selectedDate: string;
+  onSelectDate?: (dateStr: string) => void;
 
   // Navigation
   getPeriodLabel: () => string;
@@ -52,6 +53,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   viewMode,
   setViewMode,
   selectedDate,
+  onSelectDate,
   getPeriodLabel,
   handlePrevPeriod,
   handleNextPeriod,
@@ -170,23 +172,47 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <Target className="w-4 h-4 text-[var(--text-muted)]" />
-            <input
-              type="text"
-              value={intentionInput}
-              onChange={(e) => setIntentionInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
-              placeholder="Set an intention to enable AI distraction evaluation (e.g., 'Writing Rust code')..."
-              className="flex-1 bg-transparent border-none text-sm text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50"
-            />
-            <button
-              onClick={handleStartFocus}
-              disabled={!intentionInput.trim()}
-              className="px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-            >
-              Start Focus
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <Target className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+              <input
+                type="text"
+                value={intentionInput}
+                onChange={(e) => setIntentionInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
+                placeholder="Set an intention to enable AI distraction evaluation (e.g., 'Writing Rust code')..."
+                className="flex-1 bg-transparent border-none text-sm text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50 min-w-0"
+              />
+              <button
+                onClick={handleStartFocus}
+                disabled={!intentionInput.trim()}
+                className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                Start Focus
+              </button>
+            </div>
+            
+            {/* Quick Presets */}
+            <div className="flex items-center gap-1.5 pl-7 overflow-x-auto custom-scrollbar pb-0.5 text-[11px]">
+              <span className="text-[10px] font-medium text-[var(--text-muted)] shrink-0">Presets:</span>
+              {[
+                { label: "💻 Deep Coding", value: "Deep Coding" },
+                { label: "📝 Writing Docs", value: "Writing Documentation" },
+                { label: "🔍 Research", value: "Research & Analysis" },
+                { label: "🎨 UI Design", value: "UI Design & Polish" },
+                { label: "🐛 Debugging", value: "Debugging Code" },
+              ].map((preset) => (
+                <button
+                  key={preset.value}
+                  onClick={() => {
+                    setIntentionInput(preset.value);
+                  }}
+                  className="px-2 py-0.5 rounded-md bg-[var(--bg-color)]/60 hover:bg-violet-500/15 border border-[var(--border-color)] hover:border-violet-500/40 text-[var(--text-muted)] hover:text-violet-400 font-medium transition-all shrink-0 cursor-pointer"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -225,6 +251,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               endDate={getWeekRange(selectedDate).end}
               summaryData={weeklySummaries}
               heatmapData={heatmapData}
+              onSelectDate={(dateStr) => {
+                if (onSelectDate) onSelectDate(dateStr);
+                setViewMode("daily");
+              }}
             />
           </div>
         ) : (

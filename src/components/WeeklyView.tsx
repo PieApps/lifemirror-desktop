@@ -1,20 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
 import { DailySummary, HourlyMetric } from "../types";
-import { mapAppToCategory, CATEGORIES, ActivityCategory } from "../utils/categoryMapper";
+import { mapAppToCategory, CATEGORIES, ActivityCategory, getCategoryOverrides } from "../utils/categoryMapper";
 
 interface WeeklyViewProps {
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   summaryData: DailySummary[];
   heatmapData: HourlyMetric[];
+  onSelectDate?: (dateStr: string) => void;
 }
 
 export const WeeklyView: React.FC<WeeklyViewProps> = ({
   startDate,
   summaryData,
   heatmapData,
+  onSelectDate,
 }) => {
+  const [selectedCategory, setSelectedCategory] = useState<ActivityCategory | null>(null);
+  const [categoryOverrides, setCategoryOverrides] = useState(getCategoryOverrides);
+
+  useEffect(() => {
+    const handleOverridesChange = () => setCategoryOverrides(getCategoryOverrides());
+    window.addEventListener("category_overrides_changed", handleOverridesChange);
+    return () => window.removeEventListener("category_overrides_changed", handleOverridesChange);
+  }, []);
+
   const [hoveredStack, setHoveredStack] = useState<{
     day: string;
     app: string;
@@ -67,7 +79,7 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
     let totalSecs = 0;
 
     daySummaries.forEach((s) => {
-      const cat = mapAppToCategory(s.app_name, "", s.source === "Browser" ? "Browser" : "");
+      const cat = mapAppToCategory(s.app_name, "", s.source === "Browser" ? "Browser" : "", categoryOverrides);
       const existing = appMap.get(s.app_name) || { duration: 0, category: cat };
       existing.duration += s.total_duration;
       appMap.set(s.app_name, existing);
@@ -125,13 +137,37 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap gap-x-4 gap-y-2 mb-8 text-xs">
-          {Object.entries(CATEGORIES).map(([key, info]) => (
-            <div key={key} className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: info.color }} />
-              <span className="text-[var(--text-muted)] font-medium">{info.name}</span>
-            </div>
-          ))}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-8 text-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mr-1">Filter Category:</span>
+          {Object.entries(CATEGORIES).map(([key, info]) => {
+            const isSelected = selectedCategory === key;
+            const isAnySelected = selectedCategory !== null;
+            
+            return (
+              <button
+                key={key}
+                onClick={() => setSelectedCategory(isSelected ? null : (key as ActivityCategory))}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                  isSelected
+                    ? "bg-violet-500/20 border-violet-500 text-[var(--text-color)] font-semibold shadow-sm"
+                    : isAnySelected
+                    ? "bg-[var(--bg-color)]/30 border-transparent text-[var(--text-muted)] opacity-50 hover:opacity-100"
+                    : "bg-[var(--bg-color)]/50 border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)] hover:border-violet-500/40"
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: info.color }} />
+                <span className="font-medium">{info.name}</span>
+              </button>
+            );
+          })}
+          {selectedCategory && (
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className="text-[10px] font-semibold text-violet-400 hover:text-violet-300 underline ml-2 cursor-pointer"
+            >
+              Clear Filter
+            </button>
+          )}
         </div>
 
         {/* Custom SVG/HTML Stacked Columns */}
@@ -144,9 +180,14 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
             const colHeightPct = (dayData.totalDuration / maxDailyDuration) * 100;
 
             return (
-              <div key={dateStr} className="flex-1 flex flex-col items-center h-full group">
+              <div 
+                key={dateStr} 
+                className="flex-1 flex flex-col items-center h-full group cursor-pointer transition-transform hover:scale-[1.02]"
+                onClick={() => onSelectDate?.(dateStr)}
+                title={`Click to view ${dayLabel}'s detailed timeline`}
+              >
                 {/* Column wrapper */}
-                <div className="w-full relative bg-[var(--bg-color)]/20 dark:bg-zinc-800/10 rounded-xl border border-[var(--border-color)] hover:border-violet-500/30 transition-all flex flex-col justify-end overflow-hidden cursor-pointer" style={{ height: "80%" }}>
+                <div className="w-full relative bg-[var(--bg-color)]/20 dark:bg-zinc-800/10 rounded-xl border border-[var(--border-color)] group-hover:border-violet-500/50 transition-all flex flex-col justify-end overflow-hidden" style={{ height: "80%" }}>
                   
                   {/* Empty filler if duration is 0 */}
                   {dayData.totalDuration === 0 && (
@@ -159,11 +200,14 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
                     {dayData.apps.map((app) => {
                       const appHeightPct = (app.duration / dayData.totalDuration) * 100;
                       const catInfo = CATEGORIES[app.category];
+                      const isDimmed = selectedCategory !== null && app.category !== selectedCategory;
 
                       return (
                         <div
                           key={app.name}
-                          className="w-full transition-all hover:brightness-110 active:brightness-95 border-b border-[var(--bg-color)] last:border-0 relative"
+                          className={`w-full transition-all border-b border-[var(--bg-color)] last:border-0 relative ${
+                            isDimmed ? "opacity-20 saturate-50" : "hover:brightness-110 active:brightness-95"
+                          }`}
                           style={{
                             height: `${appHeightPct}%`,
                             backgroundColor: catInfo.color,
@@ -187,8 +231,8 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
                 </div>
 
                 {/* Date Label */}
-                <div className="mt-3 text-center">
-                  <span className="block text-xs font-bold text-[var(--text-color)]">{dayLabel}</span>
+                <div className="mt-3 text-center group-hover:text-violet-400 transition-colors">
+                  <span className="block text-xs font-bold text-[var(--text-color)] group-hover:text-violet-400">{dayLabel}</span>
                   <span className="block text-[10px] text-[var(--text-muted)] font-mono">{dayNum}</span>
                 </div>
               </div>
@@ -196,10 +240,10 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
           })}
         </div>
 
-        {/* Hover Stack Tooltip — fixed positioning so it escapes overflow/stacking contexts */}
-        {hoveredStack && (
+        {/* Hover Stack Tooltip — Portalled to document.body to break out of CSS transform/filter containing blocks */}
+        {hoveredStack && createPortal(
           <div
-            className="fixed z-[9999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-1 select-none transform -translate-x-1/2 -translate-y-full"
+            className="fixed z-[99999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-75 flex flex-col gap-1 select-none transform -translate-x-1/2 -translate-y-full"
             style={{ left: hoveredStack.x, top: hoveredStack.y }}
           >
             <div className="font-bold text-[var(--text-color)]">{hoveredStack.day}</div>
@@ -210,7 +254,11 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
             <div className="text-[var(--text-muted)] font-mono mt-0.5">
               Duration: {formatDuration(hoveredStack.duration)}
             </div>
-          </div>
+            <div className="text-[10px] text-violet-400 font-medium mt-1 pt-1 border-t border-[var(--border-color)]/40">
+              Click column to view daily timeline
+            </div>
+          </div>,
+          document.body
         )}
       </div>
 
@@ -285,10 +333,10 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
           </div>
         </div>
 
-        {/* Heatmap Tooltip — fixed positioning so it escapes overflow/stacking contexts */}
-        {hoveredHeatCell && (
+        {/* Heatmap Tooltip — Portalled to document.body to break out of CSS transform/filter containing blocks */}
+        {hoveredHeatCell && createPortal(
           <div
-            className="fixed z-[9999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-100 flex flex-col gap-0.5 select-none transform -translate-x-1/2 -translate-y-full"
+            className="fixed z-[99999] glass rounded-xl p-3 shadow-xl border border-[var(--border-color)] text-xs pointer-events-none transition-all duration-75 flex flex-col gap-0.5 select-none transform -translate-x-1/2 -translate-y-full"
             style={{ left: hoveredHeatCell.x, top: hoveredHeatCell.y }}
           >
             <div className="font-bold text-[var(--text-color)]">{hoveredHeatCell.dayName}</div>
@@ -298,7 +346,8 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
             <div className="text-[var(--text-muted)] font-mono mt-0.5">
               Active Focus: {formatDuration(hoveredHeatCell.duration)}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

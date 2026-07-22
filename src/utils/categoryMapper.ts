@@ -45,6 +45,26 @@ export const CATEGORIES: Record<ActivityCategory, CategoryInfo> = {
   },
 };
 
+export type CategoryOverrides = Record<string, ActivityCategory>;
+
+export function getCategoryOverrides(): CategoryOverrides {
+  try {
+    const saved = localStorage.getItem("category_overrides");
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCategoryOverrides(overrides: CategoryOverrides) {
+  try {
+    localStorage.setItem("category_overrides", JSON.stringify(overrides));
+    window.dispatchEvent(new Event("category_overrides_changed"));
+  } catch (e) {
+    console.error("Failed to save category overrides", e);
+  }
+}
+
 /**
  * Maps an application name and optional browser URL or window title
  * into one of the predefined categories.
@@ -52,9 +72,17 @@ export const CATEGORIES: Record<ActivityCategory, CategoryInfo> = {
 export function mapAppToCategory(
   appName: string,
   windowTitle: string = "",
-  url: string = ""
+  url: string = "",
+  customOverrides?: CategoryOverrides
 ): ActivityCategory {
-  const app = appName.toLowerCase();
+  const app = appName.toLowerCase().trim();
+  const overrides = customOverrides || getCategoryOverrides();
+
+  // Check user custom override first
+  if (overrides[app]) {
+    return overrides[app];
+  }
+
   const title = windowTitle.toLowerCase();
   const urlStr = url ? url.toLowerCase() : "";
   const isBrowserSummary = urlStr === "browser" || isDomainName(app);

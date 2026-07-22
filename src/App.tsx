@@ -185,6 +185,7 @@ function App() {
           viewMode={data.viewMode}
           setViewMode={data.setViewMode}
           selectedDate={data.selectedDate}
+          onSelectDate={data.setSelectedDate}
           getPeriodLabel={data.getPeriodLabel}
           handlePrevPeriod={data.handlePrevPeriod}
           handleNextPeriod={data.handleNextPeriod}
