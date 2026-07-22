@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Github, Sun, Moon, Download, Sparkles } from 'lucide-react';
+import logoImg from '../assets/logo.svg';
 
 interface NavbarProps {
   theme: 'dark' | 'light';
@@ -28,10 +29,13 @@ export const Navbar: React.FC<NavbarProps> = ({ theme, onToggleTheme }) => {
       <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
         {/* Brand Logo */}
         <a href="#" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 via-pink-500 to-cyan-400 p-[2px] transition-transform duration-300 group-hover:scale-105">
-            <div className="w-full h-full bg-[#0d0d11] rounded-[10px] flex items-center justify-center">
-              <Shield className="w-5 h-5 text-violet-400 group-hover:rotate-12 transition-transform" />
-            </div>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 via-cyan-400 to-violet-500 p-[2px] shadow-lg shadow-violet-500/20 transition-transform duration-300 group-hover:scale-105 overflow-hidden">
+            <img
+              src={logoImg}
+              alt="LifeMirror Logo"
+              className="w-full h-full rounded-full object-cover"
+              onError={(e) => { e.currentTarget.src = '/logo.svg'; }}
+            />
           </div>
           <div className="flex flex-col">
             <span className="font-display font-bold text-lg text-white tracking-tight flex items-center gap-1.5">

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <!-- Warm Orange Top Gradient -->
+    <linearGradient id="warmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff7e5f" />
+      <stop offset="100%" stop-color="#feb47b" />
+    </linearGradient>
+
+    <!-- Cyan Blue Middle Gradient -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00c6ff" />
+      <stop offset="100%" stop-color="#0072ff" />
+    </linearGradient>
+
+    <!-- Purple Bottom Gradient -->
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9d50bb" />
+      <stop offset="100%" stop-color="#6e48aa" />
+    </linearGradient>
+
+    <!-- Outer Rim Glow -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Outer Glowing Glass Circle Ring -->
+  <circle cx="100" cy="100" r="92" fill="#0d0d11" stroke="url(#cyanGrad)" stroke-width="4" filter="url(#neonGlow)" />
+  <circle cx="100" cy="100" r="90" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2" />
+
+  <!-- Top Serpentine Wave Band (Warm Orange) -->
+  <path d="M 12 80 C 60 50, 140 110, 188 80 A 88 88 0 0 0 12 80 Z" fill="url(#warmGrad)" opacity="0.9" />
+
+  <!-- Middle Serpentine Wave Band (Cyan Blue) -->
+  <path d="M 12 80 C 60 50, 140 110, 188 80 C 140 140, 60 80, 12 130 A 88 88 0 0 0 188 80 Z" fill="url(#cyanGrad)" opacity="0.85" />
+
+  <!-- Bottom Serpentine Wave Band (Purple) -->
+  <path d="M 12 130 C 60 80, 140 140, 188 80 A 88 88 0 0 1 12 130 Z" fill="url(#purpleGrad)" opacity="0.9" />
+
+  <!-- Minimalist Clock Hands -->
+  <line x1="100" y1="100" x2="65" y2="70" stroke="#ffffff" stroke-width="5" stroke-linecap="round" />
+  <line x1="100" y1="100" x2="145" y2="55" stroke="#ffffff" stroke-width="5" stroke-linecap="round" />
+  <line x1="100" y1="100" x2="60" y2="140" stroke="#ff7e5f" stroke-width="3" stroke-linecap="round" />
+  <circle cx="100" cy="100" r="6" fill="#ffffff" stroke="#0d0d11" stroke-width="2" />
+
+  <!-- Glass Highlight Sweep -->
+  <path d="M 30 30 A 85 85 0 0 1 170 30 C 120 70, 80 50, 30 30 Z" fill="rgba(255, 255, 255, 0.15)" />
+</svg>
