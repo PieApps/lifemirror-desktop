@@ -57,4 +57,4 @@ jobs:
           releaseDraft: true # Publish manually after verifying installers on all platforms
           prerelease: false
           generateReleaseNotes: true # GitHub generates notes from commits automatically
-          args: --locked # Enforce exact Cargo.lock dependency versions in release builds
+          args: -- --locked                  # Pass --locked through to cargo (tauri CLI uses -- as a passthrough separator)
