@@ -15,7 +15,7 @@ jobs:
         include:
           - platform: ubuntu-22.04
           - platform: windows-latest
-          - platform: macos-13 # Intel; cheaper, broader compatibility
+          - platform: macos-latest  # macOS 15, Apple Silicon (arm64)
 
     runs-on: ${{ matrix.platform }}
 
