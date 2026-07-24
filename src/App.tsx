@@ -115,7 +115,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen md:h-screen md:overflow-hidden bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col transition-colors duration-300">
+    <div className="min-h-screen sm:h-screen sm:overflow-hidden bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col transition-colors duration-300">
       <Header
         theme={settings.theme}
         setTheme={settings.setTheme}
@@ -180,7 +180,7 @@ function App() {
       )}
 
       {/* Main Grid Layout */}
-      <div className="flex-1 max-w-[1600px] w-full mx-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6 md:overflow-hidden">
+      <div className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-5 gap-3 sm:gap-6 sm:overflow-hidden">
         <TimelinePanel
           viewMode={data.viewMode}
           setViewMode={data.setViewMode}
@@ -210,7 +210,7 @@ function App() {
         />
 
         {/* Sidebar */}
-        <div className="md:col-span-2 space-y-4 sm:space-y-6 flex flex-col md:h-full md:overflow-hidden md:pr-1 md:pb-6">
+        <div className="sm:col-span-2 space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6">
           {settings.showSettings ? (
             <SettingsPanel
               isIncognito={settings.isIncognito}
