@@ -57,7 +57,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
   clearChat,
 }) => {
   return (
-    <div className="glass rounded-2xl p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left flex-1 overflow-hidden min-h-0">
+    <div className="glass rounded-2xl p-4 sm:p-6 border border-[var(--border-color)] flex flex-col gap-4 text-left flex-1 h-full overflow-hidden min-h-0">
       {/* Analytics Dashboard */}
       <ProductivityDashboard metrics={metrics} />
 

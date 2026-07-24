@@ -30,29 +30,29 @@ export const Header: React.FC<HeaderProps> = ({
   const search = useSearch();
   const searchContainerRef = useRef<HTMLDivElement>(null);
   return (
-    <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between">
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <img 
           src="/icon.png" 
-          className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
+          className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
           alt="LifeMirror Desktop Logo" 
         />
-        <div>
-          <h1 className="text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
-          <span className="text-[10px] text-[var(--text-muted)] font-medium tracking-wide">KNOW WHERE YOUR TIME WENT</span>
+        <div className="hidden min-[480px]:block">
+          <h1 className="text-sm sm:text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
+          <span className="text-[9px] sm:text-[10px] text-[var(--text-muted)] font-medium tracking-wide">KNOW WHERE YOUR TIME WENT</span>
         </div>
       </div>
       
       {/* Search Bar */}
-      <div className="flex-1 max-w-md mx-8 relative" ref={searchContainerRef}>
+      <div className="flex-1 max-w-md mx-2 sm:mx-8 relative" ref={searchContainerRef}>
         <div className="relative flex items-center w-full">
           <Search className="absolute left-3 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
           <input
             type="text"
-            placeholder="Search timeline & journal notes..."
+            placeholder="Search timeline..."
             value={search.searchQuery}
             onChange={(e) => search.setSearchQuery(e.target.value)}
-            className="w-full bg-[var(--bg-color)]/60 border border-[var(--border-color)] rounded-xl py-2 pl-10 pr-4 text-sm text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 focus:border-violet-500/50 placeholder:text-zinc-500/50 transition-all"
+            className="w-full bg-[var(--bg-color)]/60 border border-[var(--border-color)] rounded-xl py-1.5 sm:py-2 pl-9 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 focus:border-violet-500/50 placeholder:text-zinc-500/50 transition-all"
           />
         </div>
         
@@ -70,21 +70,21 @@ export const Header: React.FC<HeaderProps> = ({
         />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {isIncognito && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/40 text-amber-400 text-xs font-semibold animate-pulse">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/40 text-amber-400 text-[10px] sm:text-xs font-semibold animate-pulse">
             <ShieldAlert className="w-3.5 h-3.5" />
-            <span>INCOGNITO ACTIVE</span>
+            <span className="hidden sm:inline">INCOGNITO ACTIVE</span>
           </div>
         )}
 
         <button
           onClick={onResumeClick}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold text-sm cursor-pointer"
+          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold text-xs sm:text-sm cursor-pointer"
           title="Resume your context"
         >
-          <RefreshCw className="w-4 h-4" />
-          Resume Project
+          <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span className="hidden min-[640px]:inline">Resume Project</span>
         </button>
 
         <button
