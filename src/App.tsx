@@ -180,7 +180,7 @@ function App() {
       )}
 
       {/* Main Grid Layout */}
-      <div className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-5 gap-3 sm:gap-6 sm:overflow-hidden">
+      <div className="main-app-container flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-5 gap-3 sm:gap-6 sm:overflow-hidden">
         <TimelinePanel
           viewMode={data.viewMode}
           setViewMode={data.setViewMode}
@@ -210,7 +210,7 @@ function App() {
         />
 
         {/* Sidebar */}
-        <div className="sm:col-span-2 space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6">
+        <div className="sidebar-panel-wrapper sm:col-span-2 space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6">
           {settings.showSettings ? (
             <SettingsPanel
               isIncognito={settings.isIncognito}
