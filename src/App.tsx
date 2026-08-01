@@ -207,6 +207,7 @@ function App() {
           handleStopFocus={focus.handleStopFocus}
           onAddJournal={(node) => data.setSelectedActivity(node)}
           onDeleteLog={data.handleDeleteLog}
+          onDeleteMemoryNode={data.handleDeleteMemoryNode}
         />
 
         {/* Sidebar */}

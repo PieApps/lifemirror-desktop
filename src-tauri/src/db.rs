@@ -771,6 +771,23 @@ impl DbState {
         Ok(())
     }
 
+    pub fn delete_memory_node(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        
+        let mut stmt = conn.prepare("SELECT embedding_id FROM memory_nodes WHERE id = ?1")?;
+        let mut rows = stmt.query(params![id])?;
+        if let Some(row) = rows.next()? {
+            let embedding_id: Option<i64> = row.get(0)?;
+            if let Some(emb_id) = embedding_id {
+                conn.execute("DELETE FROM memory_embeddings WHERE id = ?1", params![emb_id])?;
+            }
+        }
+        
+        conn.execute("DELETE FROM memory_nodes WHERE id = ?1", params![id])?;
+        
+        Ok(())
+    }
+
     pub fn persist_built_sessions(&self, sessions: Vec<(MemoryNode, Vec<NormalizedEvent>)>) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;

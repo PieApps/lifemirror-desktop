@@ -310,6 +310,18 @@ async fn update_memory_node_summary(
 }
 
 #[tauri::command]
+async fn delete_memory_node(
+    id: i64,
+    state: tauri::State<'_, Arc<DbState>>,
+) -> Result<(), String> {
+    state
+        .inner()
+        .delete_memory_node(id)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 #[allow(dead_code)]
 fn get_memory_nodes_for_day(
     state: State<'_, Arc<DbState>>,
@@ -834,6 +846,7 @@ pub fn run() {
             get_memory_nodes_for_day,
             search_memory_nodes,
             update_memory_node_summary,
+            delete_memory_node,
             get_weekly_summary,
             get_monthly_summary,
             get_hourly_heatmap,

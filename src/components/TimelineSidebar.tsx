@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Edit2, Check, MessageSquare } from 'lucide-react';
+import { X, Edit2, Check, MessageSquare, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
+import { ConfirmModal } from './ConfirmModal';
 
 export const getFormatDuration = (seconds: number) => {
   const roundedSeconds = Math.round(seconds);
@@ -23,11 +24,15 @@ export const getFormatDuration = (seconds: number) => {
 interface TimelineSidebarProps {
   node: TimelineNode | null;
   onClose: () => void;
+  onDeleteLog?: (id: number) => void;
 }
 
-export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps) {
+export default function TimelineSidebar({ node, onClose, onDeleteLog }: TimelineSidebarProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [summaryText, setSummaryText] = useState("");
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void, onCancel: () => void}>({
+    isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {}
+  });
 
   useEffect(() => {
     if (node?.isMemoryNode && node.memoryData) {
@@ -172,7 +177,8 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                   url: a.url,
                   source: a.source,
                   duration: a.duration,
-                  notes: a.notes
+                  notes: a.notes,
+                  isActivity: true
                 })), ...node.subEvents.map(s => ({
                   id: s.id,
                   timestamp: s.timestamp,
@@ -183,7 +189,8 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                   url: s.primary_uri,
                   source: s.session_type,
                   duration: 0,
-                  notes: undefined
+                  notes: undefined,
+                  isActivity: false
                 }))].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 .map((event, idx, arr) => {
                   let dur = event.duration;
@@ -217,9 +224,28 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
                           <span className="text-xs font-semibold text-[var(--text-color)] truncate" title={event.title}>
                             {event.title}
                           </span>
-                          <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
-                            {formattedDur}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {event.isActivity && onDeleteLog && event.id && (
+                              <button
+                                onClick={() => {
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    title: "Delete Activity",
+                                    message: "Delete this individual activity?",
+                                    onConfirm: () => onDeleteLog(event.id!),
+                                    onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                                  });
+                                }}
+                                className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                                title="Delete activity"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                              {formattedDur}
+                            </span>
+                          </div>
                         </div>
                         <span className="text-[11px] text-[var(--text-muted)] truncate flex items-center gap-1.5">
                           {event.context || extractDomain(event.url) || event.app}
@@ -273,6 +299,7 @@ export default function TimelineSidebar({ node, onClose }: TimelineSidebarProps)
           )}
         </div>
       </div>
+      <ConfirmModal {...confirmModal} />
     </>
   );
 }

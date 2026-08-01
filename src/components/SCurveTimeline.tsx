@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Clock, Plus, 
   Trash2, ShieldAlert, MessageSquare
@@ -129,6 +129,7 @@ interface SCurveTimelineProps {
   distractionEvents: DistractionEvent[];
   onAddJournal: (activity: ActivityNode) => void;
   onDeleteLog: (id: number) => void;
+  onDeleteMemoryNode?: (id: number) => void;
 }
 
 export interface TimelineNode {
@@ -154,13 +155,16 @@ export interface TimelineNode {
 
 // extractDomain moved to AppIcon.tsx
 
+import { ConfirmModal } from './ConfirmModal';
+
 export function SCurveTimeline({ 
   memoryNodes,
   activities, 
   subSessionEvents,
   distractionEvents,
   onAddJournal, 
-  onDeleteLog 
+  onDeleteLog,
+  onDeleteMemoryNode
 }: SCurveTimelineProps) {
   const rowHeight = 200;
   const width = 800;
@@ -169,6 +173,9 @@ export function SCurveTimeline({
 
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
   const [_isHovering, setIsHovering] = useState<number | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void, onCancel: () => void}>({
+    isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {}
+  });
 
   // Group consecutive browser/editor usages together
   const processedNodes = useMemo(() => {
@@ -489,6 +496,18 @@ export function SCurveTimeline({
     return nodes;
   }, [memoryNodes, activities, subSessionEvents, distractionEvents]);
 
+  // Sync selectedNode when processedNodes updates to recalculate time/durations
+  useEffect(() => {
+    if (selectedNode) {
+      const updatedNode = processedNodes.find(n => n.id === selectedNode.id);
+      if (updatedNode) {
+        setSelectedNode(updatedNode);
+      } else {
+        setSelectedNode(null);
+      }
+    }
+  }, [processedNodes]);
+
   const getBaseNodeCoords = (index: number) => {
     const r = Math.floor(index / 3);
     const isRowEven = r % 2 === 0;
@@ -674,20 +693,41 @@ export function SCurveTimeline({
                         <button
                           onClick={() => {
                             if (node.isShield) {
-                              if (window.confirm("Delete all blocked distractions in this group?")) {
-                                node.distractionEvents?.forEach(ev => {
-                                  onDeleteLog(-ev.id);
-                                });
-                              }
+                              setConfirmModal({
+                                isOpen: true,
+                                title: "Delete Distractions",
+                                message: "Delete all blocked distractions in this group?",
+                                onConfirm: () => {
+                                  node.distractionEvents?.forEach(ev => {
+                                    onDeleteLog(-ev.id);
+                                  });
+                                },
+                                onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                              });
                             } else if (node.isGroupedSession) {
-                              if (window.confirm("Delete this session and all its sub-events?")) {
-                                node.originalActivities.forEach(act => {
-                                  if (act.id) onDeleteLog(act.id);
-                                });
-                              }
+                              setConfirmModal({
+                                isOpen: true,
+                                title: "Delete Session",
+                                message: "Delete this session and all its sub-events?",
+                                onConfirm: () => {
+                                  node.originalActivities.forEach(act => {
+                                    if (act.id) onDeleteLog(act.id);
+                                  });
+                                  if (node.isMemoryNode && onDeleteMemoryNode && node.id) {
+                                    onDeleteMemoryNode(node.id);
+                                  }
+                                },
+                                onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                              });
                             } else {
-                              if (node.id && window.confirm("Delete this event?")) {
-                                onDeleteLog(node.id);
+                              if (node.id) {
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: "Delete Event",
+                                  message: "Delete this event?",
+                                  onConfirm: () => onDeleteLog(node.id),
+                                  onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                                });
                               }
                             }
                           }}
@@ -728,8 +768,10 @@ export function SCurveTimeline({
 
       <TimelineSidebar 
         node={selectedNode} 
-        onClose={() => setSelectedNode(null)} 
+        onClose={() => setSelectedNode(null)}
+        onDeleteLog={onDeleteLog}
       />
+      <ConfirmModal {...confirmModal} />
     </div>
   );
 }

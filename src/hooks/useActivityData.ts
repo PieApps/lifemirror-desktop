@@ -235,6 +235,15 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
     }
   };
 
+  const handleDeleteMemoryNode = async (id: number) => {
+    try {
+      await invoke("delete_memory_node", { id });
+      await loadData();
+    } catch (e) {
+      console.error("Failed to delete memory node:", e);
+    }
+  };
+
   const handleSaveJournal = async (notes: string) => {
     try {
       await invoke("add_journal", { notes, activityId: selectedActivity?.id || null });
@@ -277,5 +286,6 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
     // Actions
     loadData,
     handleDeleteLog,
+    handleDeleteMemoryNode,
   };
 }
