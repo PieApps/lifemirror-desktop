@@ -3,6 +3,6 @@ Categories={{categories}}
 Comment={{comment}}
 Exec={{exec}}
 Icon={{icon}}
-Name=LifeMirror
+Name=LifeMirror Desktop
 Terminal=false
 Type=Application
