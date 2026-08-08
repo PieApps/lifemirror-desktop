@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LifeMirror Companion Tracker",
+  "name": "LifeMirror Desktop",
   "version": "1.0.0",
-  "description": "Pipes browser active tab events securely to the LifeMirror local SQLite engine.",
+  "description": "Companion extension for LifeMirror Desktop. Pipes browser active tab events securely to the local SQLite engine.",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
