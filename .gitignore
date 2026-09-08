@@ -43,3 +43,6 @@ companion-extension/com.lifemirror.desktop.json
 # Local environment (contains extension ID — do not commit)
 .env
 
+# Separate repository for website
+website/
+
