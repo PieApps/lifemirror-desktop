@@ -74,7 +74,7 @@ fn install_native_host_manifest() {
 
     // The extension ID is fixed once published to the Chrome Web Store.
     // During development this matches the unpacked extension ID.
-    let allowed_origin = "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/";
+    let allowed_origin = "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/";
 
     let manifest = format!(
         r#"{{
