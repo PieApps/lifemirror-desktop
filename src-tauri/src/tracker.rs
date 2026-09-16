@@ -178,6 +178,8 @@ fn is_editor_app(app: &str) -> bool {
         || app_lower.contains("pycharm")
         || app_lower.contains("rider")
         || app_lower.contains("clion")
+        || app_lower.contains("antigravity")
+        || app_lower.contains("windsurf")
 }
 
 fn parse_editor_title(title: &str) -> (String, String) {

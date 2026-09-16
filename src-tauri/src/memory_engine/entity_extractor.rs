@@ -36,7 +36,9 @@ impl EntityExtractor {
                 }
             } else if event.source == "os" {
                 let app = event.context.to_lowercase();
-                if app.contains("code") || app.contains("cursor") || app.contains("zed") || app.contains("idea") {
+                if app.contains("code") || app.contains("cursor") || app.contains("zed")
+                    || app.contains("idea") || app.contains("antigravity") || app.contains("windsurf")
+                {
                     // Very rudimentary file path extraction from window title
                     let parts: Vec<&str> = event.detail.split(" - ").collect();
                     if let Some(file_part) = parts.first() {
@@ -64,7 +66,7 @@ impl EntityExtractor {
                 conn.execute("INSERT OR IGNORE INTO files (file_path) VALUES (?1)", params![&file]).unwrap_or(0);
                 let id: i64 = conn.query_row("SELECT id FROM files WHERE file_path = ?1", params![&file], |row| row.get(0)).unwrap_or(0);
                 if id > 0 {
-                    conn.execute("INSERT OR IGNORE INTO node_entities (node_id, entity_type, entity_id) VALUES (?1, 'file', ?2)", params![node_id, id]).unwrap_or(0);
+                    conn.execute("INSERT OR IGNORE INTO node_files (node_id, file_id) VALUES (?1, ?2)", params![node_id, id]).unwrap_or(0);
                 }
             }
         }

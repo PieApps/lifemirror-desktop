@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::db::DbState;
-use crate::inference::get_inference_provider;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ResumeContextResponse {
@@ -20,6 +19,47 @@ pub struct ResumeContextResponse {
 
 pub struct ResumeBuilder {
     db: Arc<DbState>,
+}
+
+/// Calls Ollama's /api/generate with `"format": "json"` to guarantee a valid JSON response.
+/// Reads the configured URL and model directly from the database settings.
+async fn call_ollama_json(db: &DbState, prompt: &str) -> Result<String, String> {
+    let mut url = db.get_setting("ollama_url").unwrap_or_default();
+    if url.is_empty() || url == "false" || url == "disabled" {
+        url = "http://localhost:11434".to_string();
+    }
+
+    let mut model = db.get_setting("ollama_model").unwrap_or_default();
+    if model.is_empty() || model == "false" || model == "disabled" {
+        model = "llama3.2".to_string();
+    }
+
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "format": "json",
+        "stream": false
+    });
+
+    let res = client
+        .post(format!("{}/api/generate", url))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        return Err(format!("Ollama returned HTTP {}: {}", status, text));
+    }
+
+    let json: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+    json["response"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Missing 'response' field in Ollama output".to_string())
 }
 
 impl ResumeBuilder {
@@ -48,7 +88,7 @@ impl ResumeBuilder {
         let recent_sessions = self.db.get_recent_sessions_for_project(p_id, 3).unwrap_or_default();
         let recent_files = self.db.get_recent_files_for_project(p_id, 10).unwrap_or_default();
         let recent_journals = self.db.get_journal_entries(5).unwrap_or_default();
-        
+
         println!("[ResumeContext] Found {} recent sessions, {} recent files, {} recent journals", recent_sessions.len(), recent_files.len(), recent_journals.len());
 
         let session_summaries: String = recent_sessions.iter().filter_map(|s| s.summary.clone()).collect::<Vec<_>>().join("\n\n");
@@ -57,7 +97,7 @@ impl ResumeBuilder {
 
         let prompt = format!(
             "You are an intelligent context restorer for a developer returning to their project after some time away.
-Your goal is to build a highly accurate, actionable 'Resume Context' briefing based on their recent activities, sessions, files, and notes.
+Your goal is to build a highly accurate, actionable Resume Context briefing based on their recent activities, sessions, files, and notes.
 
 Project Name: {}
 
@@ -72,19 +112,19 @@ Recent Journal Notes:
 
 Based strictly on the above information, generate a structured JSON object representing their context.
 Do NOT hallucinate information. If there are no blockers, return an empty array.
-Your output MUST be valid JSON matching this schema:
+Your output MUST be a single valid JSON object with no comments, no markdown, and no extra text:
 {{
   \"status\": \"A 1-2 sentence description of where they left off\",
-  \"progress\": 75, // integer 0-100
-  \"branch\": \"feature-branch-name or 'main'\",
-  \"summary\": \"A short bulleted list or paragraph summarizing recent work\",
+  \"progress\": 75,
+  \"branch\": \"feature-branch-name or main\",
+  \"summary\": \"A short paragraph summarizing recent work\",
   \"next_task\": \"The single most important actionable next step\",
-  \"confidence\": 95, // integer 0-100 representing how confident you are in the next_task
-  \"blockers\": [\"list\", \"of\", \"blockers\"],
+  \"confidence\": 95,
+  \"blockers\": [],
   \"files\": [\"list of exactly the file paths they were working on\"],
-  \"documentation\": [\"list of documentation or websites they might need\"],
-  \"journal\": [\"relevant short notes from their journal\"],
-  \"time_to_resume\": \"Estimated time to get back in flow, e.g., '3 minutes'\"
+  \"documentation\": [],
+  \"journal\": [],
+  \"time_to_resume\": \"3 minutes\"
 }}
 ",
             project.name,
@@ -93,19 +133,14 @@ Your output MUST be valid JSON matching this schema:
             journal_notes
         );
 
-        let provider = get_inference_provider(self.db.clone());
-        if let Ok(response_text) = provider.prompt(&prompt).await {
-            let json_start = response_text.find('{').unwrap_or(0);
-            let json_end = response_text.rfind('}').unwrap_or_else(|| response_text.len().saturating_sub(1)) + 1;
-            
-            if json_start < json_end {
-                let json_str = &response_text[json_start..json_end];
-                if let Ok(parsed) = serde_json::from_str::<ResumeContextResponse>(json_str) {
-                    return Ok(parsed);
+        match call_ollama_json(&self.db, &prompt).await {
+            Ok(response_text) => {
+                match serde_json::from_str::<ResumeContextResponse>(&response_text) {
+                    Ok(parsed) => return Ok(parsed),
+                    Err(e) => eprintln!("[ResumeContext] JSON parse failed: {}\nRaw response: {}", e, response_text),
                 }
             }
-        } else {
-            println!("[ResumeContext] AI generation failed or disabled. Using fallback context.");
+            Err(e) => eprintln!("[ResumeContext] AI inference failed: {}. Using fallback.", e),
         }
 
         // Fallback rule-based context

@@ -31,10 +31,10 @@ pub enum ModelPurpose {
 pub trait InferenceProvider: Send + Sync {
     /// Generate a text response based on a prompt
     async fn prompt(&self, prompt: &str) -> Result<String, InferenceError>;
-    
+
     /// Generate vector embeddings for a given text
     async fn embed(&self, text: &str) -> Result<(Vec<f32>, String, String), InferenceError>;
-    
+
     /// Verify that the provider is properly configured and the required models are available
     async fn check_health(&self, purpose: ModelPurpose) -> Result<bool, InferenceError>;
 
