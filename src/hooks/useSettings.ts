@@ -130,6 +130,14 @@ export function useSettings() {
     try {
       if (nextState) {
         await enableAutostart();
+        // auto-launch 0.5.0 writes the Registry Run value without quoting the exe
+        // path, which causes silent launch failure when the path contains spaces.
+        // This rewrites the entry with a properly quoted path.
+        try {
+          await invoke("fix_autostart_registry_path");
+        } catch (fixErr) {
+          console.error("Failed to fix autostart registry path quoting:", fixErr);
+        }
       } else {
         await disableAutostart();
       }

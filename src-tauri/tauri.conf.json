@@ -55,6 +55,11 @@
       "deb": {
         "desktopTemplate": "desktop.template"
       }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

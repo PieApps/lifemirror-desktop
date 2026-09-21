@@ -505,6 +505,55 @@ fn show_main(app: tauri::AppHandle) {
     }
 }
 
+/// Fixes the Windows autostart Registry entry written by auto-launch 0.5.0.
+///
+/// auto-launch writes the Run key value as an unquoted string:
+///   C:\Users\John Smith\...\lifemirror-desktop.exe --hidden
+/// Windows fails to parse this when the path contains spaces. This command
+/// rewrites the value with the executable path properly quoted:
+///   "C:\Users\John Smith\...\lifemirror-desktop.exe" --hidden
+///
+/// On non-Windows platforms this is a no-op that always succeeds.
+#[tauri::command]
+fn fix_autostart_registry_path() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
+        use winreg::RegKey;
+        const AL_REGKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        const APP_NAME: &str = "lifemirror-desktop";
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu
+            .open_subkey_with_flags(AL_REGKEY, KEY_READ | KEY_SET_VALUE)
+            .map_err(|e| e.to_string())?;
+
+        let current: String = run_key.get_value(APP_NAME).map_err(|e| e.to_string())?;
+
+        // Only rewrite if the path is not already quoted.
+        if !current.starts_with('"') {
+            // Locate the boundary between the .exe path and the trailing args.
+            // auto-launch always appends args with a space, so we look for ".exe "
+            // (case-insensitive) first, then fall back to the first " --" separator.
+            let fixed = if let Some(exe_end) = current.to_lowercase().find(".exe") {
+                let (path, rest) = current.split_at(exe_end + 4);
+                if rest.is_empty() {
+                    format!("\"{}\"", path)
+                } else {
+                    format!("\"{}\"{}", path, rest)
+                }
+            } else if let Some(idx) = current.find(" --") {
+                let (path, args) = current.split_at(idx);
+                format!("\"{}\"{}", path, args)
+            } else {
+                format!("\"{}\"", current)
+            };
+            run_key.set_value(APP_NAME, &fixed).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn generate_resume_context(
     state: State<'_, Arc<DbState>>,
@@ -859,6 +908,7 @@ pub fn run() {
             delete_distraction_rule,
             hide_toast,
             show_main,
+            fix_autostart_registry_path,
             generate_resume_context,
             ai::generate_chat_suggestions,
             pull_ai_model
