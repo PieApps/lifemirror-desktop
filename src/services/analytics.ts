@@ -6,6 +6,7 @@
 
 import type { ActivityNode, DistractionEvent } from "../types";
 import { mapAppToCategory, CATEGORIES } from "../utils/categoryMapper";
+import { formatDuration as _formatDuration } from "../utils/formatDuration";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -84,16 +85,11 @@ export interface AppDuration {
 
 // ─── Helpers ────────────────────────────────────────────────
 
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const hrs = Math.floor(mins / 60);
-  if (hrs > 0) {
-    const remainingMins = mins % 60;
-    return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
-  }
-  return `${mins}m`;
-}
+/**
+ * Re-exported from the shared utility so that callers who import from
+ * this module continue to work without changes.
+ */
+export { _formatDuration as formatDuration };
 
 function getScoreLabel(score: number): string {
   if (score >= 90) return "Excellent";
@@ -229,7 +225,7 @@ export function computeMetrics(
     if (isSameApp) {
       currentBlockDuration += sorted[i].duration;
     } else {
-      // End previous block
+      // ── Close the previous block ────────────────────────
       if (currentBlockApp) {
         const cat = mapAppToCategory(currentBlockApp, currentBlockTitle);
         const sessionData = {
@@ -242,21 +238,23 @@ export function computeMetrics(
         if (cat === "development" || cat === "other") {
           focusBlocksList.push(sessionData);
         }
-        
+
         if (currentBlockDuration > 600 && (cat === "development" || cat === "other" || cat === "browser")) {
           focusSessions++;
         }
-        
+
         if (cat === "communication") {
           communicationBlocksList.push(sessionData);
         }
+
+        // Longest-block check lives here — only runs when we have a real completed block.
+        if (currentBlockDuration > longestFocusBlock) {
+          longestFocusBlock = currentBlockDuration;
+          longestFocusApp = currentBlockApp;
+        }
       }
 
-      if (currentBlockDuration > longestFocusBlock) {
-        longestFocusBlock = currentBlockDuration;
-        longestFocusApp = currentBlockApp;
-      }
-      // Start new block
+      // ── Start new block ────────────────────────────────
       currentBlockApp = sorted[i].app_name;
       currentBlockTitle = sorted[i].window_title;
       currentBlockStart = sorted[i].start_time;
@@ -323,9 +321,19 @@ export function computeMetrics(
   }
 
 
+  // Merge entertainment activity time into the distraction ranking so that the
+  // "Biggest Distraction" label is always consistent with the score penalty.
+  const distractionRankMap: Record<string, number> = { ...distractionByApp };
+  for (const node of sorted) {
+    const cat = mapAppToCategory(node.app_name, node.window_title, node.url || "");
+    if (cat === "entertainment") {
+      distractionRankMap[node.app_name] = (distractionRankMap[node.app_name] || 0) + node.duration;
+    }
+  }
+
   let biggestDistraction = "";
   let biggestDistractionTime = 0;
-  for (const [app, dur] of Object.entries(distractionByApp)) {
+  for (const [app, dur] of Object.entries(distractionRankMap)) {
     if (dur > biggestDistractionTime) {
       biggestDistraction = app;
       biggestDistractionTime = dur;
@@ -337,7 +345,14 @@ export function computeMetrics(
 
   // ── Time range ────────────────────────────────────────
   const firstActivityTime = sorted.length > 0 ? sorted[0].start_time : null;
-  const lastActivityTime = sorted.length > 0 ? sorted[sorted.length - 1].start_time : null;
+  // Use the true end of the last activity (start + duration), not just its start.
+  const lastActivityTime = (() => {
+    if (sorted.length === 0) return null;
+    const last = sorted[sorted.length - 1];
+    return new Date(
+      new Date(last.start_time).getTime() + last.duration * 1000
+    ).toISOString();
+  })();
 
   // ── Score Calculation ─────────────────────────────────
   // 40% Focus Ratio

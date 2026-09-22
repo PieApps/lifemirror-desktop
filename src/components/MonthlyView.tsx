@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Clock, TrendingUp } from "lucide-react";
 import { DailySummary } from "../types";
 import { mapAppToCategory, CATEGORIES, ActivityCategory } from "../utils/categoryMapper";
+import { formatDuration } from "../utils/formatDuration";
 
 interface MonthlyViewProps {
   yearMonth: string; // YYYY-MM
@@ -24,19 +25,7 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({ yearMonth, summaryData
   // Calculate days in the selected month
   const daysInMonth = new Date(year, month, 0).getDate();
 
-  // Helper to format duration
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const hrs = Math.floor(mins / 60);
-    if (hrs > 0) {
-      const remainingMins = mins % 60;
-      return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
-    }
-    return `${mins}m`;
-  };
 
-  // Group monthly summaries by category
   const categoryDurations = summaryData.reduce((acc, s) => {
     const cat = mapAppToCategory(s.app_name, "", s.source === "Browser" ? "Browser" : "");
     acc[cat] = (acc[cat] || 0) + s.total_duration;
@@ -128,7 +117,8 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({ yearMonth, summaryData
   };
 
   const getMonthName = (m: number) => {
-    return new Date(2026, m - 1, 1).toLocaleString([], { month: "long" });
+    // Use the actual `year` from the parsed yearMonth prop — not a hardcoded constant.
+    return new Date(year, m - 1, 1).toLocaleString([], { month: "long" });
   };
 
   return (

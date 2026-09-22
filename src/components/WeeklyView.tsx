@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Clock } from "lucide-react";
 import { DailySummary, HourlyMetric } from "../types";
 import { mapAppToCategory, CATEGORIES, ActivityCategory, getCategoryOverrides } from "../utils/categoryMapper";
+import { formatDuration, parseLocalDate } from "../utils/formatDuration";
 
 interface WeeklyViewProps {
   startDate: string; // YYYY-MM-DD
@@ -44,12 +45,17 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
     y: number; // viewport clientY
   } | null>(null);
 
-  // Generate date list for the week (7 days) starting at startDate
+  // Build the 7-day list starting at startDate.
+  // IMPORTANT: parse using local date components — new Date("YYYY-MM-DD") is UTC
+  // midnight which drifts one day behind in UTC+ timezones (e.g. IST +05:30).
   const getDaysOfWeek = (): string[] => {
     const days: string[] = [];
-    const current = new Date(startDate);
+    const current = parseLocalDate(startDate);
     for (let i = 0; i < 7; i++) {
-      days.push(current.toISOString().split("T")[0]);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, "0");
+      const d = String(current.getDate()).padStart(2, "0");
+      days.push(`${y}-${m}-${d}`);
       current.setDate(current.getDate() + 1);
     }
     return days;
@@ -58,19 +64,7 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
   const daysOfWeek = getDaysOfWeek();
   const dayNamesShort = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // Helper to format duration
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const hrs = Math.floor(mins / 60);
-    if (hrs > 0) {
-      const remainingMins = mins % 60;
-      return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
-    }
-    return `${mins}m`;
-  };
 
-  // Group summary data by local date
   const dataByDay = daysOfWeek.reduce((acc, dateStr) => {
     const daySummaries = summaryData.filter((s) => s.date === dateStr);
     

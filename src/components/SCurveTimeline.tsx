@@ -241,11 +241,8 @@ export function SCurveTimeline({
            const gap = (nodeStart - groupEnd) / 1000;
            
            if (currentGroup.app_name === node.app_name && gap < 1800) {
-             const groupStartTime = new Date(currentGroup.start_time).getTime();
-             currentGroup.duration = Math.max(
-               currentGroup.duration,
-               ((nodeStart + node.duration * 1000) - groupStartTime) / 1000
-             );
+             // Accumulate actual tracked time — do NOT use wall-clock span.
+             currentGroup.duration += node.duration;
              currentGroup.originalActivities.push(...node.originalActivities);
              currentGroup.subEvents.push(...node.subEvents);
              if (node.notes) {
@@ -277,7 +274,6 @@ export function SCurveTimeline({
         } else {
           const dEvent = ev.data as DistractionEvent;
           if (currentDistractionGroup) {
-            const firstEventTime = new Date(currentDistractionGroup.distractionEvents![0].timestamp).getTime();
             const lastEvent = currentDistractionGroup.distractionEvents![currentDistractionGroup.distractionEvents!.length - 1];
             const t1 = new Date(lastEvent.timestamp).getTime();
             const t2 = new Date(dEvent.timestamp).getTime();
@@ -285,10 +281,8 @@ export function SCurveTimeline({
             
             if (gapSeconds < 1800) {
               currentDistractionGroup.distractionEvents!.push(dEvent);
-              currentDistractionGroup.duration = Math.max(
-                currentDistractionGroup.duration,
-                ((t2 + dEvent.duration_blocked * 1000) - firstEventTime) / 1000
-              );
+              // Sum individual blocked durations — do not use wall-clock span.
+              currentDistractionGroup.duration += dEvent.duration_blocked;
             } else {
               finalNodes.push(currentDistractionGroup);
               currentDistractionGroup = {
@@ -359,22 +353,29 @@ export function SCurveTimeline({
         const isGroupable = isBrowser || isEditor;
 
         if (isGroupable) {
-          const t1 = currentGroup && !currentGroup.isShield ? new Date(currentGroup.originalActivities[currentGroup.originalActivities.length - 1]?.start_time || currentGroup.start_time).getTime() : 0;
+          // t1 = true end of the last activity in the group (start + duration),
+          // not just start_time. Using start_time alone underestimates the gap
+          // for back-to-back events and can cause incorrect grouping decisions.
+          const lastAct = currentGroup && !currentGroup.isShield
+            ? currentGroup.originalActivities[currentGroup.originalActivities.length - 1]
+            : null;
+          const t1 = lastAct
+            ? new Date(lastAct.start_time).getTime() + lastAct.duration * 1000
+            : 0;
           const t2 = new Date(activity.start_time).getTime();
           const gapSeconds = (t2 - t1) / 1000;
 
           if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
             currentGroup.originalActivities.push(activity);
-            
-            const firstEventTime = new Date(currentGroup.originalActivities[0].start_time).getTime();
-            currentGroup.duration = Math.max(
-              currentGroup.duration,
-              ((t2 + activity.duration * 1000) - firstEventTime) / 1000
-            );
+
+            // Accumulate actual tracked time only — do NOT use wall-clock span
+            // (end_of_last - start_of_first) because idle gaps between tracked
+            // activities would inflate the displayed session duration.
+            currentGroup.duration += activity.duration;
 
             if (activity.notes) {
-              currentGroup.notes = currentGroup.notes 
-                ? `${currentGroup.notes} | ${activity.notes}` 
+              currentGroup.notes = currentGroup.notes
+                ? `${currentGroup.notes} | ${activity.notes}`
                 : activity.notes;
             }
           } else {
@@ -422,12 +423,9 @@ export function SCurveTimeline({
 
         if (currentGroup && currentGroup.isShield && gapSeconds < 1800) {
           currentGroup.distractionEvents!.push(dEvent);
-          
-          const firstEventTime = new Date(currentGroup.distractionEvents![0].timestamp).getTime();
-          currentGroup.duration = Math.max(
-            currentGroup.duration,
-            ((t2 + dEvent.duration_blocked * 1000) - firstEventTime) / 1000
-          );
+
+          // Sum individual blocked durations — do not use wall-clock span.
+          currentGroup.duration += dEvent.duration_blocked;
         } else {
           if (currentGroup) {
             nodes.push(currentGroup);

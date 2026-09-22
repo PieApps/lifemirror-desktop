@@ -4,22 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
+import { formatDurationFull } from '../utils/formatDuration';
 
-export const getFormatDuration = (seconds: number) => {
-  const roundedSeconds = Math.round(seconds);
-  if (roundedSeconds < 60) return `${roundedSeconds}s`;
-  
-  const mins = Math.floor(roundedSeconds / 60);
-  const secs = roundedSeconds % 60;
-  
-  if (mins >= 60) {
-    const hrs = Math.floor(mins / 60);
-    const remainingMins = mins % 60;
-    return remainingMins > 0 ? `${hrs}h ${remainingMins}m` : `${hrs}h`;
-  }
-  
-  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-};
+/**
+ * Full-precision duration formatter (e.g. "3m 12s").
+ * Named export preserved for backwards-compatibility with SCurveTimeline.tsx.
+ */
+export const getFormatDuration = formatDurationFull;
 
 interface TimelineSidebarProps {
   node: TimelineNode | null;
@@ -195,16 +186,24 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                 .map((event, idx, arr) => {
                   let dur = event.duration;
                   if (dur === 0) {
-                    const nextSubEvent = arr.slice(idx + 1).find(e => e.duration === 0);
+                    // This is a sub-session event (tab switch, editor event, etc.) with no
+                    // inherent duration. Estimate it as the gap to the next sub-event.
+                    const nextSubEvent = arr.slice(idx + 1).find(e => !e.isActivity);
                     if (nextSubEvent) {
                       dur = Math.max(0, (new Date(nextSubEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) / 1000);
                     } else {
-                      const groupStart = new Date(node.start_time).getTime();
-                      const groupEnd = groupStart + node.duration * 1000;
-                      dur = Math.max(0, (groupEnd - new Date(event.timestamp).getTime()) / 1000);
+                      // Last sub-event: use the sum of activity durations that start at or
+                      // after this event, capped to avoid inflating with wall-clock gaps.
+                      const eventMs = new Date(event.timestamp).getTime();
+                      const remaining = node.originalActivities
+                        .filter(a => new Date(a.start_time).getTime() >= eventMs)
+                        .reduce((sum, a) => sum + a.duration, 0);
+                      dur = remaining > 0
+                        ? remaining
+                        : Math.max(0, (new Date(node.start_time).getTime() + node.duration * 1000 - eventMs) / 1000);
                     }
                   }
-                  const formattedDur = dur > 0 ? getFormatDuration(Math.round(dur)) : "1s";
+                  const formattedDur = dur > 0 ? getFormatDuration(dur) : "<1s";
 
                   return (
                     <div key={event.id || idx} className="relative flex items-start gap-4 p-2.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">

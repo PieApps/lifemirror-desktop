@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric, ChatMessage } from "../types";
+import { parseLocalDate } from "../utils/formatDuration";
 
 // ─── Date Helpers ───────────────────────────────────────────
 
@@ -11,16 +12,19 @@ export const getLocalDateString = (d: Date = new Date()) => {
 };
 
 export const getWeekRange = (dateStr: string) => {
-  const d = new Date(dateStr);
+  // Use parseLocalDate to avoid UTC midnight shift in UTC+ timezones.
+  // new Date("YYYY-MM-DD") is UTC midnight — in IST (+05:30) that's the
+  // previous calendar day locally, giving the wrong getDay() result.
+  const d = parseLocalDate(dateStr);
   const day = d.getDay(); // 0 = Sun, 1 = Mon ...
   const sunday = new Date(d);
   sunday.setDate(d.getDate() - day);
   const saturday = new Date(sunday);
   saturday.setDate(sunday.getDate() + 6);
-  return {
-    start: sunday.toISOString().split("T")[0],
-    end: saturday.toISOString().split("T")[0],
-  };
+  // Build YYYY-MM-DD from local getters to stay in local time.
+  const fmt = (dt: Date) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  return { start: fmt(sunday), end: fmt(saturday) };
 };
 
 export const getMonthRange = (dateStr: string) => {
@@ -67,13 +71,14 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   // ─── Navigation ────────────────────────────────────────
 
   const getPeriodLabel = () => {
-    const d = new Date(selectedDate);
+    // parseLocalDate avoids UTC midnight shift so labels show the correct local date.
+    const d = parseLocalDate(selectedDate);
     if (viewMode === "daily") {
       return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
     } else if (viewMode === "weekly") {
       const range = getWeekRange(selectedDate);
-      const startD = new Date(range.start);
-      const endD = new Date(range.end);
+      const startD = parseLocalDate(range.start);
+      const endD = parseLocalDate(range.end);
       return `${startD.toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${endD.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
     } else {
       return d.toLocaleDateString([], { month: 'long', year: 'numeric' });
@@ -81,7 +86,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   };
 
   const handlePrevPeriod = () => {
-    const d = new Date(selectedDate);
+    const d = parseLocalDate(selectedDate);
     if (viewMode === "daily") {
       d.setDate(d.getDate() - 1);
     } else if (viewMode === "weekly") {
@@ -93,7 +98,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   };
 
   const handleNextPeriod = () => {
-    const d = new Date(selectedDate);
+    const d = parseLocalDate(selectedDate);
     const today = new Date();
     if (viewMode === "daily") {
       d.setDate(d.getDate() + 1);
