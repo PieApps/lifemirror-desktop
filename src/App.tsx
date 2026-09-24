@@ -13,6 +13,7 @@ import { JournalModal } from "./components/JournalModal";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
+import { FirstLogCelebration } from "./components/FirstLogCelebration";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
 import TimelineSidebar from "./components/TimelineSidebar";
@@ -120,6 +121,8 @@ function App() {
         theme={settings.theme}
         setTheme={settings.setTheme}
         isIncognito={settings.isIncognito}
+        trackingActive={settings.trackingActive}
+        activeAppName={data.activeActivity?.app_name}
         showSettings={settings.showSettings}
         setShowSettings={settings.setShowSettings}
         onRefresh={data.loadData}
@@ -208,6 +211,8 @@ function App() {
           onAddJournal={(node) => data.setSelectedActivity(node)}
           onDeleteLog={data.handleDeleteLog}
           onDeleteMemoryNode={data.handleDeleteMemoryNode}
+          activeNodeStartTime={data.activeActivity?.start_time}
+
         />
 
         {/* Sidebar */}
@@ -352,6 +357,7 @@ function App() {
           onClose={() => data.setSelectedActivity(null)}
         />
       )}
+      <FirstLogCelebration activityCount={data.activities.length} />
     </div>
   );
 }

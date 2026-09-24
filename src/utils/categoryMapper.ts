@@ -94,10 +94,27 @@ export function mapAppToCategory(
     if (domainMatches(app, ["slack.com", "discord.com", "discordapp.com", "teams.microsoft.com", "meet.google.com", "mail.google.com", "outlook.live.com", "web.whatsapp.com", "telegram.org"])) {
       return "communication";
     }
-    if (domainMatches(app, ["youtube.com", "youtu.be", "netflix.com", "spotify.com", "twitch.tv", "primevideo.com", "hotstar.com"])) {
+    if (domainMatches(app, ["youtube.com", "youtu.be", "netflix.com", "spotify.com", "twitch.tv", "primevideo.com", "hotstar.com",
+      "reddit.com", "twitter.com", "x.com", "tiktok.com", "instagram.com", "facebook.com", "news.ycombinator.com"])) {
       return "entertainment";
     }
     return "browser";
+  }
+
+  // Check Design applications (before communication to avoid false positives)
+  if (
+    app.includes("figma") ||
+    app.includes("sketch") ||
+    app.includes("canva") ||
+    app.includes("gimp") ||
+    app.includes("blender") ||
+    app.includes("inkscape") ||
+    app.includes("affinity") ||
+    app.includes("photoshop") ||
+    app.includes("illustrator") ||
+    app.includes("framer")
+  ) {
+    return "browser"; // design maps to browser/research bucket (creative work)
   }
 
   // Check Development applications
@@ -107,18 +124,32 @@ export function mapAppToCategory(
     app.includes("terminal") ||
     app.includes("alacritty") ||
     app.includes("kitty") ||
+    app.includes("warp") ||
+    app.includes("iterm") ||
     app.includes("intellij") ||
     app.includes("webstorm") ||
     app.includes("pycharm") ||
     app.includes("clion") ||
     app.includes("rider") ||
+    app.includes("goland") ||
+    app.includes("datagrip") ||
     app.includes("neovim") ||
     app.includes("vim") ||
     app.includes("emacs") ||
     app.includes("sublime") ||
     app.includes("studio") ||
+    app.includes("xcode") ||
+    app.includes("android") ||
     app.includes("bash") ||
-    app.includes("zsh")
+    app.includes("zsh") ||
+    app.includes("fish") ||
+    app.includes("postman") ||
+    app.includes("insomnia") ||
+    app.includes("docker") ||
+    app.includes("notion") ||
+    app.includes("obsidian") ||
+    app.includes("roam") ||
+    app.includes("logseq")
   ) {
     return "development";
   }
@@ -149,10 +180,19 @@ export function mapAppToCategory(
     app.includes("netflix") ||
     app.includes("vlc") ||
     app.includes("mpv") ||
+    app.includes("reddit") ||
+    app.includes("twitter") ||
+    app.includes("instagram") ||
+    app.includes("tiktok") ||
+    app.includes("facebook") ||
     urlStr.includes("youtube.com") ||
     urlStr.includes("netflix.com") ||
     urlStr.includes("spotify.com") ||
     urlStr.includes("twitch.tv") ||
+    urlStr.includes("reddit.com") ||
+    urlStr.includes("twitter.com") ||
+    urlStr.includes("x.com") ||
+    urlStr.includes("tiktok.com") ||
     title.includes("youtube") ||
     title.includes("netflix")
   ) {

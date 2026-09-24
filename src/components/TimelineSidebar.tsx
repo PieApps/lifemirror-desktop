@@ -32,6 +32,15 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
     setIsEditing(false);
   }, [node]);
 
+  // Escape key closes the panel
+  useEffect(() => {
+    if (!node) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [node]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
   const handleSaveSummary = async () => {
     if (!node?.isMemoryNode || !node.memoryData?.id) return;
     try {

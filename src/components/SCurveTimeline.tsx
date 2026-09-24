@@ -7,6 +7,7 @@ import {
 import { MemoryNode } from "../types";
 import AppIcon from './AppIcon';
 import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
+import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
 
 export function formatCleanTitle(
   rawTitle?: string,
@@ -130,6 +131,7 @@ interface SCurveTimelineProps {
   onAddJournal: (activity: ActivityNode) => void;
   onDeleteLog: (id: number) => void;
   onDeleteMemoryNode?: (id: number) => void;
+  activeNodeStartTime?: string;
 }
 
 export interface TimelineNode {
@@ -164,7 +166,8 @@ export function SCurveTimeline({
   distractionEvents,
   onAddJournal, 
   onDeleteLog,
-  onDeleteMemoryNode
+  onDeleteMemoryNode,
+  activeNodeStartTime
 }: SCurveTimelineProps) {
   const rowHeight = 200;
   const width = 800;
@@ -557,9 +560,31 @@ export function SCurveTimeline({
     <div className="relative w-full h-full flex">
       <div className="flex-1 relative w-full h-full overflow-y-auto py-10 px-4 select-none flex justify-center">
         {processedNodes.length === 0 ? (
-          <div className="text-center py-20 glass-card rounded-2xl p-8 max-w-md mx-auto">
-            <Clock className="w-12 h-12 text-violet-400 mx-auto mb-4 animate-pulse" />
-            <h3 className="text-xl font-semibold text-[var(--text-color)]">No activity recorded yet</h3>
+          <div className="flex flex-col items-center justify-center h-full min-h-[340px] px-6 py-12 text-center">
+            <div className="glass-card rounded-3xl p-8 max-w-sm w-full mx-auto">
+              <div className="w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-5">
+                <Clock className="w-7 h-7 text-violet-400 animate-pulse" />
+              </div>
+              <h3 className="text-base font-bold text-[var(--text-color)] mb-1">Just use your computer.</h3>
+              <p className="text-sm text-[var(--text-muted)] mb-6">
+                LifeMirror records your activity automatically — no "Start" button needed.
+              </p>
+              <div className="space-y-3 text-left">
+                {[
+                  { icon: "🟢", label: "Tracking is active", sub: "Your OS windows are being watched." },
+                  { icon: "⏱️", label: "Stay in a window for 60 s", sub: "Short switches are filtered to reduce noise." },
+                  { icon: "🌐", label: "Chrome is tracked too", sub: "Install the companion extension to log tabs." },
+                ].map(({ icon, label, sub }) => (
+                  <div key={label} className="flex items-start gap-3">
+                    <span className="text-base mt-0.5 shrink-0">{icon}</span>
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--text-color)]">{label}</p>
+                      <p className="text-[11px] text-[var(--text-muted)]">{sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="relative w-full max-w-4xl" style={{ height: `${totalHeight}px` }}>
@@ -602,6 +627,17 @@ export function SCurveTimeline({
                     )}
                   </div>
 
+                  {/* NOW badge — shown on the live active node */}
+                  {activeNodeStartTime && node.start_time === activeNodeStartTime && (
+                    <div
+                      className="absolute z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+                      style={{ left: colPercentages[col], top: `${nodeY + 10}px`, transform: 'translateX(-50%)' }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span className="text-[9px] font-bold tracking-wider">LIVE</span>
+                    </div>
+                  )}
+
                   <div
                     className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
                       node.isGroupedSession ? 'cursor-pointer hover:border-violet-500/50' : ''
@@ -624,6 +660,22 @@ export function SCurveTimeline({
                       }
                     }}
                   >
+                    {/* Category color pip — top-right corner */}
+                    {!node.isShield && (() => {
+                      const cat = mapAppToCategory(
+                        node.app_name,
+                        node.window_title,
+                        node.url || (node.originalActivities[0]?.url ?? "")
+                      );
+                      const catInfo = CATEGORIES[cat];
+                      return (
+                        <span
+                          className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: catInfo.color }}
+                          title={catInfo.name}
+                        />
+                      );
+                    })()}
                     {/* Visual stack effect for grouped boxes */}
                     {node.isGroupedSession && (node.originalActivities.length + node.subEvents.length > 1 || (node.distractionEvents && node.distractionEvents.length > 1)) && (
                       <>

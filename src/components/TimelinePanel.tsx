@@ -48,6 +48,7 @@ interface TimelinePanelProps {
   onAddJournal: (activity: ActivityNode) => void;
   onDeleteLog: (id: number) => void;
   onDeleteMemoryNode?: (id: number) => void;
+  activeNodeStartTime?: string;
 }
 
 export const TimelinePanel: React.FC<TimelinePanelProps> = ({
@@ -77,6 +78,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onAddJournal,
   onDeleteLog,
   onDeleteMemoryNode,
+  activeNodeStartTime,
 }) => {
   const [isExportOpen, setIsExportOpen] = useState(false);
 
@@ -246,6 +248,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             onAddJournal={onAddJournal} 
             onDeleteLog={onDeleteLog}
             onDeleteMemoryNode={onDeleteMemoryNode}
+            activeNodeStartTime={activeNodeStartTime}
           />
         ) : viewMode === "weekly" ? (
           <div className="p-6">

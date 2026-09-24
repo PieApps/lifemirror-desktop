@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -9,7 +10,15 @@ interface ConfirmModalProps {
 }
 
 export function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: ConfirmModalProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
+
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">

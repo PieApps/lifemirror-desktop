@@ -1,6 +1,6 @@
 [package]
 name = "lifemirror-desktop"
-version = "1.2.0"
+version = "1.2.1"
 description = "LifeMirror desktop is a privacy-first, local productivity reflection tool."
 authors = ["you"]
 edition = "2021"
