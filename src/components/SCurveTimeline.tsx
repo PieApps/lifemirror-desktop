@@ -5,9 +5,22 @@ import {
 } from "lucide-react";
 
 import { MemoryNode } from "../types";
-import AppIcon from './AppIcon';
+import AppIcon, { extractDomain } from './AppIcon';
 import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
+
+export const isBrowserApp = (appName?: string): boolean => {
+  if (!appName) return false;
+  const lower = appName.toLowerCase();
+  return lower.includes("chrome") ||
+         lower.includes("firefox") ||
+         lower.includes("brave") ||
+         lower.includes("safari") ||
+         lower.includes("opera") ||
+         lower.includes("edge") ||
+         lower.includes("chromium") ||
+         lower === "browser";
+};
 
 export function formatCleanTitle(
   rawTitle?: string,
@@ -190,6 +203,8 @@ export function SCurveTimeline({
         let dominantUrl = undefined;
         let dominantSource = 'AI Memory';
         
+        let calculatedDuration = (mn.activities || []).reduce((acc, act) => acc + act.duration, 0);
+
         if (mn.activities && mn.activities.length > 0) {
            const durations: Record<string, number> = {};
            mn.activities.forEach(a => {
@@ -205,20 +220,36 @@ export function SCurveTimeline({
            dominantIcon = dominant.icon_url;
            dominantUrl = dominant.url;
            dominantSource = dominant.source;
+        } else if (mn.sub_events && mn.sub_events.length > 0) {
+           // Fallback: extract app name, icon, and url from sub_events if no direct OS log is linked
+           const dominant = mn.sub_events.find(s => s.icon_url) || mn.sub_events[0];
+           dominantAppName = dominant.parent_app_name || 'Chrome';
+           dominantIcon = dominant.icon_url;
+           dominantUrl = dominant.primary_uri;
+           dominantSource = dominant.session_type || 'Browser';
+           if (calculatedDuration === 0) {
+             calculatedDuration = Math.max(60, mn.sub_events.length * 60);
+           }
         }
 
         let displayTitle = mn.title;
-        if (displayTitle.startsWith("Session involving ")) {
-          displayTitle = `${dominantAppName} Session`;
+        if (displayTitle.startsWith("Session involving ") || displayTitle.endsWith(" Session") || displayTitle.startsWith("Chrome (http")) {
+          if (dominantUrl) {
+            const domain = extractDomain(dominantUrl);
+            displayTitle = domain ? `${domain.charAt(0).toUpperCase() + domain.slice(1)} Session` : `${dominantAppName} Session`;
+          } else {
+            displayTitle = `${dominantAppName} Session`;
+          }
         }
 
         return {
           isGroupedSession: true,
-          id: mn.id || Math.random(),
+          // Use a stable id — Math.random() breaks React reconciliation on every render.
+          id: mn.id ?? `memory-fallback-${mn.timestamp}`,
           app_name: dominantAppName,
           window_title: displayTitle,
           start_time: mn.timestamp,
-          duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
+          duration: calculatedDuration,
           source: dominantSource,
           url: dominantUrl,
           icon_url: dominantIcon,
@@ -237,23 +268,67 @@ export function SCurveTimeline({
 
       initialNodes.forEach(node => {
          if (!currentGroup) {
-           currentGroup = node;
+           // Deep-copy so the merge loop never mutates the objects that came
+           // out of the .map() above (which share array refs with the prop).
+           currentGroup = structuredClone(node);
          } else {
-           const groupEnd = new Date(currentGroup.start_time).getTime() + currentGroup.duration * 1000;
+           const groupStart = new Date(currentGroup.start_time).getTime();
+           const groupEnd = groupStart + currentGroup.duration * 1000;
            const nodeStart = new Date(node.start_time).getTime();
+           const nodeEnd = nodeStart + node.duration * 1000;
            const gap = (nodeStart - groupEnd) / 1000;
-           
-           if (currentGroup.app_name === node.app_name && gap < 1800) {
-             // Accumulate actual tracked time — do NOT use wall-clock span.
-             currentGroup.duration += node.duration;
+
+           const appA = (currentGroup.app_name || "").toLowerCase();
+           const appB = (node.app_name || "").toLowerCase();
+           const bothBrowsers = isBrowserApp(appA) && isBrowserApp(appB);
+           const sameApp = appA === appB || bothBrowsers;
+
+           const titleA = getGroupedSessionTitle(currentGroup);
+           const titleB = getGroupedSessionTitle(node);
+           const sameTitle = !!(titleA && titleB && titleA.toLowerCase() === titleB.toLowerCase());
+
+           const domainA = (currentGroup.url ? extractDomain(currentGroup.url) : "") || currentGroup.domain_tag || "";
+           const domainB = (node.url ? extractDomain(node.url) : "") || node.domain_tag || "";
+           const sameDomain = !!(domainA && domainB && domainA.toLowerCase() === domainB.toLowerCase());
+
+           // Merge rules (all require the sessions to be within the window):
+           // 1. Same cleaned title — 30 min window (strong signal)
+           // 2. Same browser domain — 30 min window (strong signal)
+           // 3. Same app alone — 5 min window only (weak signal; avoids collapsing
+           //    separate VS Code / Slack sessions that are merely close in time)
+           const strongMatch = sameTitle || (bothBrowsers && sameDomain);
+           const shouldMerge = (strongMatch && gap < 1800) || (sameApp && !strongMatch && gap < 300);
+
+           if (shouldMerge) {
+             // Handle duration merge without artificial double counting
+             if (nodeStart >= groupEnd) {
+               currentGroup.duration += node.duration;
+             } else if (nodeEnd > groupEnd) {
+               currentGroup.duration += Math.round((nodeEnd - groupEnd) / 1000);
+             }
+
              currentGroup.originalActivities.push(...node.originalActivities);
              currentGroup.subEvents.push(...node.subEvents);
+
+             // Prefer the most descriptive app name, icon, and URL
+             if (currentGroup.app_name === 'Semantic Session' || !currentGroup.icon_url) {
+               if (node.app_name !== 'Semantic Session') currentGroup.app_name = node.app_name;
+               if (node.icon_url) currentGroup.icon_url = node.icon_url;
+               if (node.url) currentGroup.url = node.url;
+               if (node.source !== 'AI Memory') currentGroup.source = node.source;
+             }
+
+             // Merge AI summary notes without duplicating identical lines
              if (node.notes) {
-                currentGroup.notes = (currentGroup.notes ? currentGroup.notes + "\n\n---\n\n" : "") + node.notes;
+               if (!currentGroup.notes) {
+                 currentGroup.notes = node.notes;
+               } else if (!currentGroup.notes.includes(node.notes) && !node.notes.includes(currentGroup.notes)) {
+                 currentGroup.notes = `${currentGroup.notes}\n\n---\n\n${node.notes}`;
+               }
              }
            } else {
              groupedNodes.push(currentGroup);
-             currentGroup = node;
+             currentGroup = structuredClone(node);
            }
          }
       });
@@ -329,16 +404,6 @@ export function SCurveTimeline({
       return finalNodes;
     }
 
-    const isBrowserApp = (appName: string): boolean => {
-      const lower = appName.toLowerCase();
-      return lower.includes("chrome") ||
-             lower.includes("firefox") ||
-             lower.includes("brave") ||
-             lower.includes("safari") ||
-             lower.includes("opera") ||
-             lower.includes("edge") ||
-             lower.includes("chromium");
-    };
 
     const nodes: TimelineNode[] = [];
     let currentGroup: TimelineNode | null = null;

@@ -17,36 +17,57 @@ impl SessionBuilder {
             return sessions;
         }
 
-        let mut current_session_events = Vec::new();
+        let mut current_session_events: Vec<NormalizedEvent> = Vec::new();
         let mut session_start = events[0].timestamp.clone();
-        let mut last_time = events[0].timestamp.clone();
+
+        // Parse the first timestamp; skip the entire batch if it is unparseable.
+        let first_start = match chrono::DateTime::parse_from_rfc3339(&events[0].timestamp) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("session_builder: cannot parse first event timestamp '{}': {}", events[0].timestamp, e);
+                return sessions;
+            }
+        };
+        // Clamp duration to at least 1 s so zero-duration events still advance session_end.
+        let first_duration = events[0].duration.max(1);
+        let mut session_end = first_start + chrono::Duration::seconds(first_duration);
 
         for event in events {
-            // Determine if we should split the session
-            // For now, use a simple heuristic: > 5 minutes gap splits a session
-            let current_time = chrono::DateTime::parse_from_rfc3339(&event.timestamp).unwrap_or_default();
-            let prev_time = chrono::DateTime::parse_from_rfc3339(&last_time).unwrap_or_default();
-            
-            let diff = current_time.signed_duration_since(prev_time).num_seconds();
-            if diff > 300 && !current_session_events.is_empty() {
-                // Finalize current session
+            // Skip events whose timestamp cannot be parsed — defaulting to epoch would
+            // create a ~50-year gap and incorrectly split all subsequent sessions.
+            let current_time = match chrono::DateTime::parse_from_rfc3339(&event.timestamp) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("session_builder: skipping event with bad timestamp '{}': {}", event.timestamp, e);
+                    continue;
+                }
+            };
+            let event_duration = event.duration.max(1);
+            let event_end = current_time + chrono::Duration::seconds(event_duration);
+
+            // Check if there is a gap > 300s after the end of this session's activities.
+            let gap = current_time.signed_duration_since(session_end).num_seconds();
+            if gap > 300 && !current_session_events.is_empty() {
+                // Finalize current session — drain() avoids a clone+clear pair.
+                let drained: Vec<NormalizedEvent> = current_session_events.drain(..).collect();
                 sessions.push((
-                    self.create_memory_node(&session_start, &current_session_events),
-                    current_session_events.clone()
+                    self.create_memory_node(&session_start, &drained),
+                    drained,
                 ));
-                current_session_events.clear();
                 session_start = event.timestamp.clone();
+                session_end = event_end;
+            } else if event_end > session_end {
+                session_end = event_end;
             }
 
-            last_time = event.timestamp.clone();
             current_session_events.push(event);
         }
 
-        // Finalize the last session
+        // Finalize the last session.
         if !current_session_events.is_empty() {
             sessions.push((
                 self.create_memory_node(&session_start, &current_session_events),
-                current_session_events
+                current_session_events,
             ));
         }
 
@@ -67,7 +88,11 @@ impl SessionBuilder {
                 .map(|(ctx, _)| ctx)
                 .unwrap_or_else(|| events[0].context.clone());
 
-            format!("{} Session", dominant_context)
+            if dominant_context.starts_with("Chrome (") || dominant_context.starts_with("Browser (") {
+                "Chrome Session".to_string()
+            } else {
+                format!("{} Session", dominant_context)
+            }
         };
 
         MemoryNode {
