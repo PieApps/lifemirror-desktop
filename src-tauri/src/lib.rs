@@ -46,12 +46,15 @@ fn update_tray_icon_by_state(app: &tauri::AppHandle) {
     }
 }
 
-/// Returns the home directory as a PathBuf, checking XDG_HOME then HOME.
+/// Returns the home directory as a PathBuf, checking HOME then USERPROFILE.
 fn get_home_dir() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(PathBuf::from)
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()
+        .map(PathBuf::from)
 }
 
-/// Auto-installs the native messaging host manifest for Chrome and Chromium.
+/// Auto-installs the native messaging host manifest for Chrome, Brave, Chromium, Edge, etc.
 /// Called on every GUI startup so users never have to run a manual script.
 /// The manifest is written with the path of the currently running executable,
 /// which keeps it correct across app updates or directory moves.
@@ -67,15 +70,12 @@ fn install_native_host_manifest() {
     let home = match get_home_dir() {
         Some(h) => h,
         None => {
-            eprintln!("[native-host] HOME not set, cannot install manifest");
+            eprintln!("[native-host] HOME / USERPROFILE not set, cannot install manifest");
             return;
         }
     };
 
-    // The extension ID is fixed once published to the Chrome Web Store.
-    // During development this matches the unpacked extension ID.
-    let allowed_origin = "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/";
-
+    // Both Chrome Web Store extension ID and local development extension ID
     let manifest = format!(
         r#"{{
   "name": "com.lifemirror.desktop",
@@ -83,20 +83,42 @@ fn install_native_host_manifest() {
   "path": "{exe}",
   "type": "stdio",
   "allowed_origins": [
-    "{origin}"
+    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/",
+    "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/"
   ]
 }}
 "#,
-        exe = exe_path.display(),
-        origin = allowed_origin
+        exe = exe_path.display()
     );
 
-    // Install for Google Chrome and Chromium
+    #[cfg(target_os = "linux")]
     let host_dirs = [
         home.join(".config/google-chrome/NativeMessagingHosts"),
+        home.join(".config/google-chrome-beta/NativeMessagingHosts"),
+        home.join(".config/google-chrome-unstable/NativeMessagingHosts"),
         home.join(".config/chromium/NativeMessagingHosts"),
+        home.join(".config/BraveSoftware/Brave-Browser/NativeMessagingHosts"),
+        home.join(".config/BraveSoftware/Brave-Browser-Beta/NativeMessagingHosts"),
+        home.join(".config/BraveSoftware/Brave-Browser-Dev/NativeMessagingHosts"),
+        home.join(".config/BraveSoftware/Brave-Browser-Nightly/NativeMessagingHosts"),
+        home.join(".config/microsoft-edge/NativeMessagingHosts"),
+        home.join(".config/microsoft-edge-beta/NativeMessagingHosts"),
+        home.join(".config/microsoft-edge-dev/NativeMessagingHosts"),
+        home.join(".config/vivaldi/NativeMessagingHosts"),
+        home.join(".config/opera/NativeMessagingHosts"),
     ];
 
+    #[cfg(target_os = "macos")]
+    let host_dirs = [
+        home.join("Library/Application Support/Google/Chrome/NativeMessagingHosts"),
+        home.join("Library/Application Support/Chromium/NativeMessagingHosts"),
+        home.join("Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts"),
+        home.join("Library/Application Support/Microsoft Edge/NativeMessagingHosts"),
+        home.join("Library/Application Support/Vivaldi/NativeMessagingHosts"),
+        home.join("Library/Application Support/com.operasoftware.Opera/NativeMessagingHosts"),
+    ];
+
+    #[cfg(not(target_os = "windows"))]
     for dir in &host_dirs {
         // Only write if the browser config dir parent exists (browser is installed)
         let browser_config = dir.parent().unwrap_or(dir);
@@ -111,6 +133,29 @@ fn install_native_host_manifest() {
         match std::fs::write(&manifest_path, &manifest) {
             Ok(_) => eprintln!("[native-host] Manifest installed: {}", manifest_path.display()),
             Err(e) => eprintln!("[native-host] Failed to write {}: {e}", manifest_path.display()),
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let win_dir = home.join("AppData/Local/LifeMirror/NativeMessagingHosts");
+        if let Ok(_) = std::fs::create_dir_all(&win_dir) {
+            let manifest_path = win_dir.join("com.lifemirror.desktop.json");
+            if std::fs::write(&manifest_path, &manifest).is_ok() {
+                let manifest_path_str = manifest_path.to_string_lossy().to_string();
+                let reg_keys = [
+                    r"Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop",
+                    r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.lifemirror.desktop",
+                    r"Software\Microsoft\Edge\NativeMessagingHosts\com.lifemirror.desktop",
+                    r"Software\Chromium\NativeMessagingHosts\com.lifemirror.desktop",
+                ];
+                let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
+                for key_path in &reg_keys {
+                    if let Ok((key, _)) = hkcu.create_subkey(key_path) {
+                        let _ = key.set_value("", &manifest_path_str);
+                    }
+                }
+            }
         }
     }
 }
@@ -705,8 +750,7 @@ pub fn run() {
     let db_path = get_db_path();
 
     // Route 1: Headless browser native messaging host execution mode
-    if args.len() > 1 && (args[1].starts_with("chrome-extension://") || args[1] == "--native-host")
-    {
+    if args.iter().any(|arg| arg.starts_with("chrome-extension://") || arg == "--native-host") {
         if let Err(e) = native_msg::run_native_host_loop(db_path) {
             eprintln!("Native messaging loop exited with error: {:?}", e);
         }

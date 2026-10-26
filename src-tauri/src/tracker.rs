@@ -225,15 +225,23 @@ fn resolve_current_activity(
 
         let title_lower = title.to_lowercase();
         let active_title_lower = active_title.to_lowercase();
+        let domain = extract_domain(&active_url);
+        let domain_lower = domain.to_lowercase();
 
-        if !active_url.is_empty()
-            && (active_title.is_empty()
-                || title_lower.contains(&active_title_lower)
-                || active_title_lower.contains(&title_lower))
-        {
+        let matches_title = active_title.is_empty()
+            || title_lower.contains(&active_title_lower)
+            || active_title_lower.contains(&title_lower)
+            || (!domain_lower.is_empty() && title_lower.contains(&domain_lower))
+            || title_lower == "brave"
+            || title_lower == "brave-browser"
+            || title_lower == "google-chrome"
+            || title_lower == "chrome"
+            || title_lower == "chromium";
+
+        if !active_url.is_empty() && matches_title {
             return (
                 app,
-                active_title,
+                if active_title.is_empty() { title } else { active_title },
                 Some(active_url),
                 if active_favicon.is_empty() {
                     None

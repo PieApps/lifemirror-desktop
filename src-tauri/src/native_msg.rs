@@ -17,15 +17,52 @@ pub struct TabPayload {
     pub timestamp: u64,
 }
 
+#[cfg(target_os = "linux")]
+fn detect_parent_browser() -> String {
+    let ppid = unsafe { libc::getppid() };
+    if let Ok(comm) = std::fs::read_to_string(format!("/proc/{ppid}/comm")) {
+        let comm_lower = comm.to_lowercase();
+        if comm_lower.contains("brave") {
+            return "Brave".to_string();
+        } else if comm_lower.contains("edge") {
+            return "Edge".to_string();
+        } else if comm_lower.contains("chromium") {
+            return "Chromium".to_string();
+        } else if comm_lower.contains("chrome") {
+            return "Chrome".to_string();
+        }
+    }
+    if let Ok(cmdline) = std::fs::read_to_string(format!("/proc/{ppid}/cmdline")) {
+        let cmd_lower = cmdline.to_lowercase();
+        if cmd_lower.contains("brave") {
+            return "Brave".to_string();
+        } else if cmd_lower.contains("edge") {
+            return "Edge".to_string();
+        } else if cmd_lower.contains("chromium") {
+            return "Chromium".to_string();
+        } else if cmd_lower.contains("chrome") {
+            return "Chrome".to_string();
+        }
+    }
+    "Chrome".to_string()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn detect_parent_browser() -> String {
+    "Chrome".to_string()
+}
+
 // Check if the application was started in native host mode and process stdin events
 pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     // Initialize DB connection for this process
     let db = Arc::new(DbState::new(db_path));
+    let parent_browser = detect_parent_browser();
     // Create FIFO queue channel for database writes
     let (tx, rx) = mpsc::channel::<TabPayload>();
     
     // Spawn consumer thread
     let db_clone = db.clone();
+    let parent_browser_clone = parent_browser.clone();
     let consumer_handle = thread::spawn(move || {
         let mut prev_event: Option<SubSessionEvent> = None;
         let mut prev_time: Option<chrono::DateTime<Utc>> = None;
@@ -58,7 +95,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             let event = SubSessionEvent {
                 id: None,
                 session_type: "Browser".to_string(),
-                parent_app_name: Some("Chrome".to_string()),
+                parent_app_name: Some(parent_browser_clone.clone()),
                 title: payload.title,
                 primary_uri: Some(payload.url),
                 icon_url: payload.favIconUrl,

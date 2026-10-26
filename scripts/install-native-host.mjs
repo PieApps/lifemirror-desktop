@@ -77,16 +77,19 @@ function getNativeHostDir(browser = 'chrome') {
 /** On Windows, Chrome finds the native host via a registry key, not a directory.
  *  We write the key pointing at the JSON file path. */
 function registerWindowsRegistry(manifestPath) {
-  const regKey = 'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.lifemirror.desktop';
-  try {
-    // Use reg.exe which is always available on Windows
-    execSync(`reg add "${regKey}" /ve /t REG_SZ /d "${manifestPath}" /f`, { stdio: 'pipe' });
-    ok(`Registry key set: ${regKey}`);
-    ok(`Points to: ${manifestPath}`);
-  } catch (e) {
-    warn('Could not write registry key automatically.');
-    log(`     Run this manually in Command Prompt (as Admin):`);
-    log(`     reg add "${regKey}" /ve /t REG_SZ /d "${manifestPath}" /f`);
+  const regKeys = [
+    'HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.lifemirror.desktop',
+    'HKCU\\Software\\BraveSoftware\\Brave-Browser\\NativeMessagingHosts\\com.lifemirror.desktop',
+    'HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.lifemirror.desktop',
+    'HKCU\\Software\\Chromium\\NativeMessagingHosts\\com.lifemirror.desktop',
+  ];
+  for (const regKey of regKeys) {
+    try {
+      execSync(`reg add "${regKey}" /ve /t REG_SZ /d "${manifestPath}" /f`, { stdio: 'pipe' });
+      ok(`Registry key set: ${regKey}`);
+    } catch (e) {
+      warn(`Could not write registry key: ${regKey}`);
+    }
   }
 }
 
@@ -97,8 +100,11 @@ async function main() {
   const buildType = args.includes('--release') ? 'release' : 'debug';
 
   // Binary path differs by OS
-  const binaryName = isWindows ? 'lifemirror.exe' : 'lifemirror';
-  const binaryPath = path.join(PROJECT_ROOT, 'src-tauri', 'target', buildType, binaryName);
+  const binaryName = isWindows ? 'lifemirror-desktop.exe' : 'lifemirror-desktop';
+  let binaryPath = path.join(PROJECT_ROOT, 'src-tauri', 'target', buildType, binaryName);
+  if (!fs.existsSync(binaryPath) && fs.existsSync('/usr/bin/lifemirror-desktop')) {
+    binaryPath = '/usr/bin/lifemirror-desktop';
+  }
 
   log('======================================================');
   log(' LifeMirror Native Messaging Host - Install & Diagnose');
@@ -175,22 +181,45 @@ async function main() {
     registerWindowsRegistry(winManifestPath);
   } else {
     // Linux / macOS
-    const chromeDir = getNativeHostDir('chrome');
-    log(`\n▶ Installing manifest for Google Chrome...`);
-    fs.mkdirSync(chromeDir, { recursive: true });
-    fs.copyFileSync(manifestOut, path.join(chromeDir, 'com.lifemirror.desktop.json'));
-    ok(`Installed to: ${path.join(chromeDir, 'com.lifemirror.desktop.json')}`);
+    const home = os.homedir();
+    const targetDirs = isMac
+      ? [
+          { name: 'Google Chrome', dir: path.join(home, 'Library', 'Application Support', 'Google', 'Chrome', 'NativeMessagingHosts') },
+          { name: 'Chromium', dir: path.join(home, 'Library', 'Application Support', 'Chromium', 'NativeMessagingHosts') },
+          { name: 'Brave Browser', dir: path.join(home, 'Library', 'Application Support', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts') },
+          { name: 'Microsoft Edge', dir: path.join(home, 'Library', 'Application Support', 'Microsoft Edge', 'NativeMessagingHosts') },
+          { name: 'Vivaldi', dir: path.join(home, 'Library', 'Application Support', 'Vivaldi', 'NativeMessagingHosts') },
+        ]
+      : [
+          { name: 'Google Chrome', dir: path.join(home, '.config', 'google-chrome', 'NativeMessagingHosts') },
+          { name: 'Google Chrome Beta', dir: path.join(home, '.config', 'google-chrome-beta', 'NativeMessagingHosts') },
+          { name: 'Google Chrome Unstable', dir: path.join(home, '.config', 'google-chrome-unstable', 'NativeMessagingHosts') },
+          { name: 'Chromium', dir: path.join(home, '.config', 'chromium', 'NativeMessagingHosts') },
+          { name: 'Brave Browser', dir: path.join(home, '.config', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts') },
+          { name: 'Brave Browser Beta', dir: path.join(home, '.config', 'BraveSoftware', 'Brave-Browser-Beta', 'NativeMessagingHosts') },
+          { name: 'Microsoft Edge', dir: path.join(home, '.config', 'microsoft-edge', 'NativeMessagingHosts') },
+          { name: 'Vivaldi', dir: path.join(home, '.config', 'vivaldi', 'NativeMessagingHosts') },
+          { name: 'Opera', dir: path.join(home, '.config', 'opera', 'NativeMessagingHosts') },
+        ];
 
-    const chromiumBase = isMac
-      ? path.join(os.homedir(), 'Library', 'Application Support', 'Chromium')
-      : path.join(os.homedir(), '.config', 'chromium');
-
-    if (fs.existsSync(chromiumBase)) {
-      const chromiumDir = getNativeHostDir('chromium');
-      log('\n▶ Chromium detected — installing there too...');
-      fs.mkdirSync(chromiumDir, { recursive: true });
-      fs.copyFileSync(manifestOut, path.join(chromiumDir, 'com.lifemirror.desktop.json'));
-      ok(`Installed to: ${path.join(chromiumDir, 'com.lifemirror.desktop.json')}`);
+    let installedCount = 0;
+    for (const target of targetDirs) {
+      const parentDir = path.dirname(target.dir);
+      if (fs.existsSync(parentDir)) {
+        fs.mkdirSync(target.dir, { recursive: true });
+        const dest = path.join(target.dir, 'com.lifemirror.desktop.json');
+        fs.copyFileSync(manifestOut, dest);
+        ok(`Installed for ${target.name}: ${dest}`);
+        installedCount++;
+      }
+    }
+    if (installedCount === 0) {
+      const fallbackDir = isMac
+        ? path.join(home, 'Library', 'Application Support', 'Google', 'Chrome', 'NativeMessagingHosts')
+        : path.join(home, '.config', 'google-chrome', 'NativeMessagingHosts');
+      fs.mkdirSync(fallbackDir, { recursive: true });
+      fs.copyFileSync(manifestOut, path.join(fallbackDir, 'com.lifemirror.desktop.json'));
+      ok(`Installed to default location: ${path.join(fallbackDir, 'com.lifemirror.desktop.json')}`);
     }
   }
 

@@ -4,6 +4,7 @@
   "path": "{{BINARY_PATH}}",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://{{EXTENSION_ID}}/"
+    "chrome-extension://{{EXTENSION_ID}}/",
+    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/"
   ]
 }

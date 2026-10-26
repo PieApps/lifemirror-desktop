@@ -1,9 +1,10 @@
 {
   "name": "com.lifemirror.desktop",
   "description": "LifeMirror Desktop Native Messaging Bridge",
-  "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror",
+  "path": "/var/www/pieapps/lifemirror-desktop/src-tauri/target/release/lifemirror-desktop",
   "type": "stdio",
   "allowed_origins": [
-    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/" 
+    "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/",
+    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/"
   ]
 }
