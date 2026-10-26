@@ -160,6 +160,108 @@ pub fn extract_domain(url: &str) -> String {
     }
 }
 
+const KEYRING_SERVICE: &str = "com.lifemirror.desktop";
+const KEYRING_USER: &str = "database_encryption_key";
+const LEGACY_DEFAULT_KEY: &str = "lifemirror_default_secure_vault_passphrase_256";
+
+fn generate_secure_key() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::new_v4().simple(),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
+fn write_protected_key_file(path: &Path, key: &str) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        use std::io::Write;
+        file.write_all(key.as_bytes())?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, key)?;
+    }
+    Ok(())
+}
+
+fn get_or_create_encryption_key(db_dir: &Path) -> String {
+    // 1. Explicit environment variable override (for CI, test runners, or custom deploy)
+    if let Ok(env_key) = std::env::var("LIFEMIRROR_DB_KEY") {
+        let trimmed = env_key.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
+        }
+    }
+
+    // 2. Try OS Keyring
+    let keyring_entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER);
+    if let Ok(ref entry) = keyring_entry {
+        match entry.get_password() {
+            Ok(pass) => {
+                let trimmed = pass.trim().to_string();
+                if !trimmed.is_empty() {
+                    return trimmed;
+                }
+                // If stored password was empty, generate and set a new one
+                let new_key = generate_secure_key();
+                if let Err(e) = entry.set_password(&new_key) {
+                    eprintln!("[vault] Failed to store key in OS keyring ({e}), saving to fallback file");
+                } else {
+                    eprintln!("[vault] Generated new secure 256-bit vault key and stored in OS keyring");
+                    return new_key;
+                }
+            }
+            Err(keyring::Error::NoEntry) => {
+                let new_key = generate_secure_key();
+                if let Err(e) = entry.set_password(&new_key) {
+                    eprintln!("[vault] Failed to store key in OS keyring ({e}), saving to fallback file");
+                } else {
+                    eprintln!("[vault] Generated new secure 256-bit vault key and stored in OS keyring");
+                    return new_key;
+                }
+            }
+            Err(e) => {
+                eprintln!("[vault] OS keyring not accessible ({e}), using fallback file");
+            }
+        }
+    }
+
+    // 3. Fallback file: db_dir/.vault_key
+    let key_file = db_dir.join(".vault_key");
+    if key_file.exists() {
+        if let Ok(key) = std::fs::read_to_string(&key_file) {
+            let trimmed = key.trim().to_string();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+        }
+    }
+
+    // 4. Generate fresh key and write to protected file
+    let new_key = generate_secure_key();
+    let _ = std::fs::create_dir_all(db_dir);
+    if let Err(e) = write_protected_key_file(&key_file, &new_key) {
+        eprintln!("[vault] Failed to write fallback key file: {e}");
+    } else {
+        eprintln!("[vault] Saved fallback key to {}", key_file.display());
+    }
+
+    // Also attempt to sync to keyring if entry was created successfully
+    if let Ok(ref entry) = keyring_entry {
+        let _ = entry.set_password(&new_key);
+    }
+
+    new_key
+}
+
 pub struct DbState {
     pub conn: Mutex<Connection>,
 }
@@ -167,10 +269,10 @@ pub struct DbState {
 impl DbState {
     pub fn new<P: AsRef<Path>>(db_path: P) -> Self {
         let path_ref = db_path.as_ref();
-        let encryption_key = std::env::var("LIFEMIRROR_DB_KEY")
-            .unwrap_or_else(|_| "lifemirror_default_secure_vault_passphrase_256".to_string());
+        let db_dir = path_ref.parent().unwrap_or(path_ref);
+        let secure_key = get_or_create_encryption_key(db_dir);
 
-        let conn = match Self::open_and_verify(path_ref, &encryption_key) {
+        let conn = match Self::open_with_migration(path_ref, &secure_key) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!(
@@ -182,7 +284,7 @@ impl DbState {
                     backup_path.set_extension("db.bak");
                     let _ = std::fs::rename(path_ref, backup_path);
                 }
-                Self::open_and_verify(path_ref, &encryption_key)
+                Self::open_and_verify(path_ref, &secure_key)
                     .expect("Failed to create a fresh SQLite database after reset")
             }
         };
@@ -192,6 +294,42 @@ impl DbState {
         };
         state.run_migrations().expect("Database migration failed");
         state
+    }
+
+    fn open_with_migration(db_path: &Path, secure_key: &str) -> Result<Connection> {
+        // If DB file does not exist, open and create directly with secure_key
+        if !db_path.exists() {
+            return Self::open_and_verify(db_path, secure_key);
+        }
+
+        // 1. Try opening with the secure key
+        match Self::open_and_verify(db_path, secure_key) {
+            Ok(conn) => return Ok(conn),
+            Err(err) => {
+                eprintln!("[vault] Could not open database with current secure key: {err:?}");
+            }
+        }
+
+        // 2. Check if database is using the legacy default passphrase
+        eprintln!("[vault] Checking if database is encrypted with legacy default key for migration...");
+        let legacy_conn = Self::open_and_verify(db_path, LEGACY_DEFAULT_KEY)?;
+
+        // 3. Backup prior to rekeying
+        let backup_path = db_path.with_extension("db.prerekey.bak");
+        if let Err(e) = std::fs::copy(db_path, &backup_path) {
+            eprintln!("[vault] Warning: Failed to create pre-rekey backup: {e}");
+        } else {
+            eprintln!("[vault] Created pre-rekey backup at {}", backup_path.display());
+        }
+
+        // 4. Rekey database with the new secure key
+        legacy_conn.pragma_update(None, "rekey", secure_key)?;
+
+        // 5. Verify rekeyed database
+        let count: u32 = legacy_conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
+        eprintln!("[vault] Successfully rekeyed database to secure OS keyring key (verified {count} objects)!");
+
+        Ok(legacy_conn)
     }
 
     fn open_and_verify(db_path: &Path, encryption_key: &str) -> Result<Connection> {
@@ -1057,47 +1195,121 @@ impl DbState {
     }
 
     pub fn get_memory_nodes_for_day(&self, date: &str) -> Result<Vec<MemoryNode>> {
-        let mut tmp_nodes = Vec::new();
-        {
-            let conn = self.conn.lock().unwrap();
-            let mut stmt = conn.prepare(
-                "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
-                 FROM memory_nodes
-                 WHERE date(timestamp, 'localtime') = ?1
-                 ORDER BY timestamp DESC;",
-            )?;
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, summary, node_type, importance_score, confidence, embedding_id, status, timestamp
+             FROM memory_nodes
+             WHERE date(timestamp, 'localtime') = ?1
+             ORDER BY timestamp DESC;",
+        )?;
 
-            let iter = stmt.query_map([date], |row| {
-                Ok(MemoryNode {
-                    id: Some(row.get(0)?),
-                    title: row.get(1)?,
-                    summary: row.get(2)?,
-                    node_type: row.get(3)?,
-                    importance_score: row.get(4)?,
-                    confidence: row.get(5)?,
-                    embedding_id: row.get(6)?,
-                    status: row.get(7)?,
-                    timestamp: row.get(8)?,
-                    activities: None,
-                    sub_events: None,
-                })
-            })?;
+        let iter = stmt.query_map([date], |row| {
+            Ok(MemoryNode {
+                id: Some(row.get(0)?),
+                title: row.get(1)?,
+                summary: row.get(2)?,
+                node_type: row.get(3)?,
+                importance_score: row.get(4)?,
+                confidence: row.get(5)?,
+                embedding_id: row.get(6)?,
+                status: row.get(7)?,
+                timestamp: row.get(8)?,
+                activities: None,
+                sub_events: None,
+            })
+        })?;
 
-            for node in iter {
-                tmp_nodes.push(node?);
-            }
+        let mut nodes = Vec::new();
+        for node in iter {
+            nodes.push(node?);
         }
 
-        let mut final_nodes = Vec::new();
-        for mut node in tmp_nodes {
+        if nodes.is_empty() {
+            return Ok(nodes);
+        }
+
+        let node_ids: Vec<i64> = nodes.iter().filter_map(|n| n.id).collect();
+        if node_ids.is_empty() {
+            return Ok(nodes);
+        }
+
+        // Batch fetch all activities for all nodes on this day in 1 query
+        let placeholders = node_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let mut act_map: std::collections::HashMap<i64, Vec<ActivityLog>> = std::collections::HashMap::new();
+
+        let act_sql = format!(
+            "SELECT sa.node_id, a.id, a.app_name, a.window_title, a.start_time, a.duration, a.source, a.url, a.icon_url, a.domain_tag, a.notes
+             FROM activity_logs a
+             JOIN session_activities sa ON a.id = sa.raw_id
+             WHERE sa.node_id IN ({}) AND sa.source = 'os'
+             ORDER BY a.start_time ASC",
+            placeholders
+        );
+        let mut act_stmt = conn.prepare(&act_sql)?;
+        let act_params = rusqlite::params_from_iter(node_ids.iter());
+        let act_iter = act_stmt.query_map(act_params, |row| {
+            let node_id: i64 = row.get(0)?;
+            let log = ActivityLog {
+                id: Some(row.get(1)?),
+                app_name: row.get(2)?,
+                window_title: row.get(3)?,
+                start_time: row.get(4)?,
+                duration: row.get(5)?,
+                source: row.get(6)?,
+                url: row.get(7)?,
+                icon_url: row.get(8)?,
+                domain_tag: row.get(9)?,
+                notes: row.get(10)?,
+            };
+            Ok((node_id, log))
+        })?;
+
+        for item in act_iter {
+            let (node_id, log) = item?;
+            act_map.entry(node_id).or_default().push(log);
+        }
+
+        // Batch fetch all sub_events for all nodes on this day in 1 query
+        let mut sub_map: std::collections::HashMap<i64, Vec<SubSessionEvent>> = std::collections::HashMap::new();
+        let sub_sql = format!(
+            "SELECT sa.node_id, s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp
+             FROM sub_session_events s
+             JOIN session_activities sa ON s.id = sa.raw_id
+             WHERE sa.node_id IN ({}) AND sa.source = 'browser'
+             ORDER BY s.timestamp ASC",
+            placeholders
+        );
+        let mut sub_stmt = conn.prepare(&sub_sql)?;
+        let sub_params = rusqlite::params_from_iter(node_ids.iter());
+        let sub_iter = sub_stmt.query_map(sub_params, |row| {
+            let node_id: i64 = row.get(0)?;
+            let event = SubSessionEvent {
+                id: Some(row.get(1)?),
+                session_type: row.get(2)?,
+                parent_app_name: row.get(3)?,
+                title: row.get(4)?,
+                primary_uri: row.get(5)?,
+                icon_url: row.get(6)?,
+                context_tag: row.get(7)?,
+                metadata: row.get(8)?,
+                timestamp: row.get(9)?,
+            };
+            Ok((node_id, event))
+        })?;
+
+        for item in sub_iter {
+            let (node_id, event) = item?;
+            sub_map.entry(node_id).or_default().push(event);
+        }
+
+        for node in &mut nodes {
             if let Some(id) = node.id {
-                node.activities = Some(self.get_activities_for_node(id).unwrap_or_default());
-                node.sub_events = Some(self.get_sub_events_for_node(id).unwrap_or_default());
+                node.activities = Some(act_map.remove(&id).unwrap_or_default());
+                node.sub_events = Some(sub_map.remove(&id).unwrap_or_default());
             }
-            final_nodes.push(node);
         }
 
-        Ok(final_nodes)
+        Ok(nodes)
     }
 
     pub fn get_activities_for_node(&self, node_id: i64) -> Result<Vec<ActivityLog>> {
@@ -1544,3 +1756,143 @@ impl DbState {
         Ok(files)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_legacy_key_migration() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("test_legacy.db");
+
+        // 1. Create a database explicitly encrypted with the legacy default key
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "key", &LEGACY_DEFAULT_KEY).unwrap();
+            conn.execute(
+                "CREATE TABLE test_data (id INTEGER PRIMARY KEY, note TEXT);",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO test_data (note) VALUES ('hello legacy user');",
+                [],
+            ).unwrap();
+        }
+
+        // 2. Open via open_with_migration with a new secure key
+        let secure_key = "secure_random_key_test_1234567890abcdef";
+        let migrated_conn = DbState::open_with_migration(&db_path, secure_key).unwrap();
+
+        // Verify data preserved
+        let note: String = migrated_conn
+            .query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(note, "hello legacy user");
+        drop(migrated_conn);
+
+        // Verify backup was created
+        let backup_path = db_path.with_extension("db.prerekey.bak");
+        assert!(backup_path.exists(), "Pre-rekey backup should exist");
+
+        // Verify opening with legacy key now fails
+        let fail_conn = Connection::open(&db_path).unwrap();
+        fail_conn.pragma_update(None, "key", &LEGACY_DEFAULT_KEY).unwrap();
+        let fail_result: rusqlite::Result<String> = fail_conn.query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0));
+        assert!(fail_result.is_err(), "Legacy key must no longer be able to read rekeyed database");
+
+        // Verify opening with secure key succeeds
+        let success_conn = Connection::open(&db_path).unwrap();
+        success_conn.pragma_update(None, "key", &secure_key).unwrap();
+        let verified_note: String = success_conn
+            .query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(verified_note, "hello legacy user");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_batch_get_memory_nodes_for_day() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("test_nodes.db");
+
+        let db = DbState::new(&db_path);
+        let date_str = "2026-10-27";
+
+        // Insert two memory nodes
+        let node_id_1 = {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO memory_nodes (title, summary, node_type, importance_score, confidence, status, timestamp)
+                 VALUES ('Test Node 1', 'Summary 1', 'coding', 0.9, 0.95, 'active', '2026-10-27 10:00:00');",
+                [],
+            ).unwrap();
+            conn.last_insert_rowid()
+        };
+
+        let node_id_2 = {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO memory_nodes (title, summary, node_type, importance_score, confidence, status, timestamp)
+                 VALUES ('Test Node 2', 'Summary 2', 'browsing', 0.7, 0.85, 'active', '2026-10-27 11:00:00');",
+                [],
+            ).unwrap();
+            conn.last_insert_rowid()
+        };
+
+        // Insert activity log and link to node 1
+        let act_id = {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source)
+                 VALUES ('VS Code', 'main.rs', '2026-10-27 10:00:00', 300, 'os');",
+                [],
+            ).unwrap();
+            let aid = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO session_activities (node_id, raw_id, source) VALUES (?1, ?2, 'os');",
+                params![node_id_1, aid],
+            ).unwrap();
+            aid
+        };
+
+        // Insert sub-event and link to node 2
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO sub_session_events (session_type, parent_app_name, title, primary_uri, timestamp)
+                 VALUES ('tab', 'Brave', 'Rust Docs', 'https://doc.rust-lang.org', '2026-10-27 11:00:00');",
+                [],
+            ).unwrap();
+            let sid = conn.last_insert_rowid();
+            conn.execute(
+                "INSERT INTO session_activities (node_id, raw_id, source) VALUES (?1, ?2, 'browser');",
+                params![node_id_2, sid],
+            ).unwrap();
+        }
+
+        // Query memory nodes for day
+        let nodes = db.get_memory_nodes_for_day(date_str).unwrap();
+        assert_eq!(nodes.len(), 2);
+
+        // Find node 1
+        let n1 = nodes.iter().find(|n| n.id == Some(node_id_1)).unwrap();
+        let acts = n1.activities.as_ref().unwrap();
+        assert_eq!(acts.len(), 1);
+        assert_eq!(acts[0].id, Some(act_id));
+        assert_eq!(acts[0].app_name, "VS Code");
+
+        // Find node 2
+        let n2 = nodes.iter().find(|n| n.id == Some(node_id_2)).unwrap();
+        let subs = n2.sub_events.as_ref().unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].title, "Rust Docs");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+}
+
