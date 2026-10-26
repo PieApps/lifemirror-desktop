@@ -89,6 +89,23 @@ body {
   transform: translateY(-2px);
 }
 
+/* Global animation controls: pause animations when window is hidden or user requests reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html.app-hidden *,
+html.app-hidden *::before,
+html.app-hidden *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* Smooth timeline curve glow */
 .timeline-glow {
   filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.5));

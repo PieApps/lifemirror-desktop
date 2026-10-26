@@ -6,7 +6,8 @@ import {
 
 import { MemoryNode } from "../types";
 import AppIcon, { extractDomain } from './AppIcon';
-import TimelineSidebar, { getFormatDuration } from './TimelineSidebar';
+import TimelineSidebar from './TimelineSidebar';
+import { LiveTimer } from './LiveTimer';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
 
 export const isBrowserApp = (appName?: string): boolean => {
@@ -628,7 +629,7 @@ export function SCurveTimeline({
           <div className="flex flex-col items-center justify-center h-full min-h-[340px] px-6 py-12 text-center">
             <div className="glass-card rounded-3xl p-8 max-w-sm w-full mx-auto">
               <div className="w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-5">
-                <Clock className="w-7 h-7 text-violet-400 animate-pulse" />
+                <Clock className="w-7 h-7 text-violet-400" />
               </div>
               <h3 className="text-base font-bold text-[var(--text-color)] mb-1">Just use your computer.</h3>
               <p className="text-sm text-[var(--text-muted)] mb-6">
@@ -698,7 +699,7 @@ export function SCurveTimeline({
                       className="absolute z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
                       style={{ left: colPercentages[col], top: `${nodeY + 10}px`, transform: 'translateX(-50%)' }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
                       <span className="text-[9px] font-bold tracking-wider">LIVE</span>
                     </div>
                   )}
@@ -741,12 +742,12 @@ export function SCurveTimeline({
                         />
                       );
                     })()}
-                    {/* Visual stack effect for grouped boxes */}
+                    {/* Visual stack effect for grouped boxes (single blurred top layer, solid translucent stack layers) */}
                     {node.isGroupedSession && (node.originalActivities.length + node.subEvents.length > 1 || (node.distractionEvents && node.distractionEvents.length > 1)) && (
                       <>
-                        <div className="absolute inset-0 glass-card rounded-xl border border-[var(--border-color)] transform translate-x-1 translate-y-1.5 -z-10 opacity-60 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-1.5 group-hover:translate-y-2"></div>
+                        <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-1 translate-y-1.5 -z-10 opacity-60 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-1.5 group-hover:translate-y-2"></div>
                         {(node.originalActivities.length + node.subEvents.length > 2 || (node.distractionEvents && node.distractionEvents.length > 2)) && (
-                          <div className="absolute inset-0 glass-card rounded-xl border border-[var(--border-color)] transform translate-x-2 translate-y-3 -z-20 opacity-30 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-3 group-hover:translate-y-4"></div>
+                          <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-2 translate-y-3 -z-20 opacity-30 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-3 group-hover:translate-y-4"></div>
                         )}
                       </>
                     )}
@@ -784,7 +785,11 @@ export function SCurveTimeline({
                       </div>
                       <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0">
                         <Clock className="w-2.5 h-2.5 text-violet-400" />
-                        <span>{getFormatDuration(node.duration)}</span>
+                        <LiveTimer
+                          startTime={node.start_time}
+                          initialDuration={node.duration}
+                          isActive={Boolean(activeNodeStartTime && node.start_time === activeNodeStartTime)}
+                        />
                       </div>
                     </div>
 

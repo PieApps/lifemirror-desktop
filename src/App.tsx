@@ -52,6 +52,15 @@ function App() {
     return computeMetrics(data.activities, data.distractionEvents, focus.activeIntention);
   }, [data.activities, data.distractionEvents, focus.activeIntention]);
 
+  useEffect(() => {
+    const onVis = () => {
+      document.documentElement.classList.toggle("app-hidden", document.visibilityState === "hidden");
+    };
+    onVis();
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   const [missingModel, setMissingModel] = useState<string | null>(null);
 
   const [isResuming, setIsResuming] = useState(false);

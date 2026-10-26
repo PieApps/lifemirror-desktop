@@ -196,34 +196,47 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
     }
   };
 
-  // Poll database records
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(() => {
-      if (trackingActive && !isIncognito) {
-        loadData();
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [trackingActive, isIncognito, viewMode, selectedDate]);
 
-  // Local active session ticking for smooth real-time visual updates
+  // Poll database records when visible, pause when hidden
   useEffect(() => {
-    const ticker = setInterval(() => {
-      if (activeActivity && trackingActive && !isIncognito && selectedDate === getLocalDateString()) {
-        const startMs = new Date(activeActivity.start_time).getTime();
-        const elapsedSecs = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
-        
-        setActivities(prev => prev.map(node => {
-          if (node.start_time === activeActivity.start_time) {
-            return { ...node, duration: elapsedSecs };
-          }
-          return node;
-        }));
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      loadData();
+      interval = setInterval(() => {
+        if (trackingActive && !isIncognito && document.visibilityState !== "hidden") {
+          loadData();
+        }
+      }, 3000);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
       }
-    }, 1000);
-    return () => clearInterval(ticker);
-  }, [activeActivity, trackingActive, isIncognito, selectedDate]);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    if (document.visibilityState !== "hidden") {
+      startPolling();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [trackingActive, isIncognito, viewMode, selectedDate]);
 
   // ─── Actions ───────────────────────────────────────────
 

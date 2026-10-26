@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         ) : trackingActive ? (
           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-700/40 text-emerald-400 text-[10px] sm:text-xs font-semibold" title="LifeMirror is recording your activity">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
             <span className="hidden sm:inline truncate max-w-[120px]">{activeAppName ? activeAppName : "Recording"}</span>
           </div>
         ) : (
