@@ -289,9 +289,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] shrink-0">
         {[
           { id: "general", label: "General", icon: Sliders },
-          { id: "focus", label: "Focus", icon: Target },
+          { id: "focus", label: "Focus & Blocks", icon: Target },
           { id: "ai", label: "Local AI", icon: Sparkles },
-          { id: "about", label: "About", icon: Heart },
+          { id: "about", label: "About & Help", icon: Heart },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -333,7 +333,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              Automatically detects which applications and websites you are actively using.
+              Automatically logs apps and browser tabs you actively use.
             </p>
           </div>
 
@@ -358,7 +358,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              Temporarily pauses all tracking and hides your current activity from the dashboard. Your activity will not be saved.
+              Pauses tracking immediately. Nothing is recorded or shown on your timeline.
             </p>
           </div>
 
@@ -367,7 +367,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="flex items-center justify-between gap-4 mb-3">
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-[var(--text-muted)]" />
-                <span className="text-sm font-medium text-[var(--text-color)]">Minimum Activity Duration</span>
+                <span className="text-sm font-medium text-[var(--text-color)]">Minimum App Activity</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -393,7 +393,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              Ignores quick glances or short distractions. Only activities lasting longer than this time will be saved (Minimum: 1 minute).
+              Ignore apps used for less than this time (filters out quick glances).
             </p>
           </div>
 
@@ -402,7 +402,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="flex items-center justify-between gap-4 mb-3">
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-[var(--text-muted)]" />
-                <span className="text-sm font-medium text-[var(--text-color)]">Minimum Detail Duration</span>
+                <span className="text-sm font-medium text-[var(--text-color)]">Minimum Tab & File Duration</span>
               </div>
               <div className="flex items-center gap-2">
                 <input
@@ -428,7 +428,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              Ignores quickly switching between browser tabs or files. Only details viewed longer than this time will be saved (Set to 0 to record everything).
+              Ignore browser tabs or files viewed for less than this time (set to 0s to track all tabs).
             </p>
           </div>
 
@@ -437,7 +437,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Power className="w-4 h-4 text-[var(--text-muted)]" />
-                <span className="text-sm font-medium text-[var(--text-color)]">Launch on Startup</span>
+                <span className="text-sm font-medium text-[var(--text-color)]">Start on Computer Login</span>
               </div>
               <button
                 onClick={handleAutostartToggle}
@@ -453,7 +453,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              Opens the application automatically in the background when your computer starts.
+              Runs quietly in your system tray as soon as you log in.
             </p>
             {autostartError && (
               <p className="text-[10px] text-red-500 font-medium mt-1.5 flex items-center gap-1">
@@ -471,8 +471,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <Globe className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-[var(--text-color)]">Browser Companion Extension</h4>
-                  <p className="text-[11px] text-[var(--text-muted)]">Log active browser tabs and website URLs</p>
+                  <h4 className="text-sm font-semibold text-[var(--text-color)]">Companion Browser Extension</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Log website names and browser tab titles</p>
                 </div>
               </div>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">
@@ -481,7 +481,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
 
             <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
-              LifeMirror captures OS application windows natively. To record specific browser tab titles and domains (e.g. GitHub repos, YouTube tutorials, docs), install the official companion extension.
+              LifeMirror tracks desktop apps out of the box. To also record specific browser tabs and websites (e.g. GitHub, YouTube, Docs), install our companion extension.
             </p>
 
             {/* Supported Browsers List */}
@@ -534,7 +534,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onClick={() => openUrl(CHROME_STORE_URL)}
                 className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-violet-600/20 hover:shadow-violet-600/30 cursor-pointer"
               >
-                <span>Get on Chrome Web Store</span>
+                <span>Install from Chrome Store</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -549,11 +549,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               <Target className="w-4 h-4 text-rose-400" />
-              <span>Deep Work Enforcement</span>
+              <span>Distraction Blocker</span>
             </div>
             
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              When you open these specific sites or applications, a full-screen reminder will appear to help you stay focused and avoid distractions.
+              LifeMirror shows a gentle focus reminder when you open these apps or websites:
             </p>
 
             <div className="flex gap-2">
@@ -586,12 +586,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </div>
               ))}
               {distractionRules.length === 0 && (
-                <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">No interdiction rules configured.</div>
+                <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">No blocked websites or apps yet.</div>
               )}
             </div>
 
             <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
-              <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Custom Motivational Quote</label>
+              <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Reminder Quote</label>
               <input
                 type="text"
                 value={customQuote}
@@ -600,11 +600,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 placeholder="e.g., Don't give up what you want most..."
                 className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
               />
-              <p className="text-[10px] text-[var(--text-muted)] mt-1">This message will replace the default 'Back to work' text.</p>
+              <p className="text-[10px] text-[var(--text-muted)] mt-1">Replaces the default 'Back to work' text on the reminder popup.</p>
             </div>
 
             <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
-              <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Custom Distraction Image</label>
+              <label className="block text-xs font-medium text-[var(--text-color)] mb-2">Reminder Photo</label>
               <div className="flex items-center gap-4">
                 {customImage ? (
                   <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-[var(--border-color)] shrink-0">
@@ -634,7 +634,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       hover:file:bg-violet-700
                       file:cursor-pointer cursor-pointer transition-colors"
                   />
-                  <p className="text-[10px] text-[var(--text-muted)] mt-1">Upload a custom image (e.g., family photo) to display on the distraction toast. Max 2MB.</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">Show a personal photo (e.g. family or personal goal) on the reminder popup. Max 2MB.</p>
                 </div>
               </div>
             </div>
@@ -644,10 +644,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] min-w-0">
             <div className="flex items-center gap-2 font-semibold text-[var(--text-color)] mb-2">
               <Tag className="w-4 h-4 text-violet-400" />
-              <h3 className="text-sm font-semibold">Custom Category Rules</h3>
+              <h3 className="text-sm font-semibold">App & Website Categories</h3>
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3">
-              Override auto-assigned activity categories for specific app names or domain keywords.
+              LifeMirror automatically categorizes your time. Reassign any app or website to a different category here.
             </p>
 
             <div className="space-y-2 mb-3">
@@ -656,7 +656,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 value={newOverrideApp}
                 onChange={(e) => setNewOverrideApp(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleAddOverride(); }}
-                placeholder="App / domain name (e.g. chrome, figma.com)..."
+                placeholder="App or domain name (e.g. figma.com, slack)..."
                 className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-1.5 text-xs text-[var(--text-color)] focus:outline-none focus:border-violet-500/50"
               />
               <div className="flex items-center gap-2">
@@ -711,7 +711,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               })}
               {Object.keys(categoryOverrides).length === 0 && (
                 <div className="text-center py-2 text-xs text-[var(--text-muted)] italic">
-                  No custom category rules added yet.
+                  No custom category rules yet.
                 </div>
               )}
             </div>
@@ -739,11 +739,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] space-y-4">
             <div className="flex items-center space-x-2 text-[var(--accent-color)] font-semibold mb-2">
               <Sparkles className="w-5 h-5 text-violet-400" />
-              <h3 className="text-sm font-semibold text-[var(--text-color)]">Mindfulness AI Configuration</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-color)]">Local AI (Ollama)</h3>
             </div>
             
             <div>
-              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Local AI Endpoint</label>
+              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Ollama Server URL</label>
               <input 
                 type="text" 
                 value={aiUrl === "false" ? "" : aiUrl}
@@ -770,7 +770,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Text Generation Model</label>
+              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Model Name</label>
               <input 
                 type="text" 
                 value={aiModel === "false" ? "" : aiModel}
@@ -800,7 +800,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
-                {connectionStatus === 'testing' ? 'Saving & Testing...' : 'Save & Test Configuration'}
+                {connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
               </button>
             </div>
           </div>
@@ -815,14 +815,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
                 <LifeBuoy className="w-4 h-4 text-sky-400 shrink-0" />
-                <h4 className="text-sm font-semibold text-[var(--text-color)]">Need Help or Found a Bug?</h4>
+                <h4 className="text-sm font-semibold text-[var(--text-color)]">Help & Support</h4>
               </div>
               <span className="text-[10px] font-mono text-sky-400 font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 shrink-0">
                 Direct Support
               </span>
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
-              Have questions or want to request a feature? Contact the developers directly at <span className="font-mono text-[var(--text-color)] font-medium select-all">vrpieapps@gmail.com</span> with prefilled diagnostics.
+              Email us directly at <span className="font-mono text-[var(--text-color)] font-medium select-all">vrpieapps@gmail.com</span> with prefilled diagnostics, or click below:
             </p>
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-sky-500/10">
               <span className="text-[11px] font-mono text-[var(--text-muted)] truncate">vrpieapps@gmail.com</span>
@@ -831,24 +831,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-600/20 shrink-0"
               >
                 <LifeBuoy className="w-3.5 h-3.5" />
-                <span>Get Support</span>
+                <span>Contact Support</span>
               </button>
             </div>
           </div>
 
-          {/* Fuel Developer Craft Card */}
+          {/* Support Developer Card */}
           <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-rose-500/20 bg-rose-500/5 min-w-0">
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
                 <Heart className="w-4 h-4 text-rose-500 fill-rose-500/20 shrink-0" />
-                <h4 className="text-sm font-semibold text-[var(--text-color)]">Fuel Independent Craft</h4>
+                <h4 className="text-sm font-semibold text-[var(--text-color)]">Support LifeMirror</h4>
               </div>
               <span className="text-[10px] text-rose-400 font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 shrink-0">
                 100% Indie & Private
               </span>
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
-              LifeMirror Desktop is crafted independently with zero telemetry, zero analytics tracking, and no subscriptions. If it brings clarity and mindfulness to your workday, your motivation fuels its ongoing evolution.
+              LifeMirror is independently built with zero tracking, no telemetry, and no subscriptions. If it brings clarity to your day, your support helps keep it thriving.
             </p>
             <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-500/10">
               <button
@@ -856,7 +856,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-rose-600/20 shrink-0"
               >
                 <Heart className="w-3.5 h-3.5 fill-white/20" />
-                <span>Fuel Development</span>
+                <span>Support Developer</span>
               </button>
             </div>
           </div>

@@ -102,14 +102,14 @@ Keep up the fantastic work!
               <div>
                 <div className="flex items-center gap-2">
                   <h3 id="donate-modal-title" className="text-base sm:text-lg font-bold text-[var(--text-color)] leading-tight">
-                    Fuel Independent Craft
+                    Support LifeMirror's Creator
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                     100% Indie
                   </span>
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  Directly support the ongoing journey of LifeMirror
+                  100% Private. Offline-first. Zero subscriptions or ads.
                 </p>
               </div>
             </div>
@@ -125,16 +125,13 @@ Keep up the fantastic work!
 
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
-          {/* Emotional Manifesto Card */}
+          {/* Manifesto Card */}
           <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)]/50 space-y-2.5 text-xs text-[var(--text-color)] leading-relaxed">
             <p>
-              <span className="font-semibold text-rose-400">LifeMirror Desktop</span> was built with an uncompromising belief: <span className="underline decoration-rose-500/40 underline-offset-2">your attention and personal activity data belong solely to you</span>.
+              <span className="font-semibold text-rose-400">LifeMirror Desktop</span> is built on a clear conviction: <span className="underline decoration-rose-500/40 underline-offset-2">your attention and activity data belong entirely to you</span>.
             </p>
             <p className="text-[var(--text-muted)]">
-              There are no venture capital pressures, no telemetry trackers, no selling of your metrics, and no artificial paywalls. Just honest, local-first engineering crafted to bring calm awareness to your everyday digital life.
-            </p>
-            <p className="text-[var(--text-muted)] font-medium">
-              If LifeMirror helps you understand where your hours go, stay focused, or bring peace of mind to your workflow, fueling this project keeps it vibrant, maintained, and completely independent.
+              No cloud tracking, no venture capital, no selling data, and no artificial paywalls. If LifeMirror helps you stay focused and mindful, your support keeps this tool free, maintained, and independent.
             </p>
           </div>
 
@@ -160,7 +157,7 @@ Keep up the fantastic work!
           {/* Support Channels */}
           <div className="space-y-2.5">
             <span className="block text-xs font-semibold text-[var(--text-color)] uppercase tracking-wider">
-              Ways to Fuel & Motivate:
+              Ways to Support:
             </span>
 
             {/* Buy Me A Coffee */}
@@ -177,7 +174,7 @@ Keep up the fantastic work!
                     Buy Us a Coffee
                   </span>
                   <span className="text-[11px] text-[var(--text-muted)] block">
-                    A quick and joyful way to fuel late-night coding sessions
+                    A quick one-time way to fuel ongoing updates & maintenance
                   </span>
                 </div>
               </div>
@@ -198,7 +195,7 @@ Keep up the fantastic work!
                     Sponsor on GitHub
                   </span>
                   <span className="text-[11px] text-[var(--text-muted)] block">
-                    Support open developer craft month-over-month
+                    Support ongoing independent development
                   </span>
                 </div>
               </div>
@@ -216,10 +213,10 @@ Keep up the fantastic work!
                 </div>
                 <div>
                   <span className="text-xs font-bold text-[var(--text-color)] group-hover:text-indigo-400 transition-colors block">
-                    Send Words of Motivation
+                    Send Encouragement Email
                   </span>
                   <span className="text-[11px] text-[var(--text-muted)] block">
-                    Warm feedback from users means the world to our hearts
+                    Kind feedback and user stories inspire us deeply
                   </span>
                 </div>
               </div>
@@ -238,12 +235,12 @@ Keep up the fantastic work!
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-bold text-[var(--text-color)] group-hover:text-violet-400 transition-colors block">
-                      Support on Chrome Web Store
+                      Review on Chrome Web Store
                     </span>
                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-medium">Chrome, Brave, Edge, Arc</span>
                   </div>
                   <span className="text-[11px] text-[var(--text-muted)] block">
-                    Install or leave a 5-star review for the companion extension
+                    Leave a rating for our companion browser extension
                   </span>
                 </div>
               </div>

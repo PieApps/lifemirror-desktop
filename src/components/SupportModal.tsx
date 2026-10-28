@@ -145,10 +145,10 @@ ${getBody()}`;
             </div>
             <div>
               <h3 id="support-modal-title" className="text-base font-bold text-[var(--text-color)] leading-tight">
-                LifeMirror Support
+                Get Help & Share Feedback
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Direct help & feedback with the developers
+                Direct help from the creator • {SUPPORT_EMAIL}
               </p>
             </div>
           </div>
@@ -185,7 +185,7 @@ ${getBody()}`;
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>Copy Address</span>
+                  <span>Copy Email</span>
                 </>
               )}
             </button>
@@ -304,7 +304,7 @@ ${getBody()}`;
               className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-sky-600/20 hover:shadow-sky-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Mail className="w-4 h-4" />
-              <span>Send via Default Email App</span>
+              <span>Open in Email App</span>
             </button>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -313,7 +313,7 @@ ${getBody()}`;
                 className="py-2 px-3 rounded-xl text-xs font-medium border border-[var(--border-color)] bg-[var(--bg-color)]/50 hover:bg-zinc-500/10 text-[var(--text-color)] transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-                <span>Open in Web Gmail</span>
+                <span>Open Gmail in Browser</span>
               </button>
 
               <button
@@ -328,7 +328,7 @@ ${getBody()}`;
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                    <span>Copy Full Template</span>
+                    <span>Copy Email & Message</span>
                   </>
                 )}
               </button>

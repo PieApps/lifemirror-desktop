@@ -100,30 +100,30 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onResumeClick}
           className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all border border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold text-xs sm:text-sm cursor-pointer"
-          title="Resume your context"
+          title="Resume where you left off"
         >
           <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="hidden min-[640px]:inline">Resume Project</span>
+          <span className="hidden min-[640px]:inline">Where was I?</span>
         </button>
 
         {/* Motivate / Support Developer Button */}
         <button
           onClick={onDonateClick}
           className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs cursor-pointer group"
-          title="Fuel Independent Craft / Motivate Developer"
+          title="Support LifeMirror's creator"
         >
           <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 fill-rose-400/20 group-hover:scale-110 transition-transform" />
-          <span className="hidden xl:inline">Fuel Craft</span>
+          <span className="hidden xl:inline">Donate</span>
         </button>
 
         {/* Support & Assistance Button */}
         <button
           onClick={onSupportClick}
           className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-semibold text-xs cursor-pointer group"
-          title="Support & Feedback (vrpieapps@gmail.com)"
+          title="Help & Feedback (vrpieapps@gmail.com)"
         >
           <LifeBuoy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400 group-hover:rotate-45 transition-transform" />
-          <span className="hidden xl:inline">Support</span>
+          <span className="hidden xl:inline">Help & Support</span>
         </button>
 
         <button
