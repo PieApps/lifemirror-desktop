@@ -139,3 +139,12 @@ https://pieapps.github.io/lifemirror-desktop.web/
 1. **Local Native Host Requirement**: This extension communicates exclusively with the native host `com.lifemirror.desktop` installed by the LifeMirror Desktop application on the user's local machine.
 2. **Zero Network Transmission**: The extension makes zero outbound HTTP/HTTPS network requests. All tab events are routed solely through `chrome.runtime.connectNative`.
 3. **Tab Scope**: In `background.js`, all internal pages (such as `chrome://` or extensions) are automatically filtered out. Only standard public web protocols (`http://` and `https://`) are reported when active.
+
+---
+
+## 7. Version History
+
+| Version | Date | Changes | Status |
+|---|---|---|---|
+| **1.0.1** | 2026-10-29 | Updated store listing copy, user-benefit package summary, and website links. | Ready for Submission |
+| **1.0.0** | 2026-07-07 | Initial release. | Draft |

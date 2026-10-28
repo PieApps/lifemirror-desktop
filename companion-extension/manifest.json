@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LifeMirror Desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Companion extension for LifeMirror Desktop. Privately syncs active browser tabs to your personal on-device timeline.",
   "icons": {
     "16": "icon16.png",
