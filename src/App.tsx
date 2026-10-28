@@ -10,6 +10,8 @@ import { TimelinePanel } from "./components/TimelinePanel";
 import { AISidebar } from "./components/AISidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { JournalModal } from "./components/JournalModal";
+import { SupportModal } from "./components/SupportModal";
+import { DonateModal } from "./components/DonateModal";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
@@ -32,6 +34,8 @@ function App() {
   const [pullProgress, setPullProgress] = useState<{status: string, total: number, completed: number} | null>(null);
   const [pullingModel, setPullingModel] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [isDonateOpen, setIsDonateOpen] = useState(false);
 
   const localAI = useLocalAI({
     aiUrl: settings.ollamaUrl,
@@ -143,6 +147,8 @@ function App() {
           data.setSelectedActivity(node);
         }}
         onResumeClick={handleResumeProject}
+        onSupportClick={() => setIsSupportOpen(true)}
+        onDonateClick={() => setIsDonateOpen(true)}
       />
 
       {missingModel && (
@@ -242,6 +248,8 @@ function App() {
               updateMinSubSessionDuration={settings.updateMinSubSessionDuration}
               isAutostartEnabled={settings.isAutostartEnabled}
               toggleAutostart={settings.toggleAutostart}
+              onSupportClick={() => setIsSupportOpen(true)}
+              onDonateClick={() => setIsDonateOpen(true)}
             />
           ) : (
             <AISidebar
@@ -366,6 +374,16 @@ function App() {
           onClose={() => data.setSelectedActivity(null)}
         />
       )}
+      {/* Support & Community Modals */}
+      <SupportModal
+        isOpen={isSupportOpen}
+        onClose={() => setIsSupportOpen(false)}
+      />
+      <DonateModal
+        isOpen={isDonateOpen}
+        onClose={() => setIsDonateOpen(false)}
+      />
+
       <FirstLogCelebration activityCount={data.activities.length} />
     </div>
   );

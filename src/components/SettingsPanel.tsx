@@ -1,7 +1,8 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2 } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check } from "lucide-react";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 
 interface SettingsPanelProps {
@@ -19,6 +20,8 @@ interface SettingsPanelProps {
   updateMinSubSessionDuration: (duration: number) => void;
   isAutostartEnabled: boolean;
   toggleAutostart: () => Promise<void>;
+  onSupportClick?: () => void;
+  onDonateClick?: () => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -36,6 +39,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   updateMinSubSessionDuration,
   isAutostartEnabled,
   toggleAutostart,
+  onSupportClick,
+  onDonateClick,
 }) => {
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
@@ -50,6 +55,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [categoryOverrides, setCategoryOverrides] = React.useState<CategoryOverrides>(getCategoryOverrides);
   const [newOverrideApp, setNewOverrideApp] = React.useState("");
   const [newOverrideCategory, setNewOverrideCategory] = React.useState<ActivityCategory>("development");
+  const [copiedExtLink, setCopiedExtLink] = React.useState(false);
+  const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/lifemirror-desktop/pblffjiaheggbamkjaojabdaemkflhmm";
+
+  const handleCopyExtensionLink = async () => {
+    try {
+      await navigator.clipboard.writeText(CHROME_STORE_URL);
+      setCopiedExtLink(true);
+      setTimeout(() => setCopiedExtLink(false), 2500);
+    } catch (err) {
+      console.error("Failed to copy extension link", err);
+    }
+  };
 
   const handleAddOverride = () => {
     if (!newOverrideApp.trim()) return;
@@ -407,6 +424,83 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         )}
       </div>
 
+      {/* Browser Companion Extension Card */}
+      <div className="mb-6 p-4 rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 via-[var(--bg-color)]/20 to-transparent">
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-[var(--text-color)]">Browser Companion Extension</h4>
+              <p className="text-[11px] text-[var(--text-muted)]">Log active browser tabs and website URLs</p>
+            </div>
+          </div>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">
+            Chrome Web Store
+          </span>
+        </div>
+
+        <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
+          LifeMirror captures OS application windows natively. To record specific browser tab titles and domains (e.g. GitHub repos, YouTube tutorials, docs), install the official companion extension.
+        </p>
+
+        {/* Supported Browsers List */}
+        <div className="mb-3.5 p-2.5 rounded-xl bg-[var(--bg-color)]/40 border border-[var(--border-color)]">
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)] block mb-1.5">
+            Supported Browsers (Chromium-Based):
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              "Google Chrome",
+              "Brave",
+              "Microsoft Edge",
+              "Arc",
+              "Opera",
+              "Vivaldi",
+              "+ All Chromium Browsers",
+            ].map((browser) => (
+              <span
+                key={browser}
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md bg-[var(--surface-color)] border border-[var(--border-color)] text-[var(--text-color)]"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                {browser}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Actions: Direct Store Link & Copy */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-[var(--border-color)]/60">
+          <button
+            onClick={handleCopyExtensionLink}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:bg-zinc-500/10 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
+            title="Copy Chrome Web Store link"
+          >
+            {copiedExtLink ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400 font-semibold">Link Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Store Link</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => openUrl(CHROME_STORE_URL)}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-violet-600/20 hover:shadow-violet-600/30 cursor-pointer"
+          >
+            <span>Get on Chrome Web Store</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
       {/* Deep Work & Distractions */}
       <div className="mb-8 space-y-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
@@ -650,6 +744,65 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* Community, Support & Fuel Developer Mission */}
+      <div className="mt-8 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          <Heart className="w-4 h-4 text-rose-400" />
+          <span>Support & Independent Mission</span>
+        </div>
+
+        {/* Support Card */}
+        <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-sky-500/20 bg-sky-500/5 min-w-0">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <LifeBuoy className="w-4 h-4 text-sky-400 shrink-0" />
+              <h4 className="text-sm font-semibold text-[var(--text-color)]">Need Help or Found a Bug?</h4>
+            </div>
+            <span className="text-[10px] font-mono text-sky-400 font-semibold px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 shrink-0">
+              Direct Support
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
+            Have questions or want to request a feature? Contact the developers directly at <span className="font-mono text-[var(--text-color)] font-medium select-all">vrpieapps@gmail.com</span> with prefilled diagnostics.
+          </p>
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-sky-500/10">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] truncate">vrpieapps@gmail.com</span>
+            <button
+              onClick={onSupportClick}
+              className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-600/20 shrink-0"
+            >
+              <LifeBuoy className="w-3.5 h-3.5" />
+              <span>Get Support</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Fuel Developer Craft Card */}
+        <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-rose-500/20 bg-rose-500/5 min-w-0">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-rose-500 fill-rose-500/20 shrink-0" />
+              <h4 className="text-sm font-semibold text-[var(--text-color)]">Fuel Independent Craft</h4>
+            </div>
+            <span className="text-[10px] text-rose-400 font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 shrink-0">
+              100% Indie & Private
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
+            LifeMirror Desktop is crafted independently with zero telemetry, zero analytics tracking, and no subscriptions. If it brings clarity and mindfulness to your workday, your motivation fuels its ongoing evolution.
+          </p>
+          <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-500/10">
+            <button
+              onClick={onDonateClick}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-rose-600/20 shrink-0"
+            >
+              <Heart className="w-3.5 h-3.5 fill-white/20" />
+              <span>Fuel Development</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="mt-8 pt-4 border-t border-[var(--border-color)] text-center">
         <p className="text-xs text-[var(--text-muted)] font-mono">v{appVersion}</p>

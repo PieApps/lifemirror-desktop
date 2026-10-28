@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import {
-  ShieldAlert, Settings as SettingsIcon, RefreshCw, Sun, Moon, Search
+  ShieldAlert, Settings as SettingsIcon, RefreshCw, Sun, Moon, Search, LifeBuoy, Heart
 } from "lucide-react";
 import { useSearch } from "../hooks/useSearch";
 import { SearchResultsOverlay } from "./SearchResultsOverlay";
@@ -17,6 +17,8 @@ interface HeaderProps {
   onRefresh: () => void;
   onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
   onResumeClick: () => void;
+  onSupportClick: () => void;
+  onDonateClick: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +32,8 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   onSearchSelect,
   onResumeClick,
+  onSupportClick,
+  onDonateClick,
 }) => {
   const search = useSearch();
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -100,6 +104,26 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span className="hidden min-[640px]:inline">Resume Project</span>
+        </button>
+
+        {/* Motivate / Support Developer Button */}
+        <button
+          onClick={onDonateClick}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs cursor-pointer group"
+          title="Fuel Independent Craft / Motivate Developer"
+        >
+          <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 fill-rose-400/20 group-hover:scale-110 transition-transform" />
+          <span className="hidden xl:inline">Fuel Craft</span>
+        </button>
+
+        {/* Support & Assistance Button */}
+        <button
+          onClick={onSupportClick}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-semibold text-xs cursor-pointer group"
+          title="Support & Feedback (vrpieapps@gmail.com)"
+        >
+          <LifeBuoy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400 group-hover:rotate-45 transition-transform" />
+          <span className="hidden xl:inline">Support</span>
         </button>
 
         <button

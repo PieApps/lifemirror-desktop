@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   Clock, Plus, 
-  Trash2, ShieldAlert, MessageSquare
+  Trash2, ShieldAlert, MessageSquare, ExternalLink
 } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { MemoryNode } from "../types";
 import AppIcon, { extractDomain } from './AppIcon';
@@ -639,12 +640,27 @@ export function SCurveTimeline({
                 {[
                   { icon: "🟢", label: "Tracking is active", sub: "Your OS windows are being watched." },
                   { icon: "⏱️", label: "Stay in a window for 60 s", sub: "Short switches are filtered to reduce noise." },
-                  { icon: "🌐", label: "Chrome is tracked too", sub: "Install the companion extension to log tabs." },
-                ].map(({ icon, label, sub }) => (
-                  <div key={label} className="flex items-start gap-3">
+                  { 
+                    icon: "🌐", 
+                    label: "Browser tabs are tracked too", 
+                    sub: "Install companion extension (Chrome, Brave, Edge, Arc, Opera, Vivaldi).",
+                    link: "https://chromewebstore.google.com/detail/lifemirror-desktop/pblffjiaheggbamkjaojabdaemkflhmm" 
+                  },
+                ].map(({ icon, label, sub, link }) => (
+                  <div 
+                    key={label} 
+                    className={`flex items-start gap-3 p-2 rounded-xl transition-colors ${
+                      link ? "hover:bg-violet-500/10 cursor-pointer group border border-transparent hover:border-violet-500/20" : ""
+                    }`}
+                    onClick={() => { if (link) openUrl(link); }}
+                    title={link ? "Click to install extension from Chrome Web Store" : undefined}
+                  >
                     <span className="text-base mt-0.5 shrink-0">{icon}</span>
-                    <div>
-                      <p className="text-xs font-semibold text-[var(--text-color)]">{label}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className={`text-xs font-semibold text-[var(--text-color)] ${link ? "group-hover:text-violet-400" : ""}`}>{label}</p>
+                        {link && <ExternalLink className="w-3 h-3 text-violet-400 opacity-60 group-hover:opacity-100 transition-opacity" />}
+                      </div>
                       <p className="text-[11px] text-[var(--text-muted)]">{sub}</p>
                     </div>
                   </div>
