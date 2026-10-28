@@ -188,13 +188,12 @@ The threshold for committing activities to SQLite is dynamically read from the d
 ### System Tray & Bidirectional State Synchronization
 To allow seamless background monitoring and control, the application registers a system status tray menu:
 1. **Instantiation**: `setup_system_tray` in `lib.rs` constructs the tray icon using the `TrayIconBuilder::with_id("main-tray")` API.
-2. **Interaction**: A single left-click on the tray icon immediately shows and focuses the main window. Right-clicking displays a context menu containing:
-   - **Open LifeMirror**: Shows the main window.
-   - **Incognito Mode**: Programmatic checkbox toggle.
-   - **Tracking Active**: Programmatic checkbox toggle.
+2. **Interaction**: A single left-click on the tray icon immediately shows and focuses the main window. Right-clicking displays a streamlined 3-item context menu containing:
+   - **Open LifeMirror Desktop**: Shows and focuses the main window.
+   - **Pause Tracking / Resume Tracking**: Dynamic single-action item that pauses or resumes tracking without ambiguous overlapping toggles. When tracking is active, it displays "Pause Tracking". When tracking is paused, it displays "Resume Tracking". Resuming tracking automatically deactivates Incognito Mode if previously enabled in the app.
    - **Quit**: Fully exits the application process.
-3. **State Management**: The references to the tray's `CheckMenuItem` checkbox toggles are managed inside a native Tauri state struct (`TrayMenuState`). When the user toggles Incognito or Tracking states from the React frontend, the Tauri commands update the tray checkbox check state and swap the tray icon (Normal, Gray/Paused, or Amber/Incognito) dynamically in Rust.
-4. **Events Sync**: When modified directly from the system tray context menu, the backend updates settings in SQLite, changes the tray icon, and emits global events (`"incognito-changed"` and `"tracking-changed"`) to sync the React UI in real time.
+3. **State Management**: The reference to the dynamic tracking action item is managed inside a native Tauri state struct (`TrayMenuState`). When the user toggles tracking or incognito from the React frontend, the Tauri commands update the tray action text ("Pause Tracking" / "Resume Tracking") and swap the tray icon (Normal, Gray/Paused, or Amber/Incognito) dynamically in Rust.
+4. **Events Sync**: When modified directly from the system tray context menu, the backend updates settings in SQLite, dynamically updates the menu item text and tray icon, and emits global events (`"incognito-changed"` and `"tracking-changed"`) to sync the React UI in real time.
 
 ### Background Hide & Close Behavior
 Standard window close requests are intercepted:

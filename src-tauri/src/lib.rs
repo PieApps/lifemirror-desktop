@@ -12,7 +12,7 @@ use db::{ActivityLog, ChatMessage, DailySummary, DbState, HourlyMetric, JournalE
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::image::Image;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Emitter;
 use tauri::Manager;
@@ -20,8 +20,7 @@ use tauri::State;
 use tauri_plugin_autostart::MacosLauncher;
 
 pub struct TrayMenuState {
-    pub incognito_item: CheckMenuItem<tauri::Wry>,
-    pub tracking_item: CheckMenuItem<tauri::Wry>,
+    pub tracking_item: MenuItem<tauri::Wry>,
 }
 
 fn update_tray_icon_by_state(app: &tauri::AppHandle) {
@@ -234,17 +233,21 @@ fn toggle_incognito(
         .set_setting("incognito", if new_incognito { "true" } else { "false" })
         .map_err(|e| e.to_string())?;
 
-    // Update tray checkbox
-    let _ = tray_state.incognito_item.set_checked(new_incognito);
-
-    // RADIO BEHAVIOR: If Incognito is turned ON, Tracking Active must turn OFF
+    // RADIO BEHAVIOR: Turning Incognito ON pauses tracking; turning it OFF resumes tracking
     if new_incognito {
         state
             .set_setting("tracking_active", "false")
             .map_err(|e| e.to_string())?;
         tracking_active.store(false, std::sync::atomic::Ordering::SeqCst);
-        let _ = tray_state.tracking_item.set_checked(false);
+        let _ = tray_state.tracking_item.set_text("Resume Tracking");
         let _ = app.emit("tracking-changed", false);
+    } else {
+        state
+            .set_setting("tracking_active", "true")
+            .map_err(|e| e.to_string())?;
+        tracking_active.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = tray_state.tracking_item.set_text("Pause Tracking");
+        let _ = app.emit("tracking-changed", true);
     }
 
     // Update tray icon
@@ -291,15 +294,16 @@ fn toggle_tracking(
         .map_err(|e| e.to_string())?;
     tracking_active.store(new_tracking, std::sync::atomic::Ordering::SeqCst);
 
-    // Update tray checkbox
-    let _ = tray_state.tracking_item.set_checked(new_tracking);
+    // Update tray action text
+    let _ = tray_state
+        .tracking_item
+        .set_text(if new_tracking { "Pause Tracking" } else { "Resume Tracking" });
 
     // RADIO BEHAVIOR: If Tracking Active is turned ON, Incognito Mode must turn OFF
     if new_tracking {
         state
             .set_setting("incognito", "false")
             .map_err(|e| e.to_string())?;
-        let _ = tray_state.incognito_item.set_checked(false);
         let _ = app.emit("incognito-changed", false);
     }
 
@@ -613,29 +617,21 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
 
     let db = app.state::<Arc<DbState>>();
     let is_incog = db.get_setting("incognito").unwrap_or_default() == "true";
-    let incog_i = CheckMenuItem::with_id(
-        app,
-        "incognito",
-        "Incognito Mode",
-        true,
-        is_incog,
-        None::<&str>,
-    )?;
 
     let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
     let is_track = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
-    let track_i = CheckMenuItem::with_id(
+    let track_label = if is_track { "Pause Tracking" } else { "Resume Tracking" };
+    let track_i = MenuItem::with_id(
         app,
         "tracking",
-        "Tracking Active",
+        track_label,
         true,
-        is_track,
         None::<&str>,
     )?;
 
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open_i, &incog_i, &track_i, &quit_i])?;
+    let menu = Menu::with_items(app, &[&open_i, &track_i, &quit_i])?;
 
     let default_icon_bytes = if is_incog {
         include_bytes!("../icons/32x32_incognito.png").as_ref()
@@ -657,27 +653,6 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
                     let _ = window.set_focus();
                 }
             }
-            "incognito" => {
-                let db = app.state::<Arc<DbState>>();
-                let current = db.get_setting("incognito").unwrap_or_default() == "true";
-                let new_incognito = !current;
-                let _ = db.set_setting("incognito", if new_incognito { "true" } else { "false" });
-
-                let tray_state = app.state::<TrayMenuState>();
-                let _ = tray_state.incognito_item.set_checked(new_incognito);
-                let _ = app.emit("incognito-changed", new_incognito);
-
-                // RADIO BEHAVIOR: Turn off tracking if incognito is enabled
-                if new_incognito {
-                    let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
-                    tracking_active.store(false, std::sync::atomic::Ordering::SeqCst);
-                    let _ = db.set_setting("tracking_active", "false");
-                    let _ = tray_state.tracking_item.set_checked(false);
-                    let _ = app.emit("tracking-changed", false);
-                }
-
-                update_tray_icon_by_state(app);
-            }
             "tracking" => {
                 let tracking_active = app.state::<Arc<std::sync::atomic::AtomicBool>>();
                 let current = tracking_active.load(std::sync::atomic::Ordering::SeqCst);
@@ -688,13 +663,14 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
                 let _ = db.set_setting("tracking_active", if new_tracking { "true" } else { "false" });
 
                 let tray_state = app.state::<TrayMenuState>();
-                let _ = tray_state.tracking_item.set_checked(new_tracking);
+                let _ = tray_state
+                    .tracking_item
+                    .set_text(if new_tracking { "Pause Tracking" } else { "Resume Tracking" });
                 let _ = app.emit("tracking-changed", new_tracking);
 
-                // RADIO BEHAVIOR: Turn off incognito if tracking is enabled
+                // If resuming tracking, turn off incognito mode
                 if new_tracking {
                     let _ = db.set_setting("incognito", "false");
-                    let _ = tray_state.incognito_item.set_checked(false);
                     let _ = app.emit("incognito-changed", false);
                 }
 
@@ -722,7 +698,6 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
         .build(app)?;
 
     Ok(TrayMenuState {
-        incognito_item: incog_i,
         tracking_item: track_i,
     })
 }
