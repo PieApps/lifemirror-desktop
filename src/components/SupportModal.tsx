@@ -27,13 +27,13 @@ export const SupportModal: React.FC<SupportModalProps> = ({ isOpen, onClose }) =
   const [userNotes, setUserNotes] = useState("");
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
-  const [appVersion, setAppVersion] = useState("1.3.1");
+  const [appVersion, setAppVersion] = useState("1.3.3");
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
 
   const SUPPORT_EMAIL = "vrpieapps@gmail.com";
 
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => setAppVersion("1.3.1"));
+    getVersion().then(setAppVersion).catch(() => setAppVersion("1.3.3"));
   }, []);
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone } from "lucide-react";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 
 type SettingsTab = "general" | "focus" | "ai" | "about";
@@ -70,6 +70,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [newOverrideCategory, setNewOverrideCategory] = React.useState<ActivityCategory>("development");
   const [copiedExtLink, setCopiedExtLink] = React.useState(false);
   const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/lifemirror-desktop/pblffjiaheggbamkjaojabdaemkflhmm";
+  const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.pieapps.lifemirror";
 
   const handleCopyExtensionLink = async () => {
     try {
@@ -890,6 +891,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs font-medium transition-colors shrink-0 cursor-pointer"
             >
               <span>Chrome Store</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* LifeMirror Mobile (Android) Quick Link */}
+          <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                <Smartphone className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-[var(--text-color)] block truncate">LifeMirror for Android</span>
+                <span className="text-[10px] text-[var(--text-muted)] block">Standalone, 100% offline time & habit tracker</span>
+              </div>
+            </div>
+            <button
+              onClick={() => openUrl(PLAY_STORE_URL)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition-colors shrink-0 cursor-pointer"
+              title="Open LifeMirror on Google Play Store"
+            >
+              <span>Google Play</span>
               <ExternalLink className="w-3 h-3" />
             </button>
           </div>
