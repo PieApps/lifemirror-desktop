@@ -12,6 +12,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { JournalModal } from "./components/JournalModal";
 import { SupportModal } from "./components/SupportModal";
 import { DonateModal } from "./components/DonateModal";
+import { AILockedModal } from "./components/AILockedModal";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
@@ -36,6 +37,18 @@ function App() {
   const [pullError, setPullError] = useState<string | null>(null);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isDonateOpen, setIsDonateOpen] = useState(false);
+  const [lockedFeatureName, setLockedFeatureName] = useState<string | null>(null);
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<"general" | "focus" | "ai" | "about">("general");
+
+  const handleAILockedClick = (featureName: string) => {
+    setLockedFeatureName(featureName);
+  };
+
+  const handleOpenAISettings = () => {
+    setLockedFeatureName(null);
+    setSettingsDefaultTab("ai");
+    settings.setShowSettings(true);
+  };
 
   const localAI = useLocalAI({
     aiUrl: settings.ollamaUrl,
@@ -149,6 +162,8 @@ function App() {
         onResumeClick={handleResumeProject}
         onSupportClick={() => setIsSupportOpen(true)}
         onDonateClick={() => setIsDonateOpen(true)}
+        isAiAvailable={settings.isAiAvailable}
+        onAILockedClick={handleAILockedClick}
       />
 
       {missingModel && (
@@ -250,6 +265,8 @@ function App() {
               toggleAutostart={settings.toggleAutostart}
               onSupportClick={() => setIsSupportOpen(true)}
               onDonateClick={() => setIsDonateOpen(true)}
+              initialTab={settingsDefaultTab}
+              onAiConnectionTested={settings.setIsAiAvailable}
             />
           ) : (
             <AISidebar
@@ -271,6 +288,8 @@ function App() {
               handleSendChat={localAI.handleSendChat}
               handleGenerateSuggestions={localAI.handleGenerateSuggestions}
               clearChat={localAI.clearChat}
+              isAiAvailable={settings.isAiAvailable}
+              onAILockedClick={handleAILockedClick}
             />
           )}
         </div>
@@ -382,6 +401,14 @@ function App() {
       <DonateModal
         isOpen={isDonateOpen}
         onClose={() => setIsDonateOpen(false)}
+      />
+      <AILockedModal
+        isOpen={lockedFeatureName !== null}
+        onClose={() => setLockedFeatureName(null)}
+        onOpenSettings={handleOpenAISettings}
+        featureName={lockedFeatureName || "This feature"}
+        ollamaUrl={settings.ollamaUrl}
+        ollamaModel={settings.ollamaModel}
       />
 
       <FirstLogCelebration activityCount={data.activities.length} />

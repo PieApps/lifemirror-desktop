@@ -24,6 +24,8 @@ interface SettingsPanelProps {
   toggleAutostart: () => Promise<void>;
   onSupportClick?: () => void;
   onDonateClick?: () => void;
+  initialTab?: SettingsTab;
+  onAiConnectionTested?: (connected: boolean) => void;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -43,8 +45,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   toggleAutostart,
   onSupportClick,
   onDonateClick,
+  initialTab = "general",
+  onAiConnectionTested,
 }) => {
-  const [activeTab, setActiveTab] = React.useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>(initialTab);
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [autostartError, setAutostartError] = React.useState<string | null>(null);
   const [inputValue, setInputValue] = React.useState(String(minLogDuration));
   const [subSessionInputValue, setSubSessionInputValue] = React.useState(String(minSubSessionDuration));
@@ -256,13 +266,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       if (res.ok) {
         setConnectionStatus('connected');
         setConnectionMessage('Successfully connected to local AI.');
+        onAiConnectionTested?.(true);
       } else {
         setConnectionStatus('disconnected');
         setConnectionMessage(`Connection failed (Status: ${res.status}).`);
+        onAiConnectionTested?.(false);
       }
     } catch (err: any) {
       setConnectionStatus('disconnected');
       setConnectionMessage('Failed to connect. Make sure it is running.');
+      onAiConnectionTested?.(false);
     }
   };
 

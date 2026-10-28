@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -22,9 +22,35 @@ export function useSettings() {
   // Settings panel visibility
   const [showSettings, setShowSettings] = useState(false);
 
-  // Ollama configuration
+  // Ollama configuration & AI availability
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
+  const [isAiAvailable, setIsAiAvailable] = useState<boolean>(false);
+
+  const checkAiAvailability = useCallback(async (urlToCheck?: string): Promise<boolean> => {
+    const targetUrl = urlToCheck !== undefined ? urlToCheck : ollamaUrl;
+    if (!targetUrl || targetUrl === "disabled" || targetUrl === "false") {
+      setIsAiAvailable(false);
+      return false;
+    }
+    const cleanUrl = targetUrl.replace(/\/$/, "");
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${cleanUrl}/api/version`, { signal: controller.signal });
+      const ok = res.ok;
+      setIsAiAvailable(ok);
+      return ok;
+    } catch {
+      setIsAiAvailable(false);
+      return false;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }, [ollamaUrl]);
 
   // DB Log Threshold & Windows configurations
   const [minLogDuration, setMinLogDurationState] = useState(60);
@@ -41,18 +67,22 @@ export function useSettings() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        let url = await invoke<string>("get_db_setting", { key: "ollama_url" });
-        if (url === "disabled") {
+        const rawUrl = await invoke<string>("get_db_setting", { key: "ollama_url" });
+        let effectiveUrl = "http://localhost:11434";
+        if (rawUrl === "disabled") {
+          effectiveUrl = "";
           setOllamaUrl("");
-        } else if (url && url !== "false" && url.trim() !== "") {
-          url = url.trim();
-          if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            url = "http://" + url;
+        } else if (rawUrl && rawUrl !== "false" && rawUrl.trim() !== "") {
+          let trimmedUrl = rawUrl.trim();
+          if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+            trimmedUrl = "http://" + trimmedUrl;
           }
-          setOllamaUrl(url);
+          effectiveUrl = trimmedUrl;
+          setOllamaUrl(trimmedUrl);
         } else {
           setOllamaUrl("http://localhost:11434");
         }
+        checkAiAvailability(effectiveUrl);
 
         const model = await invoke<string>("get_db_setting", { key: "ollama_model" });
         if (model === "disabled") {
@@ -155,7 +185,9 @@ export function useSettings() {
     } else if (!sanitizedUrl.startsWith("http://") && !sanitizedUrl.startsWith("https://")) {
       sanitizedUrl = "http://" + sanitizedUrl;
     }
-    setOllamaUrl(sanitizedUrl === "disabled" ? "" : sanitizedUrl);
+    const finalUrl = sanitizedUrl === "disabled" ? "" : sanitizedUrl;
+    setOllamaUrl(finalUrl);
+    checkAiAvailability(finalUrl);
     try {
       await invoke("set_db_setting", { key: "ollama_url", value: sanitizedUrl });
     } catch (e) {
@@ -172,6 +204,21 @@ export function useSettings() {
       console.error(e);
     }
   };
+
+  // Re-verify AI availability when user returns to the window
+  useEffect(() => {
+    const handleRecheck = () => {
+      if (document.visibilityState === "visible") {
+        checkAiAvailability();
+      }
+    };
+    window.addEventListener("focus", handleRecheck);
+    document.addEventListener("visibilitychange", handleRecheck);
+    return () => {
+      window.removeEventListener("focus", handleRecheck);
+      document.removeEventListener("visibilitychange", handleRecheck);
+    };
+  }, [checkAiAvailability]);
 
   const handleToggleIncognito = async () => {
     try {
@@ -202,6 +249,9 @@ export function useSettings() {
     setShowSettings,
     ollamaUrl,
     ollamaModel,
+    isAiAvailable,
+    setIsAiAvailable,
+    checkAiAvailability,
     updateOllamaUrl,
     updateOllamaModel,
     minLogDuration,
