@@ -43,4 +43,7 @@ If our data practices change, we will update this Privacy Policy and notify user
 
 ## Contact
 
-If you have any questions or concerns regarding this Privacy Policy, please contact us at [Your Contact Email/Repository URL].
+If you have any questions or concerns regarding this Privacy Policy:
+- Official Website: https://pieapps.github.io/lifemirror-desktop.web/
+- GitHub Repository: https://github.com/PieApps/lifemirror-desktop
+- Support Email: vrpieapps@gmail.com
