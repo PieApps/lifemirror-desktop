@@ -7,10 +7,14 @@ function getNativePort() {
   
   try {
     port = chrome.runtime.connectNative(hostName);
-    console.log("Connected to LifeMirror Desktop Native Messaging Host");
+    console.log("Connecting to LifeMirror Desktop Native Messaging Host...");
     
     port.onDisconnect.addListener(() => {
-      console.log("Disconnected from Native Messaging Host: ", chrome.runtime.lastError?.message);
+      const errMsg = chrome.runtime.lastError?.message;
+      console.warn("Disconnected from Native Messaging Host: ", errMsg);
+      if (errMsg?.includes("Specified native messaging host not found")) {
+        console.warn("[LifeMirror] Host manifest not registered or invalid. Ensure LifeMirror Desktop is running.");
+      }
       port = null;
     });
   } catch (err) {

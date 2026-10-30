@@ -75,20 +75,24 @@ fn install_native_host_manifest() {
     };
 
     // Both Chrome Web Store extension ID and local development extension ID
-    let manifest = format!(
-        r#"{{
-  "name": "com.lifemirror.desktop",
-  "description": "LifeMirror Desktop Native Messaging Bridge",
-  "path": "{exe}",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/",
-    "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/"
-  ]
-}}
-"#,
-        exe = exe_path.display()
-    );
+    let manifest_value = serde_json::json!({
+        "name": "com.lifemirror.desktop",
+        "description": "LifeMirror Desktop Native Messaging Bridge",
+        "path": exe_path.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [
+            "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/",
+            "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/"
+        ]
+    });
+
+    let manifest = match serde_json::to_string_pretty(&manifest_value) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("[native-host] Failed to serialize manifest JSON: {e}");
+            return;
+        }
+    };
 
     #[cfg(target_os = "linux")]
     let host_dirs = [
@@ -137,7 +141,12 @@ fn install_native_host_manifest() {
 
     #[cfg(target_os = "windows")]
     {
-        let win_dir = home.join("AppData/Local/LifeMirror/NativeMessagingHosts");
+        let win_dir = std::env::var("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| home.join("AppData").join("Local"))
+            .join("LifeMirror")
+            .join("NativeMessagingHosts");
+
         if let Ok(_) = std::fs::create_dir_all(&win_dir) {
             let manifest_path = win_dir.join("com.lifemirror.desktop.json");
             if std::fs::write(&manifest_path, &manifest).is_ok() {

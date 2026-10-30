@@ -61,7 +61,8 @@ function getNativeHostDir(browser = 'chrome') {
   if (isWindows) {
     // On Windows the path is registered via the registry (handled below),
     // but we still write the JSON to a known location first.
-    return path.join(home, 'AppData', 'Local', 'LifeMirror', 'NativeMessagingHosts');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    return path.join(localAppData, 'LifeMirror', 'NativeMessagingHosts');
   }
   if (isMac) {
     return browser === 'chrome'
@@ -148,9 +149,18 @@ async function main() {
     process.exit(1);
   }
 
-  const generated = fs.readFileSync(templatePath, 'utf8')
-    .replaceAll('{{EXTENSION_ID}}', extensionId)
-    .replaceAll('{{BINARY_PATH}}',  binaryPath);
+  const manifestData = {
+    name: 'com.lifemirror.desktop',
+    description: 'LifeMirror Desktop Native Messaging Bridge',
+    path: binaryPath,
+    type: 'stdio',
+    allowed_origins: [
+      `chrome-extension://${extensionId}/`,
+      'chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/'
+    ]
+  };
+
+  const generated = JSON.stringify(manifestData, null, 2);
 
   fs.writeFileSync(manifestOut, generated, 'utf8');
   ok(`Generated: ${manifestOut}`);
