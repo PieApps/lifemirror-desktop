@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
 PackageIdentifier: PieApps.LifeMirrorDesktop
-PackageVersion: 1.3.3
+PackageVersion: 1.3.4
 PackageName: LifeMirror Desktop
 Publisher: PieApps
 PublisherUrl: https://github.com/PieApps/lifemirror-desktop
@@ -20,8 +20,8 @@ Tags:
 Installers:
   - Architecture: x64
     InstallerType: nullsoft
-    InstallerUrl: https://github.com/PieApps/lifemirror-desktop/releases/download/v1.3.3/lifemirror-desktop_1.3.3_x64-setup.exe
-    InstallerSha256: REPLACE_WITH_SETUP_EXE_SHA256
+    InstallerUrl: https://github.com/PieApps/lifemirror-desktop/releases/download/v1.3.4/lifemirror-desktop_1.3.4_x64-setup.exe
+    InstallerSha256: 76d004f6105193fee91cba066ba49bfa7ed1f45a31e274e0be83a65f6f44a822
     Scope: user
     InstallerLocale: en-US
     UpgradeBehavior: install
