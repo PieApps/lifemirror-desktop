@@ -6,10 +6,11 @@ This directory contains configuration files and manifests for publishing LifeMir
 
 ## 1. 🪟 Windows: WinGet (Official Windows Package Manager)
 
-WinGet allows Windows 10/11 users to install LifeMirror with zero browser Mark-of-the-Web (MotW) download warnings:
+WinGet allows Windows 10/11 users to install LifeMirror Desktop with zero browser Mark-of-the-Web (MotW) download warnings:
 ```powershell
-winget install PieApps.LifeMirror
+winget install PieApps.LifeMirrorDesktop
 ```
+*(Or by moniker: `winget install lifemirror-desktop`)*
 
 ### Initial Submission to `microsoft/winget-pkgs`:
 1. **Option A (Automated CLI - Recommended)**:
@@ -18,27 +19,27 @@ winget install PieApps.LifeMirror
    winget install Microsoft.WingetCreate
    wingetcreate new https://github.com/PieApps/lifemirror-desktop/releases/download/v1.3.3/lifemirror-desktop_1.3.3_x64-setup.exe
    ```
-   Follow the interactive prompts (use ID: `PieApps.LifeMirror`). The tool can fork and submit the PR automatically with your GitHub account.
+   Follow the interactive prompts (use ID: `PieApps.LifeMirrorDesktop`). The tool can fork and submit the PR automatically with your GitHub account.
 
 2. **Option B (Manual Manifest Validation)**:
-   The manifest template is located at `distribution/winget/PieApps.LifeMirror.yaml`.
+   The manifest template is located at `distribution/winget/PieApps.LifeMirrorDesktop.yaml`.
    - Enable local testing in PowerShell:
      ```powershell
      winget settings --enable LocalManifestFiles
      ```
    - Validate the manifest syntax:
      ```powershell
-     winget validate --manifest distribution/winget/PieApps.LifeMirror.yaml
+     winget validate --manifest distribution/winget/PieApps.LifeMirrorDesktop.yaml
      ```
    - Test installation locally:
      ```powershell
-     winget install --manifest distribution/winget/PieApps.LifeMirror.yaml
+     winget install --manifest distribution/winget/PieApps.LifeMirrorDesktop.yaml
      ```
 
 ### Automated Updates for Future Releases:
 For every subsequent release (v1.3.4+), update the package in one command:
 ```powershell
-wingetcreate update PieApps.LifeMirror --submit --version <NEW_VERSION> --urls <URL_TO_NEW_EXE>
+wingetcreate update PieApps.LifeMirrorDesktop --submit --version <NEW_VERSION> --urls <URL_TO_NEW_EXE>
 ```
 
 ---

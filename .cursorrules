@@ -21,3 +21,9 @@ You are an expert AI software agent developing on LifeMirror Desktop. Before pro
      - `npm run build`
      - `cargo check --manifest-path src-tauri/Cargo.toml`
      - `cargo test --manifest-path src-tauri/Cargo.toml`
+
+4. **Version Bumping & Distribution Guardrail:**
+   - When bumping the application version, NEVER edit or touch files in `distribution/` (`distribution/winget/PieApps.LifeMirrorDesktop.yaml` or `distribution/homebrew/Casks/lifemirror-desktop.rb`).
+   - `distribution/` contains static initial starter templates only.
+   - Version bumps only touch `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and `website/src/constants/links.ts`.
+   - External package manager manifests are updated in their respective external locations (WinGet via `wingetcreate update`, Homebrew via the external `PieApps/homebrew-lifemirror-desktop` repo). See `docs/RELEASE_PROCESS.md`.

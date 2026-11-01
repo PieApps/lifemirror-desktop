@@ -353,6 +353,9 @@ jobs:
           args: ${{ matrix.args }}
 ```
 
+> [!TIP]
+> For the complete step-by-step checklist on tagging releases, SLSA provenance attestation, and publishing to WinGet & Homebrew, see [docs/RELEASE_PROCESS.md](file:///var/www/pieapps/lifemirror-desktop/docs/RELEASE_PROCESS.md).
+
 ---
 
 ## 🤖 7. Multi-Agent Orchestration & Skills Architecture
