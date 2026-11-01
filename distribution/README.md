@@ -43,19 +43,19 @@ wingetcreate update PieApps.LifeMirror --submit --version <NEW_VERSION> --urls <
 
 ---
 
-## 2. 🍏 macOS: Homebrew Custom Tap (`homebrew-lifemirror`)
+## 2. 🍏 macOS: Homebrew Custom Tap (`homebrew-lifemirror-desktop`)
 
 Because official Homebrew Cask policies on unsigned binaries fluctuate, a dedicated tap provides complete ownership and seamless zero-quarantine installation for Mac users.
 
 ### Setup Instructions:
 1. Create a public repository on GitHub named:
-   `https://github.com/PieApps/homebrew-lifemirror`
-2. Copy `distribution/homebrew/Casks/lifemirror.rb` into the repository under `Casks/lifemirror.rb`.
+   `https://github.com/PieApps/homebrew-lifemirror-desktop`
+2. Copy `distribution/homebrew/Casks/lifemirror-desktop.rb` into the repository under `Casks/lifemirror-desktop.rb`.
 3. Update the `sha256` hashes in the file with the actual SHA-256 values from `SHA256SUMS.txt` of the release.
-4. Users can now install LifeMirror with:
+4. Users can now install LifeMirror Desktop with:
    ```bash
-   brew tap PieApps/lifemirror
-   brew install --cask lifemirror
+   brew tap PieApps/lifemirror-desktop
+   brew install --cask lifemirror-desktop
    ```
    *(The included `postflight` block automatically removes the `com.apple.quarantine` attribute, so the app launches immediately without Gatekeeper prompt).*
 

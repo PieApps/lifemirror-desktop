@@ -1,4 +1,4 @@
-cask "lifemirror" do
+cask "lifemirror-desktop" do
   arch arm: "aarch64", intel: "x64"
 
   version "1.3.3"
