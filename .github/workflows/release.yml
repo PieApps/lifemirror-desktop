@@ -58,3 +58,39 @@ jobs:
           prerelease: false
           generateReleaseNotes: true # GitHub generates notes from commits automatically
           args: -- --locked                  # Pass --locked through to cargo (tauri CLI uses -- as a passthrough separator)
+
+  finalize-release:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download all release assets from draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          gh release download "${{ github.ref_name }}" --dir release-assets --skip-existing
+          ls -la release-assets
+
+      - name: Generate unified SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          rm -f SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'release-assets/*'
+
+      - name: Upload SHA256SUMS.txt to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" release-assets/SHA256SUMS.txt --clobber

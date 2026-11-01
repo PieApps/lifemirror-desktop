@@ -6,7 +6,24 @@ Additionally, LifeMirror interfaces with a locally running AI to compile daily m
 
 ---
 
-## 🚀 Quick Start
+## 📦 Installing Pre-Built Binaries
+
+Pre-compiled desktop binaries are available under GitHub [Releases](../../releases). Because LifeMirror Desktop is an independent open-source project distributed without paid commercial signing certificates, your operating system will display a standard first-run prompt:
+
+* **Windows 10 / 11**: Click **More info** → **Run anyway** on the Microsoft Defender SmartScreen dialog.
+* **macOS (Sequoia 15+)**: Open the app once to trigger the warning, then go to **System Settings → Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway**.
+  * *Terminal command*:
+    ```bash
+    xattr -dr com.apple.quarantine "/Applications/LifeMirror Desktop.app"
+    ```
+* **Linux (.deb / AppImage)**:
+  * Debian / Ubuntu: `sudo dpkg -i lifemirror-desktop_*.deb`
+  * AppImage: `chmod +x lifemirror-desktop_*.AppImage && ./lifemirror-desktop_*.AppImage`
+  * *Note for Ubuntu 22.04+*: Run `sudo apt install libfuse2` if running the standalone AppImage.
+
+---
+
+## 🚀 Building & Running from Source
 
 ### 1. Install Prerequisites
 

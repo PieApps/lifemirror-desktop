@@ -6,7 +6,32 @@ Welcome to LifeMirror Desktop! This privacy-first utility turns your raw daily a
 
 ## 1. Prerequisites & Installation
 
-To run LifeMirror Desktop locally, ensure you have Rust (Tauri 2.0 compiler core) and Node.js installed:
+### Packaged Desktop Binaries (First-Time Launch Guide)
+
+Because LifeMirror Desktop is an independent open-source utility distributed without commercial signing certificates, your operating system will display a standard first-run warning when launching downloaded binaries:
+
+* **Windows 10 / 11 (SmartScreen)**:
+  When the blue *"Windows protected your PC"* message appears:
+  1. Click **More info**.
+  2. Click **Run anyway**.
+* **macOS (Sequoia 15+)**:
+  1. Double-click `LifeMirror Desktop.app` once (Gatekeeper prompts standard security warning).
+  2. Open **System Settings → Privacy & Security**.
+  3. Scroll down to the **Security** section and click **Open Anyway**.
+  4. *Terminal alternative*:
+     ```bash
+     xattr -dr com.apple.quarantine "/Applications/LifeMirror Desktop.app"
+     ```
+* **Linux (.deb / AppImage)**:
+  * **Debian / Ubuntu**: `sudo dpkg -i lifemirror-desktop_*.deb`
+  * **AppImage**: `chmod +x lifemirror-desktop_*.AppImage && ./lifemirror-desktop_*.AppImage`
+  * *Note for Ubuntu 22.04+*: Install `libfuse2` if running AppImages: `sudo apt install libfuse2`.
+
+---
+
+### Building & Running from Source
+
+To run LifeMirror Desktop locally from source, ensure you have Rust (Tauri 2.0 compiler core) and Node.js installed:
 
 ```bash
 # Clone the repository and install Node dependencies
