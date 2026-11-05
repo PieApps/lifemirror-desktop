@@ -117,13 +117,42 @@ Stores individual sub-events (like tab switches) separately from active OS-level
 * `metadata`: `TEXT` (Nullable)
 * `timestamp`: `TEXT NOT NULL` (ISO 8601 string, UTC format)
 
-### Resilient SQLCipher Initialization & Fail-Soft Recovery
-On startup, `DbState::new` opens the database and runs a verification query (`SELECT count(*) FROM sqlite_master;`) immediately after applying `PRAGMA key`. If the query fails (due to decryption key changes, file corruption, or database format issues):
-1. The connection is cleanly dropped.
-2. The corrupt database file is renamed and backed up to `<name>.db.bak`.
-3. A fresh, clean database is initialized with the secure credentials, avoiding runtime panic crashes on application boot.
+### Fail-Safe Zero-Data-Loss Vault Architecture & Inter-Process Locking
 
-Additionally, a database-level write guardrail is implemented inside `insert_activity_log` to reject insertions immediately if `tracking_active` is `"false"`.
+To guarantee that user data is never compromised, corrupted, or wiped under headless subprocess runs or credential hiccups:
+
+1. **Strict Immutability & Fail-Safe Invariant:**
+   - Under no circumstances does the application ever rename or replace an existing database with a fresh schema on decryption failure. If candidate keys fail to unlock the database, the file remains 100% byte-for-byte immutable and untouched.
+   - The desktop GUI alerts the user via a native desktop notification and safely terminates without mutating any disk state.
+
+2. **Inter-Process Advisory Locking (`.vault.lock`):**
+   - The database directory contains an advisory lock file (`.vault.lock`).
+   - The desktop GUI acquires an **exclusive lock** during startup migrations, backups, and staged rekeys.
+   - The headless browser native messaging host acquires a **shared lock** via `try_lock_shared()`. If the lock is held exclusively by the GUI, the host immediately responds to Chrome with `{"error": "vault_busy"}` and exits without blocking.
+
+3. **Candidate Key Probing (`SQLITE_OPEN_READ_ONLY`):**
+   - Key candidates are gathered from:
+     - `LIFEMIRROR_DB_KEY` (debug builds only)
+     - OS Keyring (`com.lifemirror.desktop`)
+     - Protected mirror (`.vault_key` created with mode `0600` and dir `0700`)
+     - Pending rekey file (`.vault_key.next`)
+     - Legacy default passphrase
+   - Candidates are tested using `SQLITE_OPEN_READ_ONLY` connections with SQLCipher 3/4 compatibility fallbacks. Re-opening with read-write permissions only occurs once a verified winning candidate is established.
+
+4. **First-Launch Guardrail:**
+   - A missing database file is NOT automatically assumed to be a first launch (it may indicate an unmounted partition or moved directory).
+   - A new vault key is minted ONLY if: the DB file is missing **AND** no key exists in the OS Keyring/mirror **AND** no `.bak` backup files exist in the data directory.
+   - If any credential or backup is present, the app fails safe with `VaultError::AnomalousMissingDb` to protect against overwriting existing credentials.
+
+5. **Atomic Staged Rekey & Pre-Swap Key Persistence:**
+   - Rekeying from legacy or temporary keys uses SQLCipher's native transactional `sqlcipher_export`.
+   - The new key is persisted durably to `.vault_key.next` and verified before any disk swap occurs.
+   - The database is exported to a staged file with the new key, verified independently, checkpointed (`wal_checkpoint(TRUNCATE)`), sidecars unlinked, and atomically renamed over the target database. Finally, `.vault_key.next` is promoted to `.vault_key` and synced to the OS Keyring.
+
+6. **Online Backups with Rolling Retention:**
+   - Consistent transactional snapshots are created via `sqlcipher_export` before schema migrations and before rekeys.
+   - Backups are formatted as `lifemirror-desktop.{tag}.{YYYYMMDD_HHMMSS_fff}.bak` (millisecond timestamp precision).
+   - Rolling retention automatically prunes backups beyond the newest 5 copies per tag.
 
 ---
 
@@ -143,6 +172,7 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
   ```
 * **Active Tab Caching:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event, which are then read by the background OS focus poller to map active tab URLs to the OS-level window focus state.
 * **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `sub_session_events` table via `insert_sub_session_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
+* **Error Framing & Graceful Handshake:** If the host process cannot open the database (e.g., `vault_locked`, `vault_busy`, `vault_needs_upgrade`, or `vault_missing`), it serializes a 4-byte native-endian length-prefixed JSON error to `stdout` (e.g. `{"error": "vault_locked", "message": "..."}`) and exits cleanly with exit code 0. No unformatted log text is ever written to `stdout` (all diagnostics go to `stderr`), preserving the binary stream protocol of the browser native messaging interface.
 
 ---
 

@@ -1,6 +1,7 @@
-use rusqlite::{functions::FunctionFlags, params, Connection, Result};
-use std::path::Path;
+use rusqlite::{functions::FunctionFlags, params, Connection, OpenFlags, Result};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use fs2::FileExt;
 use crate::memory_engine::collector::NormalizedEvent;
 
 use serde::{Deserialize, Serialize};
@@ -160,9 +161,174 @@ pub fn extract_domain(url: &str) -> String {
     }
 }
 
-const KEYRING_SERVICE: &str = "com.lifemirror.desktop";
-const KEYRING_USER: &str = "database_encryption_key";
-const LEGACY_DEFAULT_KEY: &str = "lifemirror_default_secure_vault_passphrase_256";
+pub const KEYRING_SERVICE: &str = "com.lifemirror.desktop";
+pub const KEYRING_USER: &str = "database_encryption_key";
+pub const LEGACY_DEFAULT_KEY: &str = "lifemirror_default_secure_vault_passphrase_256";
+
+#[derive(Debug, thiserror::Error)]
+pub enum VaultError {
+    #[error("Database file not found: {0}")]
+    VaultNotFound(String),
+
+    #[error("Vault is locked: cannot unlock database with available credentials")]
+    CannotUnlockDatabase,
+
+    #[error("Vault is busy (exclusive lock held by migration or backup)")]
+    VaultBusy,
+
+    #[error("Database schema requires upgrade")]
+    NeedsUpgrade,
+
+    #[error("Anomalous missing database: DB file is missing, but credentials or backups exist. Refusing to create new vault.")]
+    AnomalousMissingDb,
+
+    #[error("Key store error: {0}")]
+    KeyStore(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("SQLite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+}
+
+pub type VaultResult<T> = std::result::Result<T, VaultError>;
+
+pub trait KeyStore: Send + Sync {
+    fn get_key(&self) -> VaultResult<String>;
+    fn set_key(&self, key: &str) -> VaultResult<()>;
+}
+
+pub struct OsKeyStore {
+    service: String,
+    user: String,
+}
+
+impl OsKeyStore {
+    pub fn new() -> Self {
+        Self {
+            service: KEYRING_SERVICE.to_string(),
+            user: KEYRING_USER.to_string(),
+        }
+    }
+}
+
+impl Default for OsKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KeyStore for OsKeyStore {
+    fn get_key(&self) -> VaultResult<String> {
+        let entry = keyring::Entry::new(&self.service, &self.user)
+            .map_err(|e| {
+                eprintln!("[vault][keyring] Entry::new failed: {e:?}");
+                VaultError::KeyStore(format!("Failed to create keyring entry: {e:?}"))
+            })?;
+        match entry.get_password() {
+            Ok(pass) => {
+                let trimmed = pass.trim().to_string();
+                if trimmed.is_empty() {
+                    Err(VaultError::KeyStore("Keyring entry was empty".to_string()))
+                } else {
+                    Ok(trimmed)
+                }
+            }
+            Err(keyring::Error::NoEntry) => {
+                eprintln!("[vault][keyring] No entry found in OS keyring");
+                Err(VaultError::KeyStore("No entry in keyring".to_string()))
+            }
+            Err(e) => {
+                eprintln!("[vault][keyring] get_password error: {e:?}");
+                Err(VaultError::KeyStore(format!("Keyring get_password failed: {e:?}")))
+            }
+        }
+    }
+
+    fn set_key(&self, key: &str) -> VaultResult<()> {
+        let entry = keyring::Entry::new(&self.service, &self.user)
+            .map_err(|e| {
+                eprintln!("[vault][keyring] Entry::new failed during set: {e:?}");
+                VaultError::KeyStore(format!("Failed to create keyring entry: {e:?}"))
+            })?;
+        entry.set_password(key).map_err(|e| {
+            eprintln!("[vault][keyring] set_password error: {e:?}");
+            VaultError::KeyStore(format!("Failed to set keyring password: {e:?}"))
+        })
+    }
+}
+
+pub struct MockKeyStore {
+    key: std::sync::RwLock<Option<String>>,
+}
+
+impl MockKeyStore {
+    pub fn new() -> Self {
+        Self {
+            key: std::sync::RwLock::new(None),
+        }
+    }
+
+    pub fn with_key(initial_key: &str) -> Self {
+        Self {
+            key: std::sync::RwLock::new(Some(initial_key.to_string())),
+        }
+    }
+}
+
+impl KeyStore for MockKeyStore {
+    fn get_key(&self) -> VaultResult<String> {
+        match self.key.read().unwrap().as_ref() {
+            Some(k) if !k.trim().is_empty() => Ok(k.trim().to_string()),
+            _ => Err(VaultError::KeyStore("MockKeyStore: No key stored".to_string())),
+        }
+    }
+
+    fn set_key(&self, key: &str) -> VaultResult<()> {
+        *self.key.write().unwrap() = Some(key.to_string());
+        Ok(())
+    }
+}
+
+pub struct VaultLock {
+    file: std::fs::File,
+}
+
+impl VaultLock {
+    pub fn acquire_exclusive(db_dir: &Path) -> VaultResult<Self> {
+        let _ = std::fs::create_dir_all(db_dir);
+        let lock_path = db_dir.join(".vault.lock");
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&lock_path)?;
+        FileExt::lock_exclusive(&file)?;
+        Ok(Self { file })
+    }
+
+    pub fn try_shared(db_dir: &Path) -> VaultResult<Self> {
+        let _ = std::fs::create_dir_all(db_dir);
+        let lock_path = db_dir.join(".vault.lock");
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&lock_path)?;
+        match FileExt::try_lock_shared(&file) {
+            Ok(()) => Ok(Self { file }),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Err(VaultError::VaultBusy),
+            Err(e) => Err(VaultError::Io(e)),
+        }
+    }
+}
+
+impl Drop for VaultLock {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.file);
+    }
+}
 
 fn generate_secure_key() -> String {
     format!(
@@ -173,93 +339,284 @@ fn generate_secure_key() -> String {
 }
 
 fn write_protected_key_file(path: &Path, key: &str) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(path);
+    std::fs::create_dir_all(parent)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+    }
+
+    let tmp_path = parent.join(format!(".vault_key.tmp.{}", uuid::Uuid::new_v4().simple()));
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
+        use std::io::Write;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
-            .open(path)?;
-        use std::io::Write;
+            .open(&tmp_path)?;
         file.write_all(key.as_bytes())?;
+        file.sync_all()?;
     }
     #[cfg(not(unix))]
     {
-        std::fs::write(path, key)?;
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)?;
+        file.write_all(key.as_bytes())?;
+        file.sync_all()?;
     }
+
+    std::fs::rename(&tmp_path, path)?;
+
+    #[cfg(unix)]
+    {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+
     Ok(())
 }
 
-fn get_or_create_encryption_key(db_dir: &Path) -> String {
-    // 1. Explicit environment variable override (for CI, test runners, or custom deploy)
-    if let Ok(env_key) = std::env::var("LIFEMIRROR_DB_KEY") {
-        let trimmed = env_key.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
-        }
-    }
+fn collect_candidate_keys<K: KeyStore>(db_dir: &Path, key_store: &K) -> Vec<String> {
+    let mut candidates = Vec::new();
 
-    // 2. Try OS Keyring
-    let keyring_entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER);
-    if let Ok(ref entry) = keyring_entry {
-        match entry.get_password() {
-            Ok(pass) => {
-                let trimmed = pass.trim().to_string();
-                if !trimmed.is_empty() {
-                    return trimmed;
-                }
-                // If stored password was empty, generate and set a new one
-                let new_key = generate_secure_key();
-                if let Err(e) = entry.set_password(&new_key) {
-                    eprintln!("[vault] Failed to store key in OS keyring ({e}), saving to fallback file");
-                } else {
-                    eprintln!("[vault] Generated new secure 256-bit vault key and stored in OS keyring");
-                    return new_key;
-                }
-            }
-            Err(keyring::Error::NoEntry) => {
-                let new_key = generate_secure_key();
-                if let Err(e) = entry.set_password(&new_key) {
-                    eprintln!("[vault] Failed to store key in OS keyring ({e}), saving to fallback file");
-                } else {
-                    eprintln!("[vault] Generated new secure 256-bit vault key and stored in OS keyring");
-                    return new_key;
-                }
-            }
-            Err(e) => {
-                eprintln!("[vault] OS keyring not accessible ({e}), using fallback file");
-            }
-        }
-    }
-
-    // 3. Fallback file: db_dir/.vault_key
-    let key_file = db_dir.join(".vault_key");
-    if key_file.exists() {
-        if let Ok(key) = std::fs::read_to_string(&key_file) {
-            let trimmed = key.trim().to_string();
+    // 1. Explicit env override for debug builds only
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(env_key) = std::env::var("LIFEMIRROR_DB_KEY") {
+            let trimmed = env_key.trim().to_string();
             if !trimmed.is_empty() {
-                return trimmed;
+                candidates.push(trimmed);
             }
         }
     }
 
-    // 4. Generate fresh key and write to protected file
-    let new_key = generate_secure_key();
-    let _ = std::fs::create_dir_all(db_dir);
-    if let Err(e) = write_protected_key_file(&key_file, &new_key) {
-        eprintln!("[vault] Failed to write fallback key file: {e}");
+    // 2. KeyStore (OS Keyring or Mock)
+    if let Ok(key) = key_store.get_key() {
+        let trimmed = key.trim().to_string();
+        if !trimmed.is_empty() {
+            candidates.push(trimmed);
+        }
+    }
+
+    // 3. Mirror file .vault_key
+    let key_file = db_dir.join(".vault_key");
+    if let Ok(key) = std::fs::read_to_string(&key_file) {
+        let trimmed = key.trim().to_string();
+        if !trimmed.is_empty() && !candidates.contains(&trimmed) {
+            candidates.push(trimmed);
+        }
+    }
+
+    // 4. Pending rekey file .vault_key.next (in case of crash mid-rekey)
+    let key_next_file = db_dir.join(".vault_key.next");
+    if let Ok(key) = std::fs::read_to_string(&key_next_file) {
+        let trimmed = key.trim().to_string();
+        if !trimmed.is_empty() && !candidates.contains(&trimmed) {
+            candidates.push(trimmed);
+        }
+    }
+
+    // 5. Legacy default passphrase
+    if !candidates.contains(&LEGACY_DEFAULT_KEY.to_string()) {
+        candidates.push(LEGACY_DEFAULT_KEY.to_string());
+    }
+
+    candidates
+}
+
+fn probe_candidate_keys(db_path: &Path, candidates: &[String]) -> VaultResult<String> {
+    for candidate in candidates {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Open read-only so trial never creates WAL/journal sidecars or replays hot journals
+        let conn_res = Connection::open_with_flags(
+            db_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        );
+
+        let conn = match conn_res {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[vault][probe] Could not open database file read-only: {e}");
+                continue;
+            }
+        };
+
+        if conn.pragma_update(None, "key", trimmed).is_ok() {
+            if conn.query_row("SELECT count(*) FROM sqlite_master;", [], |r| r.get::<_, u32>(0)).is_ok() {
+                return Ok(trimmed.to_string());
+            }
+
+            // Compatibility fallback for SQLCipher 3 databases
+            if conn.pragma_update(None, "cipher_compatibility", 3).is_ok() {
+                if conn.query_row("SELECT count(*) FROM sqlite_master;", [], |r| r.get::<_, u32>(0)).is_ok() {
+                    return Ok(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    Err(VaultError::CannotUnlockDatabase)
+}
+
+fn check_first_launch_guardrail<K: KeyStore>(db_dir: &Path, key_store: &K) -> VaultResult<()> {
+    let key_file = db_dir.join(".vault_key");
+    let key_next_file = db_dir.join(".vault_key.next");
+
+    let has_keyring_key = key_store.get_key().is_ok();
+    let has_mirror_key = key_file.exists() || key_next_file.exists();
+    let has_backups = if let Ok(entries) = std::fs::read_dir(db_dir) {
+        entries.filter_map(|e| e.ok()).any(|e| {
+            let name = e.file_name();
+            let s = name.to_string_lossy();
+            s.starts_with("lifemirror-desktop.") && s.ends_with(".bak")
+        })
     } else {
-        eprintln!("[vault] Saved fallback key to {}", key_file.display());
+        false
+    };
+
+    if has_keyring_key || has_mirror_key || has_backups {
+        eprintln!(
+            "[vault][first_launch] Refusing to initialize fresh DB: DB missing but credentials or backups exist! (keyring: {has_keyring_key}, mirror: {has_mirror_key}, backups: {has_backups})"
+        );
+        return Err(VaultError::AnomalousMissingDb);
     }
 
-    // Also attempt to sync to keyring if entry was created successfully
-    if let Ok(ref entry) = keyring_entry {
-        let _ = entry.set_password(&new_key);
+    Ok(())
+}
+
+fn create_online_backup(
+    src_conn: &Connection,
+    current_key: &str,
+    db_dir: &Path,
+    tag: &str,
+) -> VaultResult<PathBuf> {
+    let now = chrono::Utc::now();
+    let filename = format!(
+        "lifemirror-desktop.{}.{}.bak",
+        tag,
+        now.format("%Y%m%d_%H%M%S_%3f")
+    );
+    let backup_path = db_dir.join(&filename);
+
+    let dst_str = backup_path.to_str().unwrap().replace('\'', "''");
+    let key_str = current_key.replace('\'', "''");
+
+    src_conn.execute_batch(&format!(
+        "ATTACH DATABASE '{dst_str}' AS backup KEY '{key_str}';\
+         SELECT sqlcipher_export('backup');\
+         DETACH DATABASE backup;"
+    ))?;
+
+    prune_old_backups(db_dir, tag, 5);
+    Ok(backup_path)
+}
+
+fn prune_old_backups(db_dir: &Path, tag: &str, retain_count: usize) {
+    let prefix = format!("lifemirror-desktop.{}.", tag);
+    if let Ok(entries) = std::fs::read_dir(db_dir) {
+        let mut matching_files: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
+                    file_name.starts_with(&prefix) && file_name.ends_with(".bak")
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        matching_files.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+
+        if matching_files.len() > retain_count {
+            for old_file in &matching_files[retain_count..] {
+                let _ = std::fs::remove_file(old_file);
+            }
+        }
+    }
+}
+
+fn atomic_staged_rekey<K: KeyStore>(
+    db_path: &Path,
+    old_key: &str,
+    new_key: &str,
+    key_store: &K,
+) -> VaultResult<Connection> {
+    let db_dir = db_path.parent().unwrap_or(db_path);
+    let key_next_file = db_dir.join(".vault_key.next");
+    let key_file = db_dir.join(".vault_key");
+
+    // 1. Write pending key to .vault_key.next and read it back
+    write_protected_key_file(&key_next_file, new_key)?;
+    let read_back = std::fs::read_to_string(&key_next_file)?;
+    if read_back.trim() != new_key {
+        return Err(VaultError::KeyStore("Failed to verify .vault_key.next persistence".to_string()));
     }
 
-    new_key
+    // 2. Open active connection with old key and create online backup
+    let active_conn = DbState::open_and_verify(db_path, old_key)?;
+    let _ = create_online_backup(&active_conn, old_key, db_dir, "prerekey")?;
+
+    // 3. Create staged copy using sqlcipher_export with NEW key
+    let staged_path = db_dir.join(format!(".vault.staged.{}.db", uuid::Uuid::new_v4().simple()));
+    {
+        let staged_str = staged_path.to_str().unwrap().replace('\'', "''");
+        let new_key_str = new_key.replace('\'', "''");
+        active_conn.execute_batch(&format!(
+            "ATTACH DATABASE '{staged_str}' AS backup KEY '{new_key_str}';\
+             SELECT sqlcipher_export('backup');\
+             DETACH DATABASE backup;"
+        ))?;
+    }
+
+    // 4. Verify staged copy independently with new key
+    {
+        let staged_conn = DbState::open_and_verify(&staged_path, new_key)?;
+        let count: u32 = staged_conn.query_row("SELECT count(*) FROM sqlite_master;", [], |r| r.get(0))?;
+        eprintln!("[vault][rekey] Staged rekey succeeded with {count} verified schema objects");
+    }
+
+    // 5. Checkpoint active connection, drop it, and clean up sidecars
+    let _ = active_conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
+    drop(active_conn);
+
+    let _ = std::fs::remove_file(db_path.with_extension("db-wal"));
+    let _ = std::fs::remove_file(db_path.with_extension("db-shm"));
+    let _ = std::fs::remove_file(db_path.with_extension("db-journal"));
+
+    // 6. Atomically swap staged copy over target db
+    std::fs::rename(&staged_path, db_path)?;
+
+    #[cfg(unix)]
+    {
+        if let Ok(f) = std::fs::File::open(db_path) {
+            let _ = f.sync_all();
+        }
+        if let Ok(d) = std::fs::File::open(db_dir) {
+            let _ = d.sync_all();
+        }
+    }
+
+    // 7. Promote .vault_key.next to .vault_key
+    std::fs::rename(&key_next_file, &key_file)?;
+
+    // 8. Update key_store
+    let _ = key_store.set_key(new_key);
+
+    // 9. Open connection with new key
+    DbState::open_and_verify(db_path, new_key)
 }
 
 pub struct DbState {
@@ -269,72 +626,160 @@ pub struct DbState {
 impl DbState {
     pub fn new<P: AsRef<Path>>(db_path: P) -> Self {
         let path_ref = db_path.as_ref();
-        let db_dir = path_ref.parent().unwrap_or(path_ref);
-        let secure_key = get_or_create_encryption_key(db_dir);
+        let store = OsKeyStore::new();
+        Self::init_or_migrate(path_ref, &store).expect("Failed to initialize database vault")
+    }
 
-        let conn = match Self::open_with_migration(path_ref, &secure_key) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "Database verification failed: {:?}. Backing up and resetting DB...",
-                    e
-                );
-                if path_ref.exists() {
-                    let mut backup_path = path_ref.to_path_buf();
-                    backup_path.set_extension("db.bak");
-                    let _ = std::fs::rename(path_ref, backup_path);
-                }
-                Self::open_and_verify(path_ref, &secure_key)
-                    .expect("Failed to create a fresh SQLite database after reset")
+    pub fn open_existing<K: KeyStore>(db_path: &Path, key_store: &K) -> VaultResult<Self> {
+        if !db_path.exists() {
+            return Err(VaultError::VaultNotFound(db_path.display().to_string()));
+        }
+
+        let db_dir = db_path.parent().unwrap_or(db_path);
+        let candidates = collect_candidate_keys(db_dir, key_store);
+        let winning_key = probe_candidate_keys(db_path, &candidates)?;
+
+        let conn = Self::open_and_verify(db_path, &winning_key)?;
+
+        let table_count: u32 = conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='activity_logs';",
+            [],
+            |r| r.get(0),
+        )?;
+        if table_count == 0 {
+            return Err(VaultError::NeedsUpgrade);
+        }
+
+        Ok(DbState {
+            conn: Mutex::new(conn),
+        })
+    }
+
+    pub fn init_or_migrate<K: KeyStore>(db_path: &Path, key_store: &K) -> VaultResult<Self> {
+        let db_dir = db_path.parent().unwrap_or(db_path);
+        let _lock = VaultLock::acquire_exclusive(db_dir)?;
+
+        let key_file = db_dir.join(".vault_key");
+
+        let conn = if !db_path.exists() {
+            check_first_launch_guardrail(db_dir, key_store)?;
+
+            let new_key = generate_secure_key();
+            write_protected_key_file(&key_file, &new_key)?;
+            let read_back = std::fs::read_to_string(&key_file)?;
+            if read_back.trim() != new_key {
+                return Err(VaultError::KeyStore("Failed to verify .vault_key write".to_string()));
             }
+
+            let _ = key_store.set_key(&new_key);
+            Self::open_and_verify(db_path, &new_key)?
+        } else {
+            let candidates = collect_candidate_keys(db_dir, key_store);
+            let winning_key = probe_candidate_keys(db_path, &candidates)?;
+
+            let (conn, active_key) = if winning_key == LEGACY_DEFAULT_KEY {
+                eprintln!("[vault] Database is encrypted with legacy key. Initiating atomic staged rekey...");
+                let new_key = generate_secure_key();
+                let c = atomic_staged_rekey(db_path, &winning_key, &new_key, key_store)?;
+                (c, new_key)
+            } else {
+                let _ = write_protected_key_file(&key_file, &winning_key);
+                let _ = key_store.set_key(&winning_key);
+                let c = Self::open_and_verify(db_path, &winning_key)?;
+                (c, winning_key)
+            };
+
+            let _ = create_online_backup(&conn, &active_key, db_dir, "premigration");
+            conn
         };
 
         let state = DbState {
             conn: Mutex::new(conn),
         };
-        state.run_migrations().expect("Database migration failed");
-        state
+        state.run_migrations().map_err(VaultError::Sqlite)?;
+        Ok(state)
     }
 
-    fn open_with_migration(db_path: &Path, secure_key: &str) -> Result<Connection> {
-        // If DB file does not exist, open and create directly with secure_key
-        if !db_path.exists() {
-            return Self::open_and_verify(db_path, secure_key);
-        }
+    /// Safely archives the current locked database and any existing key mirrors
+    /// under a timestamped name, and initializes a fresh vault with a new key.
+    /// Under NO circumstances is any file deleted: everything is preserved in an archive.
+    pub fn archive_and_start_fresh<K: KeyStore>(
+        db_path: &Path,
+        key_store: &K,
+    ) -> VaultResult<Self> {
+        let db_dir = db_path.parent().unwrap_or(db_path);
+        let _lock = VaultLock::acquire_exclusive(db_dir)?;
 
-        // 1. Try opening with the secure key
-        match Self::open_and_verify(db_path, secure_key) {
-            Ok(conn) => return Ok(conn),
-            Err(err) => {
-                eprintln!("[vault] Could not open database with current secure key: {err:?}");
+        let now = chrono::Utc::now();
+        let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+
+        // 1. Move locked database to archive
+        if db_path.exists() {
+            let archive_db_path = db_dir.join(format!("lifemirror.archive.{}.db", timestamp));
+            std::fs::rename(db_path, &archive_db_path)?;
+            eprintln!(
+                "[vault] Archived locked database to {}",
+                archive_db_path.display()
+            );
+
+            // Clean up sidecars by archiving them too if present
+            let wal = db_path.with_extension("db-wal");
+            if wal.exists() {
+                let _ = std::fs::rename(&wal, db_dir.join(format!("lifemirror.archive.{}.db-wal", timestamp)));
+            }
+            let shm = db_path.with_extension("db-shm");
+            if shm.exists() {
+                let _ = std::fs::rename(&shm, db_dir.join(format!("lifemirror.archive.{}.db-shm", timestamp)));
             }
         }
 
-        // 2. Check if database is using the legacy default passphrase
-        eprintln!("[vault] Checking if database is encrypted with legacy default key for migration...");
-        let legacy_conn = Self::open_and_verify(db_path, LEGACY_DEFAULT_KEY)?;
-
-        // 3. Backup prior to rekeying
-        let backup_path = db_path.with_extension("db.prerekey.bak");
-        if let Err(e) = std::fs::copy(db_path, &backup_path) {
-            eprintln!("[vault] Warning: Failed to create pre-rekey backup: {e}");
-        } else {
-            eprintln!("[vault] Created pre-rekey backup at {}", backup_path.display());
+        // 2. Archive any existing .vault_key so it doesn't collide
+        let key_file = db_dir.join(".vault_key");
+        if key_file.exists() {
+            let archive_key_path = db_dir.join(format!(".vault_key.archive.{}", timestamp));
+            let _ = std::fs::rename(&key_file, archive_key_path);
+        }
+        let key_next_file = db_dir.join(".vault_key.next");
+        if key_next_file.exists() {
+            let archive_key_next_path = db_dir.join(format!(".vault_key.next.archive.{}", timestamp));
+            let _ = std::fs::rename(&key_next_file, archive_key_next_path);
         }
 
-        // 4. Rekey database with the new secure key
-        legacy_conn.pragma_update(None, "rekey", secure_key)?;
+        // 3. Generate a brand new 256-bit secure key
+        let new_key = generate_secure_key();
 
-        // 5. Verify rekeyed database
-        let count: u32 = legacy_conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
-        eprintln!("[vault] Successfully rekeyed database to secure OS keyring key (verified {count} objects)!");
+        // 4. Write new key to .vault_key with mode 0600 and verify read-back
+        write_protected_key_file(&key_file, &new_key)?;
+        let read_back = std::fs::read_to_string(&key_file)?;
+        if read_back.trim() != new_key {
+            return Err(VaultError::KeyStore(
+                "Failed to verify .vault_key write during fresh vault creation".to_string(),
+            ));
+        }
 
-        Ok(legacy_conn)
+        // 5. Store new key in key_store (OS Keyring or Mock)
+        let _ = key_store.set_key(&new_key);
+
+        // 6. Open, verify, and run initial migrations on the fresh DB
+        let conn = Self::open_and_verify(db_path, &new_key)?;
+        let state = DbState {
+            conn: Mutex::new(conn),
+        };
+        state.run_migrations().map_err(VaultError::Sqlite)?;
+
+        eprintln!("[vault] Fresh vault initialized successfully with secure new key.");
+        Ok(state)
     }
 
-    fn open_and_verify(db_path: &Path, encryption_key: &str) -> Result<Connection> {
+    fn open_and_verify(db_path: &Path, encryption_key: &str) -> VaultResult<Connection> {
         let conn = Connection::open(db_path)?;
-        conn.pragma_update(None, "key", &encryption_key)?;
+        conn.pragma_update(None, "key", encryption_key)?;
+        Self::register_custom_functions(&conn)?;
+        let _: u32 = conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
+        Ok(conn)
+    }
+
+    fn register_custom_functions(conn: &Connection) -> rusqlite::Result<()> {
         conn.create_scalar_function(
             "extract_domain",
             1,
@@ -343,10 +788,7 @@ impl DbState {
                 let url: Option<String> = ctx.get(0)?;
                 Ok(url.as_deref().map(extract_domain).unwrap_or_default())
             },
-        )?;
-        // Verify key by running a test query
-        let _: u32 = conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
-        Ok(conn)
+        )
     }
 
     fn run_migrations(&self) -> Result<()> {
@@ -1762,6 +2204,270 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_sqlcipher_export() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_export_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let src_path = temp_dir.join("src.db");
+        let dst_path = temp_dir.join("dst.db");
+        let key1 = "old_key_11111";
+        let key2 = "new_key_22222";
+
+        {
+            let src_conn = Connection::open(&src_path).unwrap();
+            src_conn.pragma_update(None, "key", key1).unwrap();
+            src_conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, msg TEXT);", []).unwrap();
+            src_conn.execute("INSERT INTO t (msg) VALUES ('secret export data');", []).unwrap();
+
+            let dst_str = dst_path.to_str().unwrap().replace('\'', "''");
+            let key2_str = key2.replace('\'', "''");
+            src_conn.execute_batch(&format!(
+                "ATTACH DATABASE '{dst_str}' AS backup KEY '{key2_str}';\
+                 SELECT sqlcipher_export('backup');\
+                 DETACH DATABASE backup;"
+            )).unwrap();
+        }
+
+        let dst_conn = Connection::open(&dst_path).unwrap();
+        dst_conn.pragma_update(None, "key", key2).unwrap();
+        let msg: String = dst_conn.query_row("SELECT msg FROM t WHERE id = 1;", [], |r| r.get(0)).unwrap();
+        assert_eq!(msg, "secret export data");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_byte_for_byte_immutability_on_failed_unlock() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_immut_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("protected.db");
+        let valid_key = "very_secret_valid_vault_key_99999";
+
+        // Create original DB
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "key", valid_key).unwrap();
+            conn.execute("CREATE TABLE user_secrets (id INTEGER PRIMARY KEY, secret TEXT);", []).unwrap();
+            conn.execute("INSERT INTO user_secrets (secret) VALUES ('critical private reflection');", []).unwrap();
+        }
+
+        let original_bytes = std::fs::read(&db_path).unwrap();
+        assert!(!original_bytes.is_empty());
+
+        // Attempt open_existing with wrong key
+        let wrong_store = MockKeyStore::with_key("completely_wrong_key");
+        let res_open = DbState::open_existing(&db_path, &wrong_store);
+        assert!(matches!(res_open, Err(VaultError::CannotUnlockDatabase)));
+
+        // Attempt init_or_migrate with wrong key
+        let res_init = DbState::init_or_migrate(&db_path, &wrong_store);
+        assert!(matches!(res_init, Err(VaultError::CannotUnlockDatabase)));
+
+        // Verify byte-for-byte immutability: NO modification, NO rename, NO auto-reset!
+        let after_bytes = std::fs::read(&db_path).unwrap();
+        assert_eq!(original_bytes, after_bytes, "Database bytes MUST be 100% immutable on failed unlock");
+
+        // Verify NO .bak file was created
+        let bak_path = db_path.with_extension("db.bak");
+        assert!(!bak_path.exists(), "Auto-reset .bak must NEVER be created");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_first_launch_guardrail_anomalies() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_guardrail_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("missing.db");
+
+        // Case A: DB missing, but keystore already has a key
+        let store_with_key = MockKeyStore::with_key("existing_orphaned_key");
+        let res_a = DbState::init_or_migrate(&db_path, &store_with_key);
+        assert!(matches!(res_a, Err(VaultError::AnomalousMissingDb)));
+        assert!(!db_path.exists(), "DB file must NOT be created when guardrail trips");
+        assert_eq!(store_with_key.get_key().unwrap(), "existing_orphaned_key", "Existing key must NOT be overwritten");
+
+        // Case B: DB missing, keystore empty, but backup file exists
+        let empty_store = MockKeyStore::new();
+        let fake_backup = temp_dir.join("lifemirror-desktop.premigration.20261105_120000_000.bak");
+        std::fs::write(&fake_backup, b"fake backup content").unwrap();
+        let res_b = DbState::init_or_migrate(&db_path, &empty_store);
+        assert!(matches!(res_b, Err(VaultError::AnomalousMissingDb)));
+        let _ = std::fs::remove_file(&fake_backup);
+
+        // Case C: Genuine first launch (no DB, no key, no backups)
+        let fresh_store = MockKeyStore::new();
+        let res_c = DbState::init_or_migrate(&db_path, &fresh_store);
+        assert!(res_c.is_ok(), "Genuine first launch should succeed");
+        assert!(db_path.exists(), "DB file should be created");
+        assert!(fresh_store.get_key().is_ok(), "Key should be saved in keystore");
+        assert!(temp_dir.join(".vault_key").exists(), ".vault_key should be written");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_archive_and_start_fresh() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_archive_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("current.db");
+        let old_key = "original_user_secret_key_11111";
+
+        // 1. Create a database with old_key and some data
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "key", old_key).unwrap();
+            conn.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, content TEXT);", []).unwrap();
+            conn.execute("INSERT INTO notes (content) VALUES ('precious reflection');", []).unwrap();
+        }
+
+        // 2. Mock store has wrong key -> init_or_migrate fails
+        let wrong_store = MockKeyStore::with_key("wrong_key");
+        assert!(matches!(
+            DbState::init_or_migrate(&db_path, &wrong_store),
+            Err(VaultError::CannotUnlockDatabase)
+        ));
+
+        // 3. User chooses archive_and_start_fresh
+        let fresh_store = MockKeyStore::new();
+        let fresh_db = DbState::archive_and_start_fresh(&db_path, &fresh_store).unwrap();
+        drop(fresh_db);
+
+        // 4. Assert fresh DB exists at db_path and has new key
+        let new_key = fresh_store.get_key().unwrap();
+        assert_ne!(new_key, old_key);
+        let new_conn = Connection::open(&db_path).unwrap();
+        new_conn.pragma_update(None, "key", &new_key).unwrap();
+        let table_count: u32 = new_conn.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='activity_logs';", [], |r| r.get(0)).unwrap();
+        assert!(table_count > 0, "Fresh DB must have schema initialized");
+
+        // 5. Assert archived DB exists and old data is 100% preserved
+        let archives: Vec<_> = std::fs::read_dir(&temp_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with("lifemirror.archive.") && name.ends_with(".db")
+            })
+            .collect();
+        assert_eq!(archives.len(), 1, "Exactly one archive DB should exist");
+        let archived_path = &archives[0].path();
+        let archive_conn = Connection::open(archived_path).unwrap();
+        archive_conn.pragma_update(None, "key", old_key).unwrap();
+        let note: String = archive_conn.query_row("SELECT content FROM notes WHERE id = 1;", [], |r| r.get(0)).unwrap();
+        assert_eq!(note, "precious reflection", "Archived data must be 100% intact and preserved");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_candidate_trial_fallback() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_fallback_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("fallback.db");
+        let valid_key = "correct_vault_key_1234567890abcdef";
+
+        // Create DB with valid_key
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "key", valid_key).unwrap();
+            conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY);", []).unwrap();
+        }
+
+        // Put stale/invalid key in keystore
+        let stale_store = MockKeyStore::with_key("stale_invalid_key");
+
+        // Put valid key in .vault_key mirror
+        write_protected_key_file(&temp_dir.join(".vault_key"), valid_key).unwrap();
+
+        // init_or_migrate should probe, fail on keystore, fall through to .vault_key, succeed, and sync keystore
+        let db = DbState::init_or_migrate(&db_path, &stale_store).unwrap();
+        drop(db);
+
+        assert_eq!(stale_store.get_key().unwrap(), valid_key, "Winning key should be synced to keystore");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_pending_key_recovery() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_pending_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("pending.db");
+        let new_key = "fresh_rekeyed_key_pending_987654";
+
+        // Create DB with new_key
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "key", new_key).unwrap();
+            conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY);", []).unwrap();
+        }
+
+        // Store is empty, .vault_key missing, but .vault_key.next has new_key (crash recovery scenario)
+        let store = MockKeyStore::new();
+        write_protected_key_file(&temp_dir.join(".vault_key.next"), new_key).unwrap();
+
+        let db = DbState::init_or_migrate(&db_path, &store);
+        assert!(db.is_ok(), "Should unlock using .vault_key.next candidate");
+        assert_eq!(store.get_key().unwrap(), new_key);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_online_backup_rolling_retention() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_retention_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("retention.db");
+        let key = "backup_test_key_123";
+
+        let conn = Connection::open(&db_path).unwrap();
+        conn.pragma_update(None, "key", key).unwrap();
+        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT);", []).unwrap();
+        conn.execute("INSERT INTO t (v) VALUES ('data');", []).unwrap();
+
+        // Create 7 backups
+        for _ in 0..7 {
+            create_online_backup(&conn, key, &temp_dir, "testretention").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+
+        let backups: Vec<_> = std::fs::read_dir(&temp_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                name.starts_with("lifemirror-desktop.testretention.") && name.ends_with(".bak")
+            })
+            .collect();
+
+        assert_eq!(backups.len(), 5, "Retention must prune to exactly the newest 5 copies");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_vault_lock_contention() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_lock_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        // Exclusive lock
+        let exclusive = VaultLock::acquire_exclusive(&temp_dir).unwrap();
+
+        // Shared lock attempt while exclusive is held must return VaultBusy
+        let shared_res = VaultLock::try_shared(&temp_dir);
+        assert!(matches!(shared_res, Err(VaultError::VaultBusy)));
+
+        // Release exclusive
+        drop(exclusive);
+
+        // Now shared lock should succeed
+        let shared_res2 = VaultLock::try_shared(&temp_dir);
+        assert!(shared_res2.is_ok());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn test_legacy_key_migration() {
         let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_{}", uuid::Uuid::new_v4().simple()));
         let _ = std::fs::create_dir_all(&temp_dir);
@@ -1781,20 +2487,26 @@ mod tests {
             ).unwrap();
         }
 
-        // 2. Open via open_with_migration with a new secure key
-        let secure_key = "secure_random_key_test_1234567890abcdef";
-        let migrated_conn = DbState::open_with_migration(&db_path, secure_key).unwrap();
+        // 2. Open via init_or_migrate with MockKeyStore
+        let mock_store = MockKeyStore::new();
+        let migrated_db = DbState::init_or_migrate(&db_path, &mock_store).unwrap();
 
         // Verify data preserved
-        let note: String = migrated_conn
-            .query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(note, "hello legacy user");
-        drop(migrated_conn);
+        {
+            let conn = migrated_db.conn.lock().unwrap();
+            let note: String = conn
+                .query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(note, "hello legacy user");
+        }
+        drop(migrated_db);
 
-        // Verify backup was created
-        let backup_path = db_path.with_extension("db.prerekey.bak");
-        assert!(backup_path.exists(), "Pre-rekey backup should exist");
+        // Verify pre-rekey online backup was created
+        let has_backup = std::fs::read_dir(&temp_dir).unwrap().filter_map(|e| e.ok()).any(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with("lifemirror-desktop.prerekey.") && name.ends_with(".bak")
+        });
+        assert!(has_backup, "Pre-rekey online backup should exist");
 
         // Verify opening with legacy key now fails
         let fail_conn = Connection::open(&db_path).unwrap();
@@ -1802,15 +2514,15 @@ mod tests {
         let fail_result: rusqlite::Result<String> = fail_conn.query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0));
         assert!(fail_result.is_err(), "Legacy key must no longer be able to read rekeyed database");
 
-        // Verify opening with secure key succeeds
+        // Verify opening with mock_store winning key succeeds
+        let winning_key = mock_store.get_key().unwrap();
         let success_conn = Connection::open(&db_path).unwrap();
-        success_conn.pragma_update(None, "key", &secure_key).unwrap();
+        success_conn.pragma_update(None, "key", &winning_key).unwrap();
         let verified_note: String = success_conn
             .query_row("SELECT note FROM test_data WHERE id = 1;", [], |row| row.get(0))
             .unwrap();
         assert_eq!(verified_note, "hello legacy user");
 
-        // Cleanup
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
@@ -1820,7 +2532,8 @@ mod tests {
         let _ = std::fs::create_dir_all(&temp_dir);
         let db_path = temp_dir.join("test_nodes.db");
 
-        let db = DbState::new(&db_path);
+        let mock_store = MockKeyStore::new();
+        let db = DbState::init_or_migrate(&db_path, &mock_store).unwrap();
         let date_str = "2026-10-27";
 
         // Insert two memory nodes

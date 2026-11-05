@@ -1,6 +1,7 @@
 let port = null;
 let isNativeConnected = false;
 let lastReportedPayload = null;
+let lastVaultError = null;
 const hostName = "com.lifemirror.desktop";
 
 // Resilient native port connection
@@ -11,6 +12,20 @@ function getNativePort() {
     port = chrome.runtime.connectNative(hostName);
     isNativeConnected = true;
     console.log("Connecting to LifeMirror Desktop Native Messaging Host...");
+
+    port.onMessage.addListener((msg) => {
+      console.log("LifeMirror native message received:", msg);
+      if (msg && msg.error) {
+        lastVaultError = msg.error;
+        if (msg.error === "vault_locked") {
+          chrome.action.setBadgeText({ text: "LOCK" });
+          chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
+        } else if (msg.error === "vault_busy") {
+          chrome.action.setBadgeText({ text: "BUSY" });
+          chrome.action.setBadgeBackgroundColor({ color: "#f59e0b" });
+        }
+      }
+    });
     
     port.onDisconnect.addListener(() => {
       isNativeConnected = false;
@@ -97,7 +112,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "get_status") {
     const nativePort = getNativePort();
     sendResponse({
-      connected: isNativeConnected && nativePort !== null,
+      connected: isNativeConnected && nativePort !== null && !lastVaultError,
+      vaultError: lastVaultError,
       lastEvent: lastReportedPayload,
       hostName: hostName
     });
@@ -106,9 +122,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === "ping_native") {
     port = null;
+    lastVaultError = null;
+    chrome.action.setBadgeText({ text: "" });
     const nativePort = getNativePort();
     sendResponse({
-      connected: isNativeConnected && nativePort !== null
+      connected: isNativeConnected && nativePort !== null,
+      vaultError: lastVaultError
     });
     return true;
   }

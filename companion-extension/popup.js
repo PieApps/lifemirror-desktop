@@ -153,7 +153,15 @@ async function updateActiveTabPreview() {
 async function checkNativeHostStatus() {
   try {
     const response = await chrome.runtime.sendMessage({ action: "get_status" });
-    if (response && response.connected) {
+    if (response && response.vaultError) {
+      if (response.vaultError === "vault_locked") {
+        setConnectionStatus(false, "Vault Locked (Open Desktop App)");
+      } else if (response.vaultError === "vault_busy") {
+        setConnectionStatus(false, "Vault Busy (Updating DB...)");
+      } else {
+        setConnectionStatus(false, `Vault Error (${response.vaultError})`);
+      }
+    } else if (response && response.connected) {
       setConnectionStatus(true, "Desktop Connected");
     } else {
       setConnectionStatus(false, "Desktop Offline");

@@ -25,7 +25,7 @@ tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl", "functions"] }
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl", "functions", "backup"] }
 chrono = { version = "0.4", features = ["serde"] }
 once_cell = "1"
 active-win-pos-rs = "0.8.2"
@@ -33,6 +33,7 @@ libc = "0.2"
 
 regex = "1.10.4"
 interprocess = { version = "2.2.1", features = ["tokio"] }
+fs2 = "0.4"
 uuid = { version = "1.8.0", features = ["v4", "fast-rng"] }
 async-trait = "0.1.80"
 reqwest = { version = "0.12", features = ["json", "stream"] }

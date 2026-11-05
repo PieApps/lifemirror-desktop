@@ -1,6 +1,6 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize};
-use crate::db::{extract_domain, SubSessionEvent, DbState};
+use crate::db::{extract_domain, DbState, OsKeyStore, SubSessionEvent, VaultError, VaultLock};
 use chrono::Utc;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,6 +15,26 @@ pub struct TabPayload {
     pub title: String,
     pub favIconUrl: Option<String>,
     pub timestamp: u64,
+}
+
+pub fn format_native_error_response(error_code: &str, message: &str) -> Vec<u8> {
+    let resp = serde_json::json!({
+        "error": error_code,
+        "message": message,
+    });
+    let json_bytes = serde_json::to_vec(&resp).unwrap_or_default();
+    let length = json_bytes.len() as u32;
+    let mut out = Vec::with_capacity(4 + json_bytes.len());
+    out.extend_from_slice(&length.to_ne_bytes());
+    out.extend_from_slice(&json_bytes);
+    out
+}
+
+pub fn send_native_error_response(error_code: &str, message: &str) {
+    let bytes = format_native_error_response(error_code, message);
+    let mut stdout = std::io::stdout().lock();
+    let _ = stdout.write_all(&bytes);
+    let _ = stdout.flush();
 }
 
 #[cfg(target_os = "linux")]
@@ -54,8 +74,61 @@ fn detect_parent_browser() -> String {
 
 // Check if the application was started in native host mode and process stdin events
 pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
-    // Initialize DB connection for this process
-    let db = Arc::new(DbState::new(db_path));
+    let db_dir = db_path.parent().unwrap_or(&db_path);
+
+    // 1. Acquire shared read/append lock
+    let _lock = match VaultLock::try_shared(db_dir) {
+        Ok(l) => l,
+        Err(VaultError::VaultBusy) => {
+            
+            eprintln!("[native-host] Vault is busy (migration/backup in progress)");
+            send_native_error_response(
+                "vault_busy",
+                "LifeMirror vault is busy (migration or backup in progress). Please wait.",
+            );
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("[native-host] Failed to acquire lock: {e}");
+            send_native_error_response("vault_error", &format!("Lock error: {e}"));
+            return Ok(());
+        }
+    };
+
+    // 2. Open existing database read-only/append mode (no migrations, no rekeying, no file creation)
+    let key_store = OsKeyStore::new();
+    let db = match DbState::open_existing(&db_path, &key_store) {
+        Ok(state) => Arc::new(state),
+        Err(VaultError::CannotUnlockDatabase) => {
+            eprintln!("[native-host] Cannot unlock database with available credentials");
+            send_native_error_response(
+                "vault_locked",
+                "LifeMirror vault is locked. Please open the desktop application.",
+            );
+            return Ok(());
+        }
+        Err(VaultError::VaultNotFound(_)) => {
+            eprintln!("[native-host] Database file does not exist yet");
+            send_native_error_response(
+                "vault_missing",
+                "LifeMirror database not found. Please open the desktop application.",
+            );
+            return Ok(());
+        }
+        Err(VaultError::NeedsUpgrade) => {
+            eprintln!("[native-host] Database requires migration by the desktop application");
+            send_native_error_response(
+                "vault_needs_upgrade",
+                "LifeMirror database requires upgrade. Please open the desktop application.",
+            );
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("[native-host] Database open error: {e}");
+            send_native_error_response("vault_error", &format!("Database error: {e}"));
+            return Ok(());
+        }
+    };
     let parent_browser = detect_parent_browser();
     // Create FIFO queue channel for database writes
     let (tx, rx) = mpsc::channel::<TabPayload>();
@@ -160,4 +233,22 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_native_error_response() {
+        let bytes = format_native_error_response("vault_locked", "Test locked message");
+        assert!(bytes.len() > 4);
+        let len_bytes: [u8; 4] = bytes[0..4].try_into().unwrap();
+        let payload_len = u32::from_ne_bytes(len_bytes) as usize;
+        assert_eq!(bytes.len() - 4, payload_len);
+
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes[4..]).unwrap();
+        assert_eq!(parsed["error"], "vault_locked");
+        assert_eq!(parsed["message"], "Test locked message");
+    }
 }

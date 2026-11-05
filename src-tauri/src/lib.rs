@@ -53,6 +53,124 @@ fn get_home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VaultLockAction {
+    Retry,
+    OpenFolder,
+    ArchiveAndStartFresh,
+    Exit,
+}
+
+fn confirm_archive_and_start_fresh(_db_path: &std::path::Path) -> bool {
+    let msg = "Are you sure you want to archive your existing database and start fresh?\n\n\
+        • SAFEGUARD: Your current database will NOT be deleted or overwritten.\n\
+        • It will be safely preserved as: lifemirror.archive.<timestamp>.db\n\
+        • A fresh, clean vault will be created so you can start using LifeMirror immediately.\n\n\
+        If you find your decryption key or password later, your archived database can be fully restored.\n\n\
+        Do you want to proceed and create a fresh vault?";
+
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::process::Command::new("zenity")
+            .args([
+                "--question",
+                "--title=Confirm Archive & Start Fresh",
+                &format!("--text={msg}"),
+                "--ok-label=Yes, Archive & Start Fresh",
+                "--cancel-label=Cancel",
+                "--width=520",
+            ])
+            .status();
+
+        if let Ok(s) = status {
+            return s.success();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = format!(
+            r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
+$res = [System.Windows.Forms.MessageBox]::Show("{}", "Confirm Archive & Start Fresh", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question);
+if ($res -eq "Yes") {{ exit 0 }} else {{ exit 1 }}"#,
+            msg.replace('"', "`\"")
+        );
+        if let Ok(s) = std::process::Command::new("powershell").args(["-Command", &script]).status() {
+            return s.success();
+        }
+    }
+
+    false
+}
+
+fn show_vault_locked_dialog(db_path: &std::path::Path, err: &db::VaultError) -> VaultLockAction {
+    let msg = format!(
+        "LifeMirror cannot unlock your database with available credentials.\n\n\
+        Error: {err}\n\n\
+        SAFEGUARD ACTIVE: Your data has NOT been modified, renamed, or wiped.\n\n\
+        Database Location:\n{}\n\n\
+        What would you like to do?\n\
+        • Retry: Attempt to unlock again (e.g. after unlocking system keyring)\n\
+        • Open Data Folder: View your database and backup files\n\
+        • Archive & Start Fresh: Safely preserve old database and start fresh\n\
+        • Exit: Close without changing anything",
+        db_path.display()
+    );
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("zenity")
+            .args([
+                "--question",
+                "--title=LifeMirror Vault Locked",
+                &format!("--text={msg}"),
+                "--ok-label=Retry",
+                "--cancel-label=Exit",
+                "--extra-button=Open Data Folder",
+                "--extra-button=Archive & Start Fresh",
+                "--width=560",
+            ])
+            .output();
+
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if stdout == "Archive & Start Fresh" {
+                return VaultLockAction::ArchiveAndStartFresh;
+            } else if stdout == "Open Data Folder" {
+                return VaultLockAction::OpenFolder;
+            } else if out.status.success() {
+                return VaultLockAction::Retry;
+            } else {
+                return VaultLockAction::Exit;
+            }
+        } else {
+            let _ = std::process::Command::new("notify-send")
+                .args(["-u", "critical", "LifeMirror Vault Locked", &msg])
+                .status();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = format!(
+            r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
+$res = [System.Windows.Forms.MessageBox]::Show("{}", "LifeMirror Vault Locked", [System.Windows.Forms.MessageBoxButtons]::AbortRetryIgnore, [System.Windows.Forms.MessageBoxIcon]::Warning);
+if ($res -eq "Retry") {{ Write-Output "Retry" }} elseif ($res -eq "Ignore") {{ Write-Output "OpenFolder" }} else {{ Write-Output "Exit" }}"#,
+            msg.replace('"', "`\"")
+        );
+        if let Ok(out) = std::process::Command::new("powershell").args(["-Command", &script]).output() {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if stdout == "Retry" {
+                return VaultLockAction::Retry;
+            } else if stdout == "OpenFolder" {
+                return VaultLockAction::OpenFolder;
+            }
+        }
+    }
+
+    VaultLockAction::Exit
+}
+
 /// Auto-installs the native messaging host manifest for Chrome, Brave, Chromium, Edge, etc.
 /// Called on every GUI startup so users never have to run a manual script.
 /// The manifest is written with the path of the currently running executable,
@@ -748,7 +866,56 @@ pub fn run() {
     // the current binary path — no manual setup required for users.
     install_native_host_manifest();
 
-    let db_state = DbState::new(db_path);
+    let db_state = loop {
+        let err = match DbState::init_or_migrate(&db_path, &db::OsKeyStore::new()) {
+            Ok(db) => break db,
+            Err(e) => {
+                eprintln!("[FATAL] Could not unlock or initialize LifeMirror vault: {e}");
+                e
+            }
+        };
+
+        let action = show_vault_locked_dialog(&db_path, &err);
+        match action {
+            VaultLockAction::Retry => {
+                eprintln!("[vault] Retrying vault unlock...");
+                continue;
+            }
+            VaultLockAction::OpenFolder => {
+                if let Some(parent) = db_path.parent() {
+                    #[cfg(target_os = "linux")]
+                    let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
+                    #[cfg(target_os = "windows")]
+                    let _ = std::process::Command::new("explorer").arg(parent).spawn();
+                    #[cfg(target_os = "macos")]
+                    let _ = std::process::Command::new("open").arg(parent).spawn();
+                }
+                continue;
+            }
+            VaultLockAction::ArchiveAndStartFresh => {
+                if confirm_archive_and_start_fresh(&db_path) {
+                    eprintln!("[vault] Creating fresh vault and archiving locked database...");
+                    match DbState::archive_and_start_fresh(&db_path, &db::OsKeyStore::new()) {
+                        Ok(fresh_db) => {
+                            eprintln!("[vault] Fresh vault initialized successfully.");
+                            break fresh_db;
+                        }
+                        Err(archive_err) => {
+                            eprintln!("[FATAL] Failed to archive and create fresh vault: {archive_err}");
+                            continue;
+                        }
+                    }
+                } else {
+                    eprintln!("[vault] User cancelled fresh vault creation.");
+                    continue;
+                }
+            }
+            VaultLockAction::Exit => {
+                eprintln!("[vault] Exiting application. Invariant preserved: database untouched.");
+                return;
+            }
+        }
+    };
     let db_arc = Arc::new(db_state);
 
     // Run DB daily rollup on startup
