@@ -66,9 +66,9 @@ English
 
 | Asset | Dimensions | Status | Filename / Notes |
 |-------|-----------|--------|------------------|
-| Store Icon [REQUIRED] | 128×128 PNG | ✅ Ready | `icon128.png` |
-| Small Icon | 16×16 PNG | ✅ Ready | `icon16.png` |
-| Medium Icon | 48×48 PNG | ✅ Ready | `icon48.png` |
+| Store Icon [REQUIRED] | 128×128 PNG | ✅ Ready | `icons/icon128.png` |
+| Small Icon | 16×16 PNG | ✅ Ready | `icons/icon16.png` |
+| Medium Icon | 48×48 PNG | ✅ Ready | `icons/icon48.png` |
 | Screenshot 1 [REQUIRED] | 1280×800 or 640×400 | ⬜ Recommended | LifeMirror Desktop timeline displaying synced web tab cards |
 | Screenshot 2 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Recommended | Extension popup / status showing connected local native host |
 | Small Promo Tile [OPTIONAL] | 440×280 | ⬜ Optional | Promo graphic with LifeMirror branding |
