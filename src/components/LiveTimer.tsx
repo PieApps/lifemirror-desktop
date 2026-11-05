@@ -3,23 +3,26 @@ import { formatDuration } from "../utils/formatDuration";
 
 interface LiveTimerProps {
   startTime?: string;
+  activeStartTime?: string;
   initialDuration: number;
   isActive?: boolean;
   className?: string;
 }
 
-export function LiveTimer({ startTime, initialDuration, isActive = false, className }: LiveTimerProps) {
+export function LiveTimer({ startTime, activeStartTime, initialDuration, isActive = false, className }: LiveTimerProps) {
   const [duration, setDuration] = useState(initialDuration);
 
   useEffect(() => {
-    if (!isActive || !startTime) {
+    if (!isActive) {
       setDuration(initialDuration);
       return;
     }
 
+    const mountTime = Date.now();
+
     const calcElapsed = () => {
-      const startMs = new Date(startTime).getTime();
-      return Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+      const secondsSinceMount = Math.max(0, Math.floor((Date.now() - mountTime) / 1000));
+      return initialDuration + secondsSinceMount;
     };
 
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -61,7 +64,7 @@ export function LiveTimer({ startTime, initialDuration, isActive = false, classN
       stopTimer();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [startTime, initialDuration, isActive]);
+  }, [startTime, activeStartTime, initialDuration, isActive]);
 
   return <span className={className}>{formatDuration(duration)}</span>;
 }

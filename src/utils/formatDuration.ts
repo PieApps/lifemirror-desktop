@@ -51,3 +51,17 @@ export function parseLocalDate(dateStr: string): Date {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
+
+/**
+ * Localized time formatter (e.g. "10:00 AM" or "14:30").
+ */
+export function formatTime(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return "00:00";
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return "00:00";
+  }
+}
+

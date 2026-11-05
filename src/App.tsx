@@ -373,13 +373,30 @@ function App() {
               displayTitle = `${dominantAppName} Session`;
             }
 
+            const actStarts = (mn.activities || []).map(a => new Date(a.start_time).getTime());
+            const actEnds = (mn.activities || []).map(a => new Date(a.start_time).getTime() + a.duration * 1000);
+            const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
+            const mnTime = new Date(mn.timestamp).getTime();
+            const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
+            let calculatedDuration = (mn.activities || []).reduce((acc, act) => acc + act.duration, 0);
+            if (calculatedDuration === 0 && mn.sub_events && mn.sub_events.length > 0) {
+              if (mn.sub_events.length > 1) {
+                const span = Math.round((Math.max(...subTimes) - Math.min(...subTimes)) / 1000);
+                calculatedDuration = Math.max(60, Math.min(span, mn.sub_events.length * 60));
+              } else {
+                calculatedDuration = 60;
+              }
+            }
+            const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes) : startMs + calculatedDuration * 1000);
+
             return {
               isGroupedSession: true,
-              id: mn.id || Math.random(),
+              id: mn.id || Math.abs(String(mn.timestamp).split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0)),
               app_name: dominantAppName,
               window_title: displayTitle,
-              start_time: mn.timestamp,
-              duration: (mn.activities || []).reduce((acc, act) => acc + act.duration, 0),
+              start_time: new Date(startMs).toISOString(),
+              end_time: new Date(endMs).toISOString(),
+              duration: calculatedDuration,
               source: dominantSource,
               url: dominantUrl,
               icon_url: dominantIcon,

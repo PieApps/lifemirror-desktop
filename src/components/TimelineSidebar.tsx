@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
-import { formatDurationFull } from '../utils/formatDuration';
+import { formatDurationFull, formatTime } from '../utils/formatDuration';
 
 /**
  * Full-precision duration formatter (e.g. "3m 12s").
@@ -85,7 +85,17 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
               showBadge={true}
             />
             <div>
-              <div className="text-sm text-[var(--text-color)] font-mono mb-1">{getFormatDuration(node.duration)}</div>
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-base font-semibold text-[var(--text-color)] font-mono">
+                  {getFormatDuration(node.duration)}
+                </span>
+                <span className="text-xs text-[var(--text-muted)] font-normal">active</span>
+                {node.isGroupedSession && node.end_time && node.end_time !== node.start_time && (
+                  <span className="text-xs text-[var(--text-muted)] font-mono opacity-80">
+                    • {formatTime(node.start_time)} - {formatTime(node.end_time)}
+                  </span>
+                )}
+              </div>
               <div className="text-xs text-[var(--text-muted)] capitalize px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/5 inline-block">
                 {node.isMemoryNode ? 'AI Processed Session' : node.source}
               </div>
@@ -195,21 +205,26 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                 .map((event, idx, arr) => {
                   let dur = event.duration;
                   if (dur === 0) {
-                    // This is a sub-session event (tab switch, editor event, etc.) with no
-                    // inherent duration. Estimate it as the gap to the next sub-event.
-                    const nextSubEvent = arr.slice(idx + 1).find(e => !e.isActivity);
-                    if (nextSubEvent) {
-                      dur = Math.max(0, (new Date(nextSubEvent.timestamp).getTime() - new Date(event.timestamp).getTime()) / 1000);
+                    const eventMs = new Date(event.timestamp).getTime();
+                    const containingAct = node.originalActivities.find(a => {
+                      const s = new Date(a.start_time).getTime();
+                      const e = s + a.duration * 1000;
+                      return eventMs >= s && eventMs <= e;
+                    });
+
+                    if (containingAct) {
+                      const nextSub = arr.slice(idx + 1).find(e => !e.isActivity);
+                      const nextTime = nextSub
+                        ? new Date(nextSub.timestamp).getTime()
+                        : (new Date(containingAct.start_time).getTime() + containingAct.duration * 1000);
+                      dur = Math.max(0, Math.min(Math.round((nextTime - eventMs) / 1000), containingAct.duration));
                     } else {
-                      // Last sub-event: use the sum of activity durations that start at or
-                      // after this event, capped to avoid inflating with wall-clock gaps.
-                      const eventMs = new Date(event.timestamp).getTime();
-                      const remaining = node.originalActivities
-                        .filter(a => new Date(a.start_time).getTime() >= eventMs)
-                        .reduce((sum, a) => sum + a.duration, 0);
-                      dur = remaining > 0
-                        ? remaining
-                        : Math.max(0, (new Date(node.start_time).getTime() + node.duration * 1000 - eventMs) / 1000);
+                      const nextEvent = arr[idx + 1];
+                      const nextTime = nextEvent
+                        ? new Date(nextEvent.timestamp).getTime()
+                        : (node.end_time ? new Date(node.end_time).getTime() : eventMs + 60000);
+                      const rawGap = Math.max(0, Math.round((nextTime - eventMs) / 1000));
+                      dur = Math.min(rawGap, node.duration > 0 ? node.duration : 1800);
                     }
                   }
                   const formattedDur = dur > 0 ? getFormatDuration(dur) : "<1s";

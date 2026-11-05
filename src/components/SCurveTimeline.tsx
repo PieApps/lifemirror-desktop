@@ -9,6 +9,7 @@ import { MemoryNode } from "../types";
 import AppIcon, { extractDomain } from './AppIcon';
 import TimelineSidebar from './TimelineSidebar';
 import { LiveTimer } from './LiveTimer';
+import { formatDuration } from '../utils/formatDuration';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
 
 export const isBrowserApp = (appName?: string): boolean => {
@@ -155,6 +156,7 @@ export interface TimelineNode {
   app_name: string;
   window_title: string;
   start_time: string;
+  end_time?: string;
   duration: number;
   source: string;
   url?: string;
@@ -230,7 +232,13 @@ export function SCurveTimeline({
            dominantUrl = dominant.primary_uri;
            dominantSource = dominant.session_type || 'Browser';
            if (calculatedDuration === 0) {
-             calculatedDuration = Math.max(60, mn.sub_events.length * 60);
+             if (mn.sub_events.length > 1) {
+               const subTimes = mn.sub_events.map(s => new Date(s.timestamp).getTime());
+               const span = Math.round((Math.max(...subTimes) - Math.min(...subTimes)) / 1000);
+               calculatedDuration = Math.max(60, Math.min(span, mn.sub_events.length * 60));
+             } else {
+               calculatedDuration = 60;
+             }
            }
         }
 
@@ -244,13 +252,20 @@ export function SCurveTimeline({
           }
         }
 
+        const actStarts = (mn.activities || []).map(a => new Date(a.start_time).getTime());
+        const actEnds = (mn.activities || []).map(a => new Date(a.start_time).getTime() + a.duration * 1000);
+        const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
+        const mnTime = new Date(mn.timestamp).getTime();
+        const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
+        const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes) : startMs + calculatedDuration * 1000);
+
         return {
           isGroupedSession: true,
-          // Use a stable id — Math.random() breaks React reconciliation on every render.
-          id: mn.id ?? `memory-fallback-${mn.timestamp}`,
+          id: mn.id ?? Math.abs(String(mn.timestamp).split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0)),
           app_name: dominantAppName,
           window_title: displayTitle,
-          start_time: mn.timestamp,
+          start_time: new Date(startMs).toISOString(),
+          end_time: new Date(endMs).toISOString(),
           duration: calculatedDuration,
           source: dominantSource,
           url: dominantUrl,
@@ -267,18 +282,17 @@ export function SCurveTimeline({
 
       const groupedNodes: TimelineNode[] = [];
       let currentGroup: TimelineNode | null = null;
+      let currentGroupEndMs = 0;
 
       initialNodes.forEach(node => {
+         const nodeStartMs = new Date(node.start_time).getTime();
+         const nodeEndMs = node.end_time ? new Date(node.end_time).getTime() : (nodeStartMs + node.duration * 1000);
+
          if (!currentGroup) {
-           // Deep-copy so the merge loop never mutates the objects that came
-           // out of the .map() above (which share array refs with the prop).
            currentGroup = structuredClone(node);
+           currentGroupEndMs = nodeEndMs;
          } else {
-           const groupStart = new Date(currentGroup.start_time).getTime();
-           const groupEnd = groupStart + currentGroup.duration * 1000;
-           const nodeStart = new Date(node.start_time).getTime();
-           const nodeEnd = nodeStart + node.duration * 1000;
-           const gap = (nodeStart - groupEnd) / 1000;
+           const gap = (nodeStartMs - currentGroupEndMs) / 1000;
 
            const appA = (currentGroup.app_name || "").toLowerCase();
            const appB = (node.app_name || "").toLowerCase();
@@ -303,11 +317,14 @@ export function SCurveTimeline({
 
            if (shouldMerge) {
              // Handle duration merge without artificial double counting
-             if (nodeStart >= groupEnd) {
+             if (nodeStartMs >= currentGroupEndMs) {
                currentGroup.duration += node.duration;
-             } else if (nodeEnd > groupEnd) {
-               currentGroup.duration += Math.round((nodeEnd - groupEnd) / 1000);
+             } else if (nodeEndMs > currentGroupEndMs) {
+               currentGroup.duration += Math.round((nodeEndMs - currentGroupEndMs) / 1000);
              }
+
+             currentGroupEndMs = Math.max(currentGroupEndMs, nodeEndMs);
+             currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
 
              currentGroup.originalActivities.push(...node.originalActivities);
              currentGroup.subEvents.push(...node.subEvents);
@@ -331,6 +348,7 @@ export function SCurveTimeline({
            } else {
              groupedNodes.push(currentGroup);
              currentGroup = structuredClone(node);
+             currentGroupEndMs = nodeEndMs;
            }
          }
       });
@@ -353,16 +371,19 @@ export function SCurveTimeline({
           finalNodes.push(ev.data as TimelineNode);
         } else {
           const dEvent = ev.data as DistractionEvent;
+          const dEventStartMs = new Date(dEvent.timestamp).getTime();
+          const dEventEndMs = dEventStartMs + (dEvent.duration_blocked || 0) * 1000;
+
           if (currentDistractionGroup) {
-            const lastEvent = currentDistractionGroup.distractionEvents![currentDistractionGroup.distractionEvents!.length - 1];
-            const t1 = new Date(lastEvent.timestamp).getTime();
-            const t2 = new Date(dEvent.timestamp).getTime();
-            const gapSeconds = (t2 - t1) / 1000;
+            const lastGroupEndMs = currentDistractionGroup.end_time
+              ? new Date(currentDistractionGroup.end_time).getTime()
+              : new Date(currentDistractionGroup.distractionEvents![currentDistractionGroup.distractionEvents!.length - 1].timestamp).getTime();
+            const gapSeconds = (dEventStartMs - lastGroupEndMs) / 1000;
             
             if (gapSeconds < 1800) {
               currentDistractionGroup.distractionEvents!.push(dEvent);
-              // Sum individual blocked durations — do not use wall-clock span.
               currentDistractionGroup.duration += dEvent.duration_blocked;
+              currentDistractionGroup.end_time = new Date(Math.max(lastGroupEndMs, dEventEndMs)).toISOString();
             } else {
               finalNodes.push(currentDistractionGroup);
               currentDistractionGroup = {
@@ -371,6 +392,7 @@ export function SCurveTimeline({
                 app_name: "Distraction Shield",
                 window_title: "Distractions Blocked",
                 start_time: dEvent.timestamp,
+                end_time: new Date(dEventEndMs).toISOString(),
                 duration: dEvent.duration_blocked,
                 source: "Shield",
                 originalActivities: [],
@@ -387,6 +409,7 @@ export function SCurveTimeline({
               app_name: "Distraction Shield",
               window_title: "Distractions Blocked",
               start_time: dEvent.timestamp,
+              end_time: new Date(dEventEndMs).toISOString(),
               duration: dEvent.duration_blocked,
               source: "Shield",
               originalActivities: [],
@@ -409,6 +432,7 @@ export function SCurveTimeline({
 
     const nodes: TimelineNode[] = [];
     let currentGroup: TimelineNode | null = null;
+    let currentGroupEndMs = 0;
 
     const allEvents = [
       ...activities.map(a => ({ type: 'activity', time: new Date(a.start_time).getTime(), data: a as ActivityNode })),
@@ -421,27 +445,25 @@ export function SCurveTimeline({
         const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
         const isEditor = activity.source.toLowerCase() === "editor";
         const isGroupable = isBrowser || isEditor;
+        const actStartMs = new Date(activity.start_time).getTime();
+        const actEndMs = actStartMs + activity.duration * 1000;
 
         if (isGroupable) {
-          // t1 = true end of the last activity in the group (start + duration),
-          // not just start_time. Using start_time alone underestimates the gap
-          // for back-to-back events and can cause incorrect grouping decisions.
-          const lastAct = currentGroup && !currentGroup.isShield
-            ? currentGroup.originalActivities[currentGroup.originalActivities.length - 1]
-            : null;
-          const t1 = lastAct
-            ? new Date(lastAct.start_time).getTime() + lastAct.duration * 1000
+          const gapSeconds = currentGroup && !currentGroup.isShield
+            ? (actStartMs - currentGroupEndMs) / 1000
             : 0;
-          const t2 = new Date(activity.start_time).getTime();
-          const gapSeconds = (t2 - t1) / 1000;
 
           if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
             currentGroup.originalActivities.push(activity);
 
-            // Accumulate actual tracked time only — do NOT use wall-clock span
-            // (end_of_last - start_of_first) because idle gaps between tracked
-            // activities would inflate the displayed session duration.
-            currentGroup.duration += activity.duration;
+            if (actStartMs >= currentGroupEndMs) {
+              currentGroup.duration += activity.duration;
+            } else if (actEndMs > currentGroupEndMs) {
+              currentGroup.duration += Math.round((actEndMs - currentGroupEndMs) / 1000);
+            }
+
+            currentGroupEndMs = Math.max(currentGroupEndMs, actEndMs);
+            currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
 
             if (activity.notes) {
               currentGroup.notes = currentGroup.notes
@@ -451,12 +473,14 @@ export function SCurveTimeline({
           } else {
             if (currentGroup) nodes.push(currentGroup);
             
+            currentGroupEndMs = actEndMs;
             currentGroup = {
               isGroupedSession: true,
               id: activity.id,
               app_name: activity.app_name,
               window_title: `${activity.app_name} Session`,
               start_time: activity.start_time,
+              end_time: new Date(actEndMs).toISOString(),
               duration: activity.duration,
               source: isBrowser ? "Browser" : "Editor",
               notes: activity.notes,
@@ -468,6 +492,7 @@ export function SCurveTimeline({
           if (currentGroup) {
             nodes.push(currentGroup);
             currentGroup = null;
+            currentGroupEndMs = 0;
           }
           nodes.push({
             isGroupedSession: false,
@@ -475,6 +500,7 @@ export function SCurveTimeline({
             app_name: activity.app_name,
             window_title: activity.window_title,
             start_time: activity.start_time,
+            end_time: new Date(actEndMs).toISOString(),
             duration: activity.duration,
             source: activity.source,
             url: activity.url,
@@ -487,25 +513,29 @@ export function SCurveTimeline({
         }
       } else {
         const dEvent = ev.data as DistractionEvent;
-        const t1 = currentGroup && currentGroup.isShield ? new Date(currentGroup.distractionEvents![currentGroup.distractionEvents!.length - 1].timestamp).getTime() : 0;
-        const t2 = new Date(dEvent.timestamp).getTime();
-        const gapSeconds = (t2 - t1) / 1000;
+        const dEventStartMs = new Date(dEvent.timestamp).getTime();
+        const dEventEndMs = dEventStartMs + (dEvent.duration_blocked || 0) * 1000;
+        const gapSeconds = currentGroup && currentGroup.isShield
+          ? (dEventStartMs - currentGroupEndMs) / 1000
+          : 0;
 
         if (currentGroup && currentGroup.isShield && gapSeconds < 1800) {
           currentGroup.distractionEvents!.push(dEvent);
-
-          // Sum individual blocked durations — do not use wall-clock span.
           currentGroup.duration += dEvent.duration_blocked;
+          currentGroupEndMs = Math.max(currentGroupEndMs, dEventEndMs);
+          currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
         } else {
           if (currentGroup) {
             nodes.push(currentGroup);
           }
+          currentGroupEndMs = dEventEndMs;
           currentGroup = {
             isGroupedSession: true,
             id: -dEvent.id,
             app_name: "Distraction Shield",
             window_title: "Distractions Blocked",
             start_time: dEvent.timestamp,
+            end_time: new Date(dEventEndMs).toISOString(),
             duration: dEvent.duration_blocked,
             source: "Shield",
             originalActivities: [],
@@ -525,15 +555,31 @@ export function SCurveTimeline({
     nodes.forEach((node) => {
       if (node.isGroupedSession) {
         const groupStart = new Date(node.start_time).getTime();
-        const groupEnd = groupStart + node.duration * 1000;
+        const groupEnd = node.end_time
+          ? new Date(node.end_time).getTime()
+          : Math.max(
+              groupStart + node.duration * 1000,
+              ...node.originalActivities.map(a => new Date(a.start_time).getTime() + a.duration * 1000)
+            );
         
-        node.subEvents = subSessionEvents.filter((event) => {
+        const matched = subSessionEvents.filter((event) => {
           if (event.session_type !== node.source) return false;
           if (node.source === "Editor" && event.parent_app_name !== node.app_name) return false;
           
           const eventTime = new Date(event.timestamp).getTime();
           return eventTime >= groupStart - 5000 && eventTime <= groupEnd + 5000;
         });
+
+        if (node.subEvents.length === 0) {
+          node.subEvents = matched;
+        } else {
+          const existingIds = new Set(node.subEvents.map(s => s.id));
+          matched.forEach(s => {
+            if (!existingIds.has(s.id)) {
+              node.subEvents.push(s);
+            }
+          });
+        }
       }
     });
 
@@ -682,6 +728,12 @@ export function SCurveTimeline({
 
             {processedNodes.map((node, index) => {
               const { y: nodeY, col } = getNodeCoords(index);
+              const isNodeActive = Boolean(
+                activeNodeStartTime && (
+                  node.start_time === activeNodeStartTime ||
+                  node.originalActivities?.some(a => a.start_time === activeNodeStartTime)
+                )
+              );
 
               return (
                 <React.Fragment key={node.id || index}>
@@ -710,7 +762,7 @@ export function SCurveTimeline({
                   </div>
 
                   {/* NOW badge — shown on the live active node */}
-                  {activeNodeStartTime && node.start_time === activeNodeStartTime && (
+                  {isNodeActive && (
                     <div
                       className="absolute z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
                       style={{ left: colPercentages[col], top: `${nodeY + 10}px`, transform: 'translateX(-50%)' }}
@@ -799,12 +851,13 @@ export function SCurveTimeline({
                           }
                         </span>
                       </div>
-                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0">
+                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0" title={`Active duration: ${formatDuration(node.duration)}`}>
                         <Clock className="w-2.5 h-2.5 text-violet-400" />
                         <LiveTimer
                           startTime={node.start_time}
+                          activeStartTime={activeNodeStartTime}
                           initialDuration={node.duration}
-                          isActive={Boolean(activeNodeStartTime && node.start_time === activeNodeStartTime)}
+                          isActive={isNodeActive}
                         />
                       </div>
                     </div>
@@ -822,8 +875,13 @@ export function SCurveTimeline({
 
 
                     <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-[var(--border-color)]">
-                      <span className="text-[9px] text-[var(--text-muted)] font-mono">
-                        {getFormatTime(node.start_time)}
+                      <span
+                        className="text-[9px] text-[var(--text-muted)] font-mono"
+                        title={node.end_time && node.end_time !== node.start_time ? `Span: ${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}` : undefined}
+                      >
+                        {node.isGroupedSession && node.end_time && node.end_time !== node.start_time
+                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}`
+                          : getFormatTime(node.start_time)}
                       </span>
                       <div className="flex items-center gap-2">
                         <button
