@@ -24,7 +24,7 @@ export const DonateModal: React.FC<DonateModalProps> = ({ isOpen, onClose }) => 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const DONATION_EMAIL = "vrpieapps@gmail.com";
-  const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/vrpieapps";
+  const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/pieapps";
   const GITHUB_SPONSORS_URL = "https://github.com/sponsors/vrpieapps";
   const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/lifemirror-desktop/pblffjiaheggbamkjaojabdaemkflhmm";
 
