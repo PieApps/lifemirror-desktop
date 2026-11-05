@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — LifeMirror Desktop Companion
 
-> Last Updated: 2026-10-28
+> Last Updated: 2026-11-05
 
 ---
 
@@ -48,6 +48,9 @@ SUPPORT & LINKS
 • GitHub Repository: https://github.com/PieApps/lifemirror-desktop
 • Issue Tracker & Support: https://github.com/PieApps/lifemirror-desktop/issues
 • Contact Email: vrpieapps@gmail.com
+• YouTube: https://www.youtube.com/@pieapps
+• X (Twitter): https://x.com/pieapps
+• Facebook: https://www.facebook.com/vrpieapps
 
 ---
 
@@ -87,6 +90,7 @@ LifeMirror Desktop Companion operates with a single, dedicated purpose: piping a
 |------------|------|---------------------------|
 | `tabs` | permissions | Required to read the URL, window title, and favicon of the actively focused web tab when navigating or switching tabs, allowing the user's local LifeMirror timeline to accurately reflect browsing sessions. |
 | `nativeMessaging` | permissions | Required to establish a secure, local-only communication channel with the locally installed LifeMirror Desktop native messaging host (`com.lifemirror.desktop`) without transmitting data over the network. |
+| `contextMenus` | permissions | Required to provide a quick right-click shortcut on the extension toolbar icon allowing users to launch the desktop app directly. |
 
 ### Data Usage Disclosures
 
@@ -146,5 +150,6 @@ https://pieapps.github.io/lifemirror-desktop.web/
 
 | Version | Date | Changes | Status |
 |---|---|---|---|
-| **1.0.1** | 2026-10-29 | Updated store listing copy, user-benefit package summary, and website links. | Ready for Submission |
-| **1.0.0** | 2026-07-07 | Initial release. | Draft |
+| **1.1.0** | 2026-11-05 | Added interactive companion popup flyout, direct app launch CTA, real-time native connection badge, active tab sync preview, official website/resource links, social channels (YouTube, X, Facebook, GitHub), and context menu shortcut. | Ready for Submission |
+| **1.0.1** | 2026-10-29 | Updated store listing copy, user-benefit package summary, and website links. | Archival |
+| **1.0.0** | 2026-07-07 | Initial release. | Archival |

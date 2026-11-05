@@ -208,6 +208,14 @@ function validateExtension(extDir, manifest) {
     }
   }
 
+  // Validate action popup if defined
+  if (manifest.action?.default_popup) {
+    const popupFullPath = path.join(extDir, manifest.action.default_popup);
+    if (!fs.existsSync(popupFullPath)) {
+      issues.push(`Referenced action popup not found: ${manifest.action.default_popup}`);
+    }
+  }
+
   return issues;
 }
 

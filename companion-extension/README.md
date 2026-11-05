@@ -11,7 +11,10 @@ This extension privately and safely captures the currently focused active web ta
 ```
 companion-extension/
 ├── manifest.json                    # Manifest V3 extension configuration
-├── background.js                    # Background service worker (Native Messaging bridge)
+├── background.js                    # Background service worker (Native Messaging bridge & context menus)
+├── popup.html                       # Companion popup flyout UI
+├── popup.css                        # Cyber-zen dark mode popup styles
+├── popup.js                         # Tab preview, connection status & app launcher logic
 ├── icons/                           # Extension icon assets
 │   ├── icon16.png                   # 16x16 icon (favicon / toolbar)
 │   ├── icon48.png                   # 48x48 icon (extensions manager)
@@ -20,6 +23,7 @@ companion-extension/
 ├── com.lifemirror.desktop.json      # Generated native host descriptor (gitignored)
 ├── CHROMEWEBSTORE.md                # Chrome Web Store submission metadata and store copy
 ├── PRIVACY_POLICY.md                # Privacy policy documentation
+├── CHANGELOG.md                     # Extension release notes and version history
 └── README.md                        # This documentation file
 ```
 
@@ -58,7 +62,18 @@ node scripts/archive-extension.mjs
 The script automatically:
 1. Validates `manifest.json` (syntax, Manifest V3 format, referenced assets).
 2. Verifies that all icons (`icons/icon16.png`, etc.) and `background.js` exist.
-3. Packages **strictly** runtime extension files (`manifest.json`, `background.js`, `icons/`).
+3. Packages **strictly** runtime extension files (`manifest.json`, `background.js`, `popup.html`, `popup.css`, `popup.js`, `icons/`).
 4. Excludes internal documentation, native messaging host templates, `.git`, `.DS_Store`, and dev artifacts.
 5. Saves the output zip to `dist/lifemirror-desktop-v<version>.zip` (and `dist/lifemirror-desktop.zip`).
+
+---
+
+## Community & Social Links
+
+- **Official Website**: [https://pieapps.github.io/lifemirror-desktop.web/](https://pieapps.github.io/lifemirror-desktop.web/)
+- **YouTube**: [https://www.youtube.com/@pieapps](https://www.youtube.com/@pieapps)
+- **X (Twitter)**: [https://x.com/pieapps](https://x.com/pieapps)
+- **Facebook**: [https://www.facebook.com/vrpieapps](https://www.facebook.com/vrpieapps)
+- **GitHub**: [https://github.com/PieApps/lifemirror-desktop](https://github.com/PieApps/lifemirror-desktop)
+
 

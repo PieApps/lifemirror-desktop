@@ -1,4 +1,6 @@
 let port = null;
+let isNativeConnected = false;
+let lastReportedPayload = null;
 const hostName = "com.lifemirror.desktop";
 
 // Resilient native port connection
@@ -7,9 +9,11 @@ function getNativePort() {
   
   try {
     port = chrome.runtime.connectNative(hostName);
+    isNativeConnected = true;
     console.log("Connecting to LifeMirror Desktop Native Messaging Host...");
     
     port.onDisconnect.addListener(() => {
+      isNativeConnected = false;
       const errMsg = chrome.runtime.lastError?.message;
       console.warn("Disconnected from Native Messaging Host: ", errMsg);
       if (errMsg?.includes("Specified native messaging host not found")) {
@@ -20,6 +24,7 @@ function getNativePort() {
   } catch (err) {
     console.error("Error connecting to native host:", err);
     port = null;
+    isNativeConnected = false;
   }
   return port;
 }
@@ -48,10 +53,12 @@ function reportTabActivity(tabId, changeInfo, tab) {
     };
     try {
       nativePort.postMessage(payload);
+      lastReportedPayload = payload;
       console.log("Logged browser tab activity:", payload);
     } catch (e) {
       console.error("Failed to post browser activity:", e);
       port = null; // reset
+      isNativeConnected = false;
     }
   }
 }
@@ -77,4 +84,55 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
       reportTabActivity(tabs[0].id, null, tabs[0]);
     }
   });
+});
+
+// ── Extension Popup & App Bridge ──────────────────────────────────────────────
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Security guard: Ensure messages originate strictly from this extension
+  if (sender.id && sender.id !== chrome.runtime.id) {
+    console.warn("[LifeMirror] Blocked message from untrusted sender:", sender.id);
+    return false;
+  }
+
+  if (request.action === "get_status") {
+    const nativePort = getNativePort();
+    sendResponse({
+      connected: isNativeConnected && nativePort !== null,
+      lastEvent: lastReportedPayload,
+      hostName: hostName
+    });
+    return true;
+  }
+
+  if (request.action === "ping_native") {
+    port = null;
+    const nativePort = getNativePort();
+    sendResponse({
+      connected: isNativeConnected && nativePort !== null
+    });
+    return true;
+  }
+});
+
+// ── Context Menus for Direct Toolbar Launch ───────────────────────────────────
+chrome.runtime.onInstalled.addListener(() => {
+  // Purge any stale context menu items before recreating to avoid duplicate ID errors
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "launch_lifemirror_desktop",
+      title: "⚡ Open LifeMirror Desktop",
+      contexts: ["action"]
+    });
+    chrome.contextMenus.create({
+      id: "open_web_dashboard",
+      title: "🌐 Open Web Dashboard",
+      contexts: ["action"]
+    });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === "launch_lifemirror_desktop" || info.menuItemId === "open_web_dashboard") {
+    chrome.tabs.create({ url: "https://pieapps.github.io/lifemirror-desktop.web/" });
+  }
 });
