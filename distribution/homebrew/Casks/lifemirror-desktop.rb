@@ -1,9 +1,9 @@
 cask "lifemirror-desktop" do
   arch arm: "aarch64", intel: "x64"
 
-  version "1.3.4"
-  sha256 arm:   "a5c2fa5925eb09042745dddd294bf3145e8373b0cf0da45e4fa876f02ae61433",
-         intel: "76d004f6105193fee91cba066ba49bfa7ed1f45a31e274e0be83a65f6f44a822"
+  version "1.4.2"
+  sha256 arm:   "dbc7c2849c247583da28663fa0b6f619b7376084a34aa6aad37a13b411475045",
+         intel: "df077fc54daf30647f5522bac4262fbdfc0f9a3fe48dcfa2f2c3bec8d21ecc2d"
 
   url "https://github.com/PieApps/lifemirror-desktop/releases/download/v#{version}/lifemirror-desktop_#{version}_#{arch}.dmg"
   name "LifeMirror Desktop"
