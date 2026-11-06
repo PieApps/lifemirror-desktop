@@ -287,20 +287,90 @@ fn install_native_host_manifest() {
 }
 
 fn get_db_path() -> PathBuf {
-    let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(data_home)
-    } else if let Ok(home) = std::env::var("HOME") {
-        let mut p = PathBuf::from(home);
-        p.push(".local");
-        p.push("share");
-        p
-    } else {
-        PathBuf::from(".")
-    };
-    path.push("lifemirror-desktop");
-    let _ = std::fs::create_dir_all(&path);
-    path.push("lifemirror-desktop.db");
-    path
+    #[cfg(target_os = "windows")]
+    {
+        let base = std::env::var("LOCALAPPDATA")
+            .or_else(|_| std::env::var("APPDATA"))
+            .or_else(|_| {
+                std::env::var("USERPROFILE").map(|p| format!(r"{}\AppData\Local", p))
+            })
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."));
+
+        let canonical_dir = base.join("lifemirror-desktop");
+        let _ = std::fs::create_dir_all(&canonical_dir);
+        let target_db = canonical_dir.join("lifemirror-desktop.db");
+
+        // Existing users migration safeguard:
+        // If the canonical database does not exist yet, look for legacy locations where previous
+        // builds may have stored the DB (e.g. nested relative ./lifemirror-desktop/ or exe dir).
+        if !target_db.exists() {
+            let mut candidates = Vec::new();
+
+            // Candidate 1: Nested folder from relative CWD launch (e.g. %LOCALAPPDATA%\lifemirror-desktop\lifemirror-desktop\...)
+            candidates.push(canonical_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
+
+            // Candidates 2 & 3: Relative to executable location if known
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    candidates.push(exe_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
+                    candidates.push(exe_dir.join("lifemirror-desktop.db"));
+                }
+            }
+
+            // Candidate 4: %USERPROFILE%\.local\share\lifemirror-desktop\lifemirror-desktop.db
+            if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                candidates.push(
+                    PathBuf::from(userprofile)
+                        .join(".local")
+                        .join("share")
+                        .join("lifemirror-desktop")
+                        .join("lifemirror-desktop.db"),
+                );
+            }
+
+            for legacy_path in candidates {
+                if legacy_path.exists() && legacy_path != target_db {
+                    eprintln!(
+                        "[vault] Migrating legacy database from {} to {}",
+                        legacy_path.display(),
+                        target_db.display()
+                    );
+                    if std::fs::copy(&legacy_path, &target_db).is_ok() {
+                        let wal = legacy_path.with_extension("db-wal");
+                        if wal.exists() {
+                            let _ = std::fs::copy(&wal, target_db.with_extension("db-wal"));
+                        }
+                        let shm = legacy_path.with_extension("db-shm");
+                        if shm.exists() {
+                            let _ = std::fs::copy(&shm, target_db.with_extension("db-shm"));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        target_db
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
+            PathBuf::from(data_home)
+        } else if let Ok(home) = std::env::var("HOME") {
+            let mut p = PathBuf::from(home);
+            p.push(".local");
+            p.push("share");
+            p
+        } else {
+            PathBuf::from(".")
+        };
+        path.push("lifemirror-desktop");
+        let _ = std::fs::create_dir_all(&path);
+        path.push("lifemirror-desktop.db");
+        path
+    }
 }
 
 #[tauri::command]
@@ -1037,6 +1107,9 @@ pub fn run() {
                 active_activity.clone(),
                 app_handle,
             );
+
+            #[cfg(target_os = "windows")]
+            let _ = fix_autostart_registry_path();
 
             // If the app was not launched with the --hidden flag (autostart boot), show it.
             let args: Vec<String> = std::env::args().collect();
