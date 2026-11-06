@@ -389,6 +389,8 @@ function App() {
               }
             }
             const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
+            const spanSeconds = Math.max(0, Math.round((endMs - startMs) / 1000));
+            const totalDur = Math.max(calculatedDuration, spanSeconds);
 
             return {
               isGroupedSession: true,
@@ -397,7 +399,8 @@ function App() {
               window_title: displayTitle,
               start_time: new Date(startMs).toISOString(),
               end_time: new Date(endMs).toISOString(),
-              duration: calculatedDuration,
+              duration: Math.min(calculatedDuration, totalDur > 0 ? totalDur : calculatedDuration),
+              total_duration: totalDur,
               source: dominantSource,
               url: dominantUrl,
               icon_url: dominantIcon,

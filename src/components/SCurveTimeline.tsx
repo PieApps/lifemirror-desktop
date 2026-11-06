@@ -166,6 +166,7 @@ export interface TimelineNode {
   start_time: string;
   end_time?: string;
   duration: number;
+  total_duration?: number;
   source: string;
   url?: string;
   icon_url?: string;
@@ -266,6 +267,8 @@ export function SCurveTimeline({
         const mnTime = new Date(mn.timestamp).getTime();
         const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
         const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
+        const spanSeconds = Math.max(0, Math.round((endMs - startMs) / 1000));
+        const totalDur = Math.max(calculatedDuration, spanSeconds);
 
         return {
           isGroupedSession: true,
@@ -274,7 +277,8 @@ export function SCurveTimeline({
           window_title: displayTitle,
           start_time: new Date(startMs).toISOString(),
           end_time: new Date(endMs).toISOString(),
-          duration: calculatedDuration,
+          duration: Math.min(calculatedDuration, totalDur > 0 ? totalDur : calculatedDuration),
+          total_duration: totalDur,
           source: dominantSource,
           url: dominantUrl,
           icon_url: dominantIcon,
@@ -324,25 +328,42 @@ export function SCurveTimeline({
            const shouldMerge = (strongMatch && gap < 1800) || (sameApp && !strongMatch && gap < 300);
 
            if (shouldMerge) {
-             currentGroup.originalActivities.push(...node.originalActivities);
-             currentGroup.subEvents.push(...node.subEvents);
+             // De-duplicate activities by id
+             const existingActIds = new Set(currentGroup.originalActivities.map(a => a.id));
+             for (const act of node.originalActivities) {
+               if (act.id == null || !existingActIds.has(act.id)) {
+                 currentGroup.originalActivities.push(act);
+                 if (act.id != null) existingActIds.add(act.id);
+               }
+             }
 
-             // Handle duration merge: use non-overlapping interval union across real activities
-             if (currentGroup.originalActivities.length > 0) {
-               currentGroup.duration = calculateNonOverlappingDuration(currentGroup.originalActivities);
-             } else {
-               if (nodeStartMs >= currentGroupEndMs) {
-                 currentGroup.duration += node.duration;
-               } else if (nodeEndMs > currentGroupEndMs) {
-                 currentGroup.duration += Math.round((nodeEndMs - currentGroupEndMs) / 1000);
+             // De-duplicate sub-events by id
+             const existingSubIds = new Set(currentGroup.subEvents.map(s => s.id));
+             for (const sub of node.subEvents) {
+               if (sub.id == null || !existingSubIds.has(sub.id)) {
+                 currentGroup.subEvents.push(sub);
+                 if (sub.id != null) existingSubIds.add(sub.id);
                }
              }
 
              currentGroupEndMs = Math.max(currentGroupEndMs, nodeEndMs);
              currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
 
-             currentGroup.originalActivities.push(...node.originalActivities);
-             currentGroup.subEvents.push(...node.subEvents);
+             const groupSpanSeconds = Math.max(0, Math.round((currentGroupEndMs - new Date(currentGroup.start_time).getTime()) / 1000));
+
+             // Active duration: non-overlapping activity time, strictly bounded by the physical session span
+             if (currentGroup.originalActivities.length > 0) {
+               currentGroup.duration = Math.min(calculateNonOverlappingDuration(currentGroup.originalActivities), groupSpanSeconds);
+             } else {
+               if (nodeStartMs >= currentGroupEndMs) {
+                 currentGroup.duration += node.duration;
+               } else if (nodeEndMs > currentGroupEndMs) {
+                 currentGroup.duration += Math.round((nodeEndMs - currentGroupEndMs) / 1000);
+               }
+               currentGroup.duration = Math.min(currentGroup.duration, groupSpanSeconds);
+             }
+
+             currentGroup.total_duration = Math.max(currentGroup.duration, groupSpanSeconds);
 
              // Prefer the most descriptive app name, icon, and URL
              if (currentGroup.app_name === 'Semantic Session' || !currentGroup.icon_url) {
@@ -470,9 +491,12 @@ export function SCurveTimeline({
 
           if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
             currentGroup.originalActivities.push(activity);
-            currentGroup.duration = calculateNonOverlappingDuration(currentGroup.originalActivities);
             currentGroupEndMs = Math.max(currentGroupEndMs, actEndMs);
             currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
+
+            const groupSpan = Math.max(0, Math.round((currentGroupEndMs - new Date(currentGroup.start_time).getTime()) / 1000));
+            currentGroup.duration = Math.min(calculateNonOverlappingDuration(currentGroup.originalActivities), groupSpan);
+            currentGroup.total_duration = Math.max(currentGroup.duration, groupSpan);
 
             if (activity.notes) {
               currentGroup.notes = currentGroup.notes
@@ -491,6 +515,7 @@ export function SCurveTimeline({
               start_time: activity.start_time,
               end_time: new Date(actEndMs).toISOString(),
               duration: activity.duration,
+              total_duration: activity.duration,
               source: isBrowser ? "Browser" : "Editor",
               notes: activity.notes,
               originalActivities: [activity],
@@ -511,6 +536,7 @@ export function SCurveTimeline({
             start_time: activity.start_time,
             end_time: new Date(actEndMs).toISOString(),
             duration: activity.duration,
+            total_duration: activity.duration,
             source: activity.source,
             url: activity.url,
             icon_url: activity.icon_url,
@@ -869,7 +895,7 @@ export function SCurveTimeline({
                           }
                         </span>
                       </div>
-                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0" title={`Active duration: ${formatDuration(node.duration)}`}>
+                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0" title={`Active: ${formatDuration(node.duration)}${node.total_duration && node.total_duration > node.duration ? ` • Total: ${formatDuration(node.total_duration)}` : ''}`}>
                         <Clock className="w-2.5 h-2.5 text-violet-400" />
                         <LiveTimer
                           startTime={node.start_time}
@@ -877,6 +903,11 @@ export function SCurveTimeline({
                           initialDuration={node.duration}
                           isActive={isNodeActive}
                         />
+                        {node.isGroupedSession && node.total_duration && node.total_duration > node.duration && (
+                          <span className="text-[9px] text-[var(--text-muted)] opacity-70 font-mono ml-0.5" title={`Total session span: ${formatDuration(node.total_duration)}`}>
+                            /{formatDuration(node.total_duration)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -898,7 +929,7 @@ export function SCurveTimeline({
                         title={node.end_time && node.end_time !== node.start_time ? `Span: ${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}` : undefined}
                       >
                         {node.isGroupedSession && node.end_time && node.end_time !== node.start_time
-                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}`
+                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}${node.total_duration && node.total_duration > node.duration ? ` (${formatDuration(node.total_duration)})` : ''}`
                           : getFormatTime(node.start_time)}
                       </span>
                       <div className="flex items-center gap-2">

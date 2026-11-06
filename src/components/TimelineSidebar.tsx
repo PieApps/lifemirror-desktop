@@ -162,14 +162,26 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
       for (let i = 0; i < orphanSubs.length; i++) {
         const sub = orphanSubs[i];
         const subStartMs = new Date(sub.timestamp).getTime();
-        const nextSubMs = i < orphanSubs.length - 1 
-          ? new Date(orphanSubs[i + 1].timestamp).getTime()
-          : (node.end_time ? new Date(node.end_time).getTime() : subStartMs + 60000);
-        let dur = Math.max(1, Math.round((nextSubMs - subStartMs) / 1000));
-        dur = Math.min(dur, totalAvailable);
-        if (i === orphanSubs.length - 1 && sortedActivities.length === 0) {
-          dur = Math.max(1, totalAvailable - allocatedSeconds);
+
+        // Find the earliest subsequent event (next orphan sub, next activity start, or session end)
+        const allNextTimes: number[] = [];
+        if (i < orphanSubs.length - 1) {
+          allNextTimes.push(new Date(orphanSubs[i + 1].timestamp).getTime());
         }
+        for (const act of sortedActivities) {
+          const aS = new Date(act.start_time).getTime();
+          if (aS > subStartMs) allNextTimes.push(aS);
+        }
+        if (node.end_time) {
+          allNextTimes.push(new Date(node.end_time).getTime());
+        }
+
+        const nextTimeMs = allNextTimes.length > 0 
+          ? Math.min(...allNextTimes) 
+          : (subStartMs + 60000);
+
+        let dur = Math.max(1, Math.round((nextTimeMs - subStartMs) / 1000));
+        dur = Math.min(dur, Math.max(60, totalAvailable - allocatedSeconds));
         allocatedSeconds += dur;
 
         items.push({
@@ -205,9 +217,17 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
     return consolidatedItems;
   }, [node]);
 
-  const activeDuration = (node?.isGroupedSession && timelineItems.length > 0)
+  const sessionSpanSeconds = (node?.end_time && node.end_time !== node.start_time)
+    ? Math.max(0, Math.round((new Date(node.end_time).getTime() - new Date(node.start_time).getTime()) / 1000))
+    : 0;
+
+  const totalDuration = node?.total_duration || sessionSpanSeconds || node?.duration || 0;
+
+  const rawActiveSum = (node?.isGroupedSession && timelineItems.length > 0)
     ? timelineItems.reduce((acc, it) => acc + it.duration, 0)
     : (node?.duration || 0);
+
+  const activeDuration = totalDuration > 0 ? Math.min(rawActiveSum, totalDuration) : rawActiveSum;
 
   if (!node) return null;
 
@@ -247,6 +267,11 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                   {getFormatDuration(activeDuration)}
                 </span>
                 <span className="text-xs text-[var(--text-muted)] font-normal">active</span>
+                {totalDuration > activeDuration && (
+                  <span className="text-xs text-[var(--text-muted)] font-mono opacity-80" title="Total wall-clock session duration">
+                    • {getFormatDuration(totalDuration)} total
+                  </span>
+                )}
                 {node.isGroupedSession && node.end_time && node.end_time !== node.start_time && (
                   <span className="text-xs text-[var(--text-muted)] font-mono opacity-80">
                     • {formatTime(node.start_time)} - {formatTime(node.end_time)}
