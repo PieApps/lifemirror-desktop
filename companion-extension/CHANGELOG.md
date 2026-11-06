@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.2.1] — 2026-11-07
+
+### Changed
+* **Streamlined Popup Interface (`popup.html`, `popup.css`, `popup.js`)**:
+  * Removed redundant desktop app launcher buttons and ephemeral iframe protocol triggers from the extension popup in favor of context menu shortcuts and automatic background native sync.
+  * Cleaned up unused launch bar CSS rules, button DOM elements, and launch cooldown state handling.
+
+---
+
 ## [1.2.0] — 2026-11-06
 
 ### Added

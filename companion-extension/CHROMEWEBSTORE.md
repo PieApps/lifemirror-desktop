@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — LifeMirror Desktop Companion
 
-> Last Updated: 2026-11-06
+> Last Updated: 2026-11-07
 
 ---
 
@@ -150,7 +150,8 @@ https://pieapps.github.io/lifemirror-desktop.web/
 
 | Version | Date | Changes | Status |
 |---|---|---|---|
-| **1.2.0** | 2026-11-06 | Added real-time native messaging vault state detection, toolbar badge alerts (`LOCK` / `BUSY`), and popup diagnostic statuses for locked or busy SQLite vault. | Ready for Submission |
+| **1.2.1** | 2026-11-07 | Streamlined popup interface by removing redundant launch action bar in favor of context menu shortcuts and automatic background native sync. | Ready for Submission |
+| **1.2.0** | 2026-11-06 | Added real-time native messaging vault state detection, toolbar badge alerts (`LOCK` / `BUSY`), and popup diagnostic statuses for locked or busy SQLite vault. | Archival |
 | **1.1.0** | 2026-11-05 | Added interactive companion popup flyout, direct app launch CTA, real-time native connection badge, active tab sync preview, official website/resource links, social channels (YouTube, X, Facebook, GitHub), and context menu shortcut. | Archival |
 | **1.0.1** | 2026-10-29 | Updated store listing copy, user-benefit package summary, and website links. | Archival |
 | **1.0.0** | 2026-07-07 | Initial release. | Archival |
