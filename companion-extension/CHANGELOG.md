@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.2.0] — 2026-11-06
+
+### Added
+* **Native Vault State Detection & Live Badge Indicators**:
+  * Real-time listener on the native messaging port (`background.js`) to capture SQLite vault status events from LifeMirror Desktop.
+  * Dynamic browser toolbar action badges reflecting database states:
+    * **`LOCK`** badge (rose red `#e11d48`) when the desktop encrypted vault is locked.
+    * **`BUSY`** badge (amber `#f59e0b`) during active database writes or inter-process locks.
+    * Automatic badge clearing upon manual reconnection attempts (`ping_native`).
+* **Enhanced Flyout Status Diagnostics (`popup.js`)**:
+  * Actionable feedback in the companion popup status badge:
+    * `"Vault Locked (Open Desktop App)"` when the local database requires user unlocking.
+    * `"Vault Busy (Updating DB...)"` during background timeline write locks.
+    * Detailed diagnostic reporting for any unexpected vault errors.
+  * Extended `get_status` and `ping_native` message responses with `vaultError` state.
+
+---
+
 ## [1.1.0] — 2026-11-05
 
 ### Added
