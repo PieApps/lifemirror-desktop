@@ -895,7 +895,7 @@ export function SCurveTimeline({
                           }
                         </span>
                       </div>
-                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-0.5 shrink-0" title={`Active: ${formatDuration(node.duration)}${node.total_duration && node.total_duration > node.duration ? ` • Total: ${formatDuration(node.total_duration)}` : ''}`}>
+                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-1 shrink-0" title={`Active: ${formatDuration(node.duration)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` • Total span: ${formatDuration(node.total_duration)}` : ''}`}>
                         <Clock className="w-2.5 h-2.5 text-violet-400" />
                         <LiveTimer
                           startTime={node.start_time}
@@ -903,11 +903,6 @@ export function SCurveTimeline({
                           initialDuration={node.duration}
                           isActive={isNodeActive}
                         />
-                        {node.isGroupedSession && node.total_duration && node.total_duration > node.duration && (
-                          <span className="text-[9px] text-[var(--text-muted)] opacity-70 font-mono ml-0.5" title={`Total session span: ${formatDuration(node.total_duration)}`}>
-                            /{formatDuration(node.total_duration)}
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -925,11 +920,11 @@ export function SCurveTimeline({
 
                     <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-[var(--border-color)]">
                       <span
-                        className="text-[9px] text-[var(--text-muted)] font-mono"
-                        title={node.end_time && node.end_time !== node.start_time ? `Span: ${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}` : undefined}
+                        className="text-[9px] text-[var(--text-muted)] font-mono truncate"
+                        title={node.end_time && node.end_time !== node.start_time ? `Span: ${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}${node.total_duration ? ` (${formatDuration(node.total_duration)} total)` : ''}` : undefined}
                       >
                         {node.isGroupedSession && node.end_time && node.end_time !== node.start_time
-                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}${node.total_duration && node.total_duration > node.duration ? ` (${formatDuration(node.total_duration)})` : ''}`
+                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` (${formatDuration(node.total_duration)})` : ''}`
                           : getFormatTime(node.start_time)}
                       </span>
                       <div className="flex items-center gap-2">

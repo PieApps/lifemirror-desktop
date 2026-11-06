@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
-import { formatDurationFull, formatTime } from '../utils/formatDuration';
+import { formatDurationFull, formatDuration, formatTime } from '../utils/formatDuration';
 
 /**
  * Full-precision duration formatter (e.g. "3m 12s").
@@ -261,25 +261,38 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
               className="w-12 h-12 shrink-0"
               showBadge={true}
             />
-            <div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-base font-semibold text-[var(--text-color)] font-mono">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold text-[var(--text-color)] font-mono whitespace-nowrap">
                   {getFormatDuration(activeDuration)}
                 </span>
-                <span className="text-xs text-[var(--text-muted)] font-normal">active</span>
-                {totalDuration > activeDuration && (
-                  <span className="text-xs text-[var(--text-muted)] font-mono opacity-80" title="Total wall-clock session duration">
-                    • {getFormatDuration(totalDuration)} total
-                  </span>
-                )}
-                {node.isGroupedSession && node.end_time && node.end_time !== node.start_time && (
-                  <span className="text-xs text-[var(--text-muted)] font-mono opacity-80">
-                    • {formatTime(node.start_time)} - {formatTime(node.end_time)}
-                  </span>
-                )}
+                <span className="text-xs text-[var(--text-muted)] font-medium">active</span>
               </div>
-              <div className="text-xs text-[var(--text-muted)] capitalize px-2.5 py-1 rounded-full bg-black/5 dark:bg-white/5 inline-block">
-                {node.isMemoryNode ? 'AI Processed Session' : node.source}
+
+              {(node.isGroupedSession && node.end_time && node.end_time !== node.start_time) ? (
+                <div className="text-xs text-[var(--text-muted)] font-mono opacity-80 flex items-center gap-1.5 flex-wrap mt-1">
+                  <span className="whitespace-nowrap">{formatTime(node.start_time)} – {formatTime(node.end_time)}</span>
+                  {totalDuration > activeDuration && (
+                    <>
+                      <span>•</span>
+                      <span className="whitespace-nowrap" title="Total elapsed session span">
+                        {formatDuration(totalDuration)} total
+                      </span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                totalDuration > activeDuration && (
+                  <div className="text-xs text-[var(--text-muted)] font-mono opacity-80 mt-1 whitespace-nowrap">
+                    {formatDuration(totalDuration)} total
+                  </div>
+                )
+              )}
+
+              <div className="mt-2">
+                <span className="text-xs text-[var(--text-muted)] capitalize px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 inline-block">
+                  {node.isMemoryNode ? 'AI Processed Session' : node.source}
+                </span>
               </div>
             </div>
           </div>
