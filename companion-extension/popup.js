@@ -1,24 +1,25 @@
 /**
  * LifeMirror Desktop Companion Extension Popup
- * Communicates with the background service worker and provides direct app launching,
- * connection status checks, active tab preview, official resources, and social links.
+ * Communicates with the background service worker, connection status checks,
+ * active tab preview, official resources, and social links.
  */
 
-const WEB_DASHBOARD_URL = "https://pieapps.github.io/lifemirror-desktop.web/";
-const APP_PROTOCOL_URL = "lifemirror://open";
 const DEFAULT_FAVICON = "icons/icon16.png";
 
 // DOM Elements
 const connectionBadge = document.getElementById("connection-badge");
 const connectionText = document.getElementById("connection-text");
-const btnLaunchApp = document.getElementById("btn-launch-app");
-const btnOpenWeb = document.getElementById("btn-open-web");
-const launchFeedback = document.getElementById("launch-feedback");
 
 const activeTabFavicon = document.getElementById("active-tab-favicon");
 const activeTabTitle = document.getElementById("active-tab-title");
 const activeTabDomain = document.getElementById("active-tab-domain");
 const tabStatusPill = document.getElementById("tab-status-pill");
+
+// Graceful fallback for broken or unreachable tab favicons
+activeTabFavicon.onerror = () => {
+  activeTabFavicon.onerror = null;
+  activeTabFavicon.src = DEFAULT_FAVICON;
+};
 
 // ── Security & Link Handling ──────────────────────────────────────────────────
 function initExternalLinks() {
@@ -37,71 +38,6 @@ function initExternalLinks() {
       }
     });
   });
-}
-
-// ── Direct App Launch Handler with Debounce / Cooldown ────────────────────────
-let isLaunching = false;
-
-function initAppLauncher() {
-  // Graceful fallback for broken or unreachable tab favicons
-  activeTabFavicon.onerror = () => {
-    activeTabFavicon.onerror = null;
-    activeTabFavicon.src = DEFAULT_FAVICON;
-  };
-
-  btnLaunchApp.addEventListener("click", async (e) => {
-    e.preventDefault();
-    if (isLaunching) return;
-
-    isLaunching = true;
-    btnLaunchApp.setAttribute("aria-busy", "true");
-    btnLaunchApp.style.opacity = "0.75";
-    showLaunchFeedback("Launching LifeMirror Desktop...");
-
-    // 1. Trigger protocol scheme via clean ephemeral iframe
-    try {
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = APP_PROTOCOL_URL;
-      document.body.appendChild(iframe);
-      setTimeout(() => {
-        if (iframe.parentNode) {
-          iframe.remove();
-        }
-      }, 1000);
-    } catch {
-      // Ignore protocol registration warnings
-    }
-
-    // 2. Notify background service worker to ping native host
-    try {
-      await chrome.runtime.sendMessage({ action: "ping_native" });
-    } catch {
-      // Service worker may be waking up
-    }
-
-    // 3. Reset button cooldown after 1.8 seconds
-    setTimeout(() => {
-      hideLaunchFeedback();
-      btnLaunchApp.removeAttribute("aria-busy");
-      btnLaunchApp.style.opacity = "1";
-      isLaunching = false;
-    }, 1800);
-  });
-
-  btnOpenWeb.addEventListener("click", async (e) => {
-    e.preventDefault();
-    await chrome.tabs.create({ url: WEB_DASHBOARD_URL });
-  });
-}
-
-function showLaunchFeedback(msg) {
-  launchFeedback.textContent = msg;
-  launchFeedback.classList.remove("hidden");
-}
-
-function hideLaunchFeedback() {
-  launchFeedback.classList.add("hidden");
 }
 
 // ── Active Tab Detection ──────────────────────────────────────────────────────
@@ -180,7 +116,6 @@ function setConnectionStatus(isConnected, label) {
 // ── Initialization ────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   initExternalLinks();
-  initAppLauncher();
   await updateActiveTabPreview();
   await checkNativeHostStatus();
 });
