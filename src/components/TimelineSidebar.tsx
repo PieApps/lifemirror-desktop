@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Edit2, Check, MessageSquare, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
@@ -11,6 +11,21 @@ import { formatDurationFull, formatTime } from '../utils/formatDuration';
  * Named export preserved for backwards-compatibility with SCurveTimeline.tsx.
  */
 export const getFormatDuration = formatDurationFull;
+
+interface TimelineSidebarItem {
+  id?: number;
+  activityId?: number;
+  timestamp: string;
+  title: string;
+  context: string;
+  app: string;
+  icon?: string;
+  url?: string;
+  source: string;
+  duration: number;
+  notes?: string;
+  isActivity: boolean;
+}
 
 interface TimelineSidebarProps {
   node: TimelineNode | null;
@@ -52,6 +67,148 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
     }
   };
 
+  // Memoize non-overlapping timeline breakdown items.
+  // When an OS activity contains child sub-events (e.g. editor files or browser tabs),
+  // the parent container is omitted and its duration is cleanly partitioned across its sub-events.
+  // This guarantees that individual item durations sum 1:1 to the total session duration without duplicates.
+  const timelineItems = useMemo<TimelineSidebarItem[]>(() => {
+    if (!node) return [];
+
+    const activities = node.originalActivities || [];
+    const subEvents = node.subEvents || [];
+
+    const matchedSubIds = new Set<number>();
+    const items: TimelineSidebarItem[] = [];
+
+    const sortedActivities = [...activities].sort(
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+
+    const sortedSubEvents = [...subEvents].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    for (const act of sortedActivities) {
+      const actStartMs = new Date(act.start_time).getTime();
+      const actEndMs = actStartMs + act.duration * 1000;
+
+      // Find sub-events that took place during this activity window (+/- 5s slack)
+      const actSubs = sortedSubEvents.filter(s => {
+        const t = new Date(s.timestamp).getTime();
+        return t >= actStartMs - 5000 && t <= actEndMs + 5000;
+      });
+
+      if (actSubs.length === 0) {
+        items.push({
+          id: act.id,
+          activityId: act.id,
+          timestamp: act.start_time,
+          title: formatCleanTitle(act.window_title, act.app_name, act.domain_tag, act.url),
+          context: act.domain_tag || extractDomain(act.url) || act.app_name,
+          app: act.app_name,
+          icon: act.icon_url,
+          url: act.url,
+          source: act.source,
+          duration: act.duration,
+          notes: act.notes,
+          isActivity: true,
+        });
+      } else {
+        actSubs.forEach(s => { if (s.id != null) matchedSubIds.add(s.id); });
+
+        let allocatedSeconds = 0;
+        const count = actSubs.length;
+
+        for (let i = 0; i < count; i++) {
+          const sub = actSubs[i];
+          const subStartMs = i === 0 
+            ? actStartMs 
+            : new Date(sub.timestamp).getTime();
+          const subEndMs = i < count - 1 
+            ? new Date(actSubs[i + 1].timestamp).getTime() 
+            : actEndMs;
+
+          let dur = Math.max(0, Math.round((subEndMs - subStartMs) / 1000));
+          if (i === count - 1) {
+            dur = Math.max(0, act.duration - allocatedSeconds);
+          } else {
+            dur = Math.min(dur, Math.max(0, act.duration - allocatedSeconds));
+          }
+          allocatedSeconds += dur;
+
+          items.push({
+            id: sub.id,
+            activityId: act.id,
+            timestamp: sub.timestamp,
+            title: formatCleanTitle(sub.title, sub.parent_app_name || act.app_name || node.app_name, sub.context_tag, sub.primary_uri),
+            context: sub.context_tag || extractDomain(sub.primary_uri) || sub.parent_app_name || act.app_name || node.app_name,
+            app: sub.parent_app_name || act.app_name || node.app_name,
+            icon: sub.icon_url || act.icon_url,
+            url: sub.primary_uri,
+            source: sub.session_type || 'Editor',
+            duration: dur,
+            notes: i === 0 ? act.notes : undefined,
+            isActivity: false,
+          });
+        }
+      }
+    }
+
+    // Handle any orphan sub-events not enclosed in an activity window
+    const orphanSubs = sortedSubEvents.filter(s => s.id == null || !matchedSubIds.has(s.id));
+    if (orphanSubs.length > 0) {
+      let allocatedSeconds = 0;
+      const totalAvailable = node.duration > 0 ? node.duration : orphanSubs.length * 60;
+      for (let i = 0; i < orphanSubs.length; i++) {
+        const sub = orphanSubs[i];
+        const subStartMs = new Date(sub.timestamp).getTime();
+        const nextSubMs = i < orphanSubs.length - 1 
+          ? new Date(orphanSubs[i + 1].timestamp).getTime()
+          : (node.end_time ? new Date(node.end_time).getTime() : subStartMs + 60000);
+        let dur = Math.max(1, Math.round((nextSubMs - subStartMs) / 1000));
+        dur = Math.min(dur, totalAvailable);
+        if (i === orphanSubs.length - 1 && sortedActivities.length === 0) {
+          dur = Math.max(1, totalAvailable - allocatedSeconds);
+        }
+        allocatedSeconds += dur;
+
+        items.push({
+          id: sub.id,
+          timestamp: sub.timestamp,
+          title: formatCleanTitle(sub.title, sub.parent_app_name || node.app_name, sub.context_tag, sub.primary_uri),
+          context: sub.context_tag || extractDomain(sub.primary_uri) || sub.parent_app_name || node.app_name,
+          app: sub.parent_app_name || node.app_name,
+          icon: sub.icon_url,
+          url: sub.primary_uri,
+          source: sub.session_type || 'SubSession',
+          duration: dur,
+          notes: undefined,
+          isActivity: false,
+        });
+      }
+    }
+
+    const sorted = items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // Consolidate consecutive items with identical title, app, and context
+    const consolidatedItems: TimelineSidebarItem[] = [];
+    for (const item of sorted) {
+      const prev = consolidatedItems[consolidatedItems.length - 1];
+      if (prev && prev.title === item.title && prev.app === item.app && prev.context === item.context) {
+        prev.duration += item.duration;
+        if (!prev.notes && item.notes) prev.notes = item.notes;
+      } else {
+        consolidatedItems.push({ ...item });
+      }
+    }
+
+    return consolidatedItems;
+  }, [node]);
+
+  const activeDuration = (node?.isGroupedSession && timelineItems.length > 0)
+    ? timelineItems.reduce((acc, it) => acc + it.duration, 0)
+    : (node?.duration || 0);
+
   if (!node) return null;
 
   return (
@@ -87,7 +244,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
             <div>
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="text-base font-semibold text-[var(--text-color)] font-mono">
-                  {getFormatDuration(node.duration)}
+                  {getFormatDuration(activeDuration)}
                 </span>
                 <span className="text-xs text-[var(--text-muted)] font-normal">active</span>
                 {node.isGroupedSession && node.end_time && node.end_time !== node.start_time && (
@@ -172,65 +329,16 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
             <div>
               <h3 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-4 flex items-center gap-2">
                 <span className="w-4 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
-                Event Timeline ({node.originalActivities.length + node.subEvents.length})
+                Event Timeline ({timelineItems.length})
                 <span className="flex-1 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
               </h3>
               
               <div className="space-y-2.5 relative before:absolute before:inset-y-0 before:left-[19px] before:w-[2px] before:bg-black/5 dark:before:bg-white/5">
-                {[...node.originalActivities.map(a => ({
-                  id: a.id,
-                  timestamp: a.start_time,
-                  title: formatCleanTitle(a.window_title, a.app_name, a.domain_tag, a.url),
-                  context: a.domain_tag || extractDomain(a.url),
-                  app: a.app_name,
-                  icon: a.icon_url,
-                  url: a.url,
-                  source: a.source,
-                  duration: a.duration,
-                  notes: a.notes,
-                  isActivity: true
-                })), ...node.subEvents.map(s => ({
-                  id: s.id,
-                  timestamp: s.timestamp,
-                  title: formatCleanTitle(s.title, s.parent_app_name || node.app_name, s.context_tag, s.primary_uri),
-                  context: s.context_tag || extractDomain(s.primary_uri),
-                  app: s.parent_app_name || node.app_name,
-                  icon: s.icon_url,
-                  url: s.primary_uri,
-                  source: s.session_type,
-                  duration: 0,
-                  notes: undefined,
-                  isActivity: false
-                }))].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                .map((event, idx, arr) => {
-                  let dur = event.duration;
-                  if (dur === 0) {
-                    const eventMs = new Date(event.timestamp).getTime();
-                    const containingAct = node.originalActivities.find(a => {
-                      const s = new Date(a.start_time).getTime();
-                      const e = s + a.duration * 1000;
-                      return eventMs >= s && eventMs <= e;
-                    });
-
-                    if (containingAct) {
-                      const nextSub = arr.slice(idx + 1).find(e => !e.isActivity);
-                      const nextTime = nextSub
-                        ? new Date(nextSub.timestamp).getTime()
-                        : (new Date(containingAct.start_time).getTime() + containingAct.duration * 1000);
-                      dur = Math.max(0, Math.min(Math.round((nextTime - eventMs) / 1000), containingAct.duration));
-                    } else {
-                      const nextEvent = arr[idx + 1];
-                      const nextTime = nextEvent
-                        ? new Date(nextEvent.timestamp).getTime()
-                        : (node.end_time ? new Date(node.end_time).getTime() : eventMs + 60000);
-                      const rawGap = Math.max(0, Math.round((nextTime - eventMs) / 1000));
-                      dur = Math.min(rawGap, node.duration > 0 ? node.duration : 1800);
-                    }
-                  }
-                  const formattedDur = dur > 0 ? getFormatDuration(dur) : "<1s";
+                {timelineItems.map((event, idx) => {
+                  const formattedDur = event.duration > 0 ? getFormatDuration(event.duration) : "<1s";
 
                   return (
-                    <div key={event.id || idx} className="relative flex items-start gap-4 p-2.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                    <div key={event.id ?? idx} className="relative flex items-start gap-4 p-2.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                       <div className="relative z-10 w-10 h-10 shrink-0 bg-[var(--bg-primary)] p-0.5 rounded-full shadow-sm">
                         <AppIcon
                           appName={event.app || node.app_name}
@@ -248,16 +356,19 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                             {event.title}
                           </span>
                           <div className="flex items-center gap-2">
-                            {event.isActivity && onDeleteLog && event.id && (
+                            {(event.isActivity || event.activityId) && onDeleteLog && (
                               <button
                                 onClick={() => {
-                                  setConfirmModal({
-                                    isOpen: true,
-                                    title: "Delete Activity",
-                                    message: "Delete this individual activity?",
-                                    onConfirm: () => onDeleteLog(event.id!),
-                                    onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                                  });
+                                  const actId = event.activityId || event.id;
+                                  if (actId) {
+                                    setConfirmModal({
+                                      isOpen: true,
+                                      title: "Delete Activity",
+                                      message: "Delete this individual activity?",
+                                      onConfirm: () => onDeleteLog(actId),
+                                      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                                    });
+                                  }
                                 }}
                                 className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
                                 title="Delete activity"
@@ -294,7 +405,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                   );
                 })}
                 
-                {node.originalActivities.length === 0 && node.subEvents.length === 0 && (
+                {timelineItems.length === 0 && (
                   <div className="text-sm text-[var(--text-muted)] italic text-center py-8">No granular events recorded</div>
                 )}
               </div>

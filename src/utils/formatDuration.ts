@@ -65,3 +65,42 @@ export function formatTime(isoString: string): string {
   }
 }
 
+export interface HasTimeInterval {
+  start_time: string;
+  duration: number;
+}
+
+/**
+ * Calculates the exact non-overlapping union of duration across time intervals.
+ * Prevents double-counting when multiple activities overlap or share the same time slice.
+ */
+export function calculateNonOverlappingDuration(items: HasTimeInterval[]): number {
+  if (!items || items.length === 0) return 0;
+  const sorted = [...items]
+    .filter(item => item && item.start_time && item.duration > 0 && !isNaN(new Date(item.start_time).getTime()))
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+  
+  if (sorted.length === 0) return 0;
+
+  let totalMs = 0;
+  let currentStart = new Date(sorted[0].start_time).getTime();
+  let currentEnd = currentStart + sorted[0].duration * 1000;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const actStart = new Date(sorted[i].start_time).getTime();
+    const actEnd = actStart + sorted[i].duration * 1000;
+    if (actStart < currentEnd) {
+      if (actEnd > currentEnd) {
+        currentEnd = actEnd;
+      }
+    } else {
+      totalMs += (currentEnd - currentStart);
+      currentStart = actStart;
+      currentEnd = actEnd;
+    }
+  }
+  totalMs += (currentEnd - currentStart);
+  return Math.round(totalMs / 1000);
+}
+
+

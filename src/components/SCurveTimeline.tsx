@@ -9,7 +9,7 @@ import { MemoryNode } from "../types";
 import AppIcon, { extractDomain } from './AppIcon';
 import TimelineSidebar from './TimelineSidebar';
 import { LiveTimer } from './LiveTimer';
-import { formatDuration } from '../utils/formatDuration';
+import { formatDuration, calculateNonOverlappingDuration } from '../utils/formatDuration';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
 
 export const isBrowserApp = (appName?: string): boolean => {
@@ -61,9 +61,17 @@ export function formatCleanTitle(
 
   // Strip generic browser/app prefixes & suffixes
   title = title
-    .replace(/^(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Evince|Visual Studio Code|VS Code)\s*[-–—:]\s*/i, "")
-    .replace(/\s*[-–—:]\s*(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Visual Studio Code|VS Code)$/i, "")
+    .replace(/^(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Evince|Visual Studio Code|VS Code|Antigravity IDE|Antigravity)\s*[-–—:]\s*/i, "")
+    .replace(/\s*[-–—:]\s*(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Visual Studio Code|VS Code|Antigravity IDE|Antigravity)$/i, "")
     .replace(/^Session involving\s+/i, "");
+
+  if (appName) {
+    const escapedApp = appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    title = title.replace(new RegExp(`\\s*[-–—:]\\s*${escapedApp}\\s*[-–—:]\\s*`, 'i'), ' - ');
+  }
+
+  // Strip editor dirty indicators (● or *)
+  title = title.replace(/\s*[●*]\s*$/, "");
 
   if (!title.trim()) {
     if (domainTag) return domainTag;
@@ -207,7 +215,7 @@ export function SCurveTimeline({
         let dominantUrl = undefined;
         let dominantSource = 'AI Memory';
         
-        let calculatedDuration = (mn.activities || []).reduce((acc, act) => acc + act.duration, 0);
+        let calculatedDuration = calculateNonOverlappingDuration(mn.activities || []);
 
         if (mn.activities && mn.activities.length > 0) {
            const durations: Record<string, number> = {};
@@ -257,7 +265,7 @@ export function SCurveTimeline({
         const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
         const mnTime = new Date(mn.timestamp).getTime();
         const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
-        const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes) : startMs + calculatedDuration * 1000);
+        const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
 
         return {
           isGroupedSession: true,
@@ -316,11 +324,18 @@ export function SCurveTimeline({
            const shouldMerge = (strongMatch && gap < 1800) || (sameApp && !strongMatch && gap < 300);
 
            if (shouldMerge) {
-             // Handle duration merge without artificial double counting
-             if (nodeStartMs >= currentGroupEndMs) {
-               currentGroup.duration += node.duration;
-             } else if (nodeEndMs > currentGroupEndMs) {
-               currentGroup.duration += Math.round((nodeEndMs - currentGroupEndMs) / 1000);
+             currentGroup.originalActivities.push(...node.originalActivities);
+             currentGroup.subEvents.push(...node.subEvents);
+
+             // Handle duration merge: use non-overlapping interval union across real activities
+             if (currentGroup.originalActivities.length > 0) {
+               currentGroup.duration = calculateNonOverlappingDuration(currentGroup.originalActivities);
+             } else {
+               if (nodeStartMs >= currentGroupEndMs) {
+                 currentGroup.duration += node.duration;
+               } else if (nodeEndMs > currentGroupEndMs) {
+                 currentGroup.duration += Math.round((nodeEndMs - currentGroupEndMs) / 1000);
+               }
              }
 
              currentGroupEndMs = Math.max(currentGroupEndMs, nodeEndMs);
@@ -455,13 +470,7 @@ export function SCurveTimeline({
 
           if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
             currentGroup.originalActivities.push(activity);
-
-            if (actStartMs >= currentGroupEndMs) {
-              currentGroup.duration += activity.duration;
-            } else if (actEndMs > currentGroupEndMs) {
-              currentGroup.duration += Math.round((actEndMs - currentGroupEndMs) / 1000);
-            }
-
+            currentGroup.duration = calculateNonOverlappingDuration(currentGroup.originalActivities);
             currentGroupEndMs = Math.max(currentGroupEndMs, actEndMs);
             currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
 
@@ -844,7 +853,16 @@ export function SCurveTimeline({
                             ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Distraction Blocked')
                             : node.isGroupedSession 
                               ? (() => {
-                                  const count = node.subEvents.length + node.originalActivities.length;
+                                  const subCount = node.subEvents.length;
+                                  const uncoveredActCount = node.originalActivities.filter(act => {
+                                    const aS = new Date(act.start_time).getTime();
+                                    const aE = aS + act.duration * 1000;
+                                    return !node.subEvents.some(s => {
+                                      const sT = new Date(s.timestamp).getTime();
+                                      return sT >= aS - 5000 && sT <= aE + 5000;
+                                    });
+                                  }).length;
+                                  const count = subCount > 0 ? (subCount + uncoveredActCount) : node.originalActivities.length;
                                   return `${count} item${count === 1 ? '' : 's'}`;
                                 })()
                               : (node.domain_tag || (node.url ? node.url.split('/')[0] : '')) || node.app_name

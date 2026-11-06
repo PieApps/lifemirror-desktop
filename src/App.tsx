@@ -21,6 +21,7 @@ import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
 import TimelineSidebar from "./components/TimelineSidebar";
 import type { TimelineNode } from "./components/SCurveTimeline";
+import { calculateNonOverlappingDuration } from "./utils/formatDuration";
 
 function App() {
   const settings = useSettings();
@@ -378,7 +379,7 @@ function App() {
             const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
             const mnTime = new Date(mn.timestamp).getTime();
             const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
-            let calculatedDuration = (mn.activities || []).reduce((acc, act) => acc + act.duration, 0);
+            let calculatedDuration = calculateNonOverlappingDuration(mn.activities || []);
             if (calculatedDuration === 0 && mn.sub_events && mn.sub_events.length > 0) {
               if (mn.sub_events.length > 1) {
                 const span = Math.round((Math.max(...subTimes) - Math.min(...subTimes)) / 1000);
@@ -387,7 +388,7 @@ function App() {
                 calculatedDuration = 60;
               }
             }
-            const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes) : startMs + calculatedDuration * 1000);
+            const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
 
             return {
               isGroupedSession: true,
