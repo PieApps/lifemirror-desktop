@@ -1,6 +1,6 @@
 # Privacy Policy for LifeMirror Companion Tracker
 
-Last updated: July 7, 2026
+Last updated: November 9, 2026
 
 The LifeMirror Companion Tracker extension is designed to work securely with your local LifeMirror Desktop application. We prioritize your privacy and ensure that your data remains strictly on your device.
 
@@ -8,6 +8,7 @@ The LifeMirror Companion Tracker extension is designed to work securely with you
 
 The extension collects the following information locally:
 - **Active Tab Information:** The URL (sanitized: query parameters and hash fragments stripped), sanitized page title, favicon URL, and timestamp of the web pages you actively visit.
+- **Page Meta Summaries:** High-level description snippets (`<meta name="description">` or Open Graph summaries, up to 160 characters) extracted at document idle to provide human-readable session context. The extension never inspects form inputs, passwords, or personal text.
 
 *Note: The extension explicitly filters out internal browser pages and only tracks standard `http://` and `https://` URLs.*
 
@@ -43,7 +44,9 @@ We do not share, sell, or rent your data to any third parties. Your data remains
 
 ## Data Retention and Deletion
 
-Because all data is stored locally within the LifeMirror Desktop application (e.g., in a local SQLite database), you have complete control over it. You can delete your browsing history or clear your timeline directly from the LifeMirror Desktop app interface or by deleting its local database files. The extension itself does not store data persistently.
+All data remains strictly on-device under your control:
+- **Standalone Mode:** Browsing sessions are stored locally in browser storage (`chrome.storage.local`) with an automatic 48-hour rolling purge. Users can manually delete individual reflection cards, purge specific domains (and their historical records) via the Excluded Sites drawer, or wipe all stored history at any time using the 1-click "Clear All Stored Reflection Data" button in the Side Panel.
+- **Desktop Companion Mode:** When connected to LifeMirror Desktop, sessions are streamed to your local encrypted SQLite vault on your computer. You can delete or manage this data directly within the LifeMirror Desktop app interface or by removing its local database file.
 
 ## Changes to This Policy
 

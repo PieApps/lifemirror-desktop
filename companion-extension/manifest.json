@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LifeMirror Desktop",
   "version": "1.4.0",
-  "description": "Companion extension for LifeMirror Desktop. Privately reflects active browsing time, smart tags, and page descriptions to your on-device timeline.",
+  "description": "Companion for LifeMirror Desktop. Privately reflects active browsing time, smart tags, and page summaries to your local timeline.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

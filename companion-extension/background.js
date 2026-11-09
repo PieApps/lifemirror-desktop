@@ -662,7 +662,30 @@ chrome.runtime.onInstalled.addListener(() => {
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
   }
+  // Setup context menu shortcuts for direct toolbar launch
+  if (chrome.contextMenus) {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: "launch_lifemirror_desktop",
+        title: "⚡ Open LifeMirror Desktop",
+        contexts: ["action"]
+      });
+      chrome.contextMenus.create({
+        id: "open_web_dashboard",
+        title: "🌐 Open Web Dashboard",
+        contexts: ["action"]
+      });
+    });
+  }
 });
+
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info) => {
+    if (info.menuItemId === "launch_lifemirror_desktop" || info.menuItemId === "open_web_dashboard") {
+      chrome.tabs.create({ url: "https://pieapps.github.io/lifemirror-desktop.web/" });
+    }
+  });
+}
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (sender.id && sender.id !== chrome.runtime.id) {
