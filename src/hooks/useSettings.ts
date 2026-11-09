@@ -6,6 +6,7 @@ import {
   disable as disableAutostart,
   isEnabled as isAutostartActive,
 } from "@tauri-apps/plugin-autostart";
+import { ExclusionEntry, PurgePreview, PurgeReport, JournalEntry } from "../types";
 
 export function useSettings() {
   // Theme
@@ -18,6 +19,10 @@ export function useSettings() {
   // Incognito & Tracking
   const [isIncognito, setIsIncognito] = useState(false);
   const [trackingActive, setTrackingActive] = useState(true);
+
+  // Excluded domains & unattached notes
+  const [excludedDomains, setExcludedDomains] = useState<ExclusionEntry[]>([]);
+  const [unattachedNotes, setUnattachedNotes] = useState<JournalEntry[]>([]);
 
   // Settings panel visibility
   const [showSettings, setShowSettings] = useState(false);
@@ -57,6 +62,41 @@ export function useSettings() {
   const [minSubSessionDuration, setMinSubSessionDurationState] = useState(60);
   const [isAutostartEnabled, setIsAutostartEnabled] = useState(false);
 
+  // Excluded domains callbacks
+  const loadExcludedDomains = useCallback(async () => {
+    try {
+      const list = await invoke<ExclusionEntry[]>("get_excluded_domains");
+      setExcludedDomains(list);
+    } catch (e) {
+      console.error("Failed to load excluded domains:", e);
+    }
+  }, []);
+
+  const loadUnattachedNotes = useCallback(async () => {
+    try {
+      const notes = await invoke<JournalEntry[]>("get_unattached_journal_notes");
+      setUnattachedNotes(notes);
+    } catch (e) {
+      console.error("Failed to load unattached notes:", e);
+    }
+  }, []);
+
+  const previewDomainPurge = useCallback(async (domain: string, includeSubdomains: boolean): Promise<PurgePreview> => {
+    return await invoke<PurgePreview>("preview_domain_purge", { domain, includeSubdomains });
+  }, []);
+
+  const addExcludedDomain = useCallback(async (domain: string, includeSubdomains: boolean, purgeHistory: boolean): Promise<PurgeReport> => {
+    const report = await invoke<PurgeReport>("add_excluded_domain", { domain, includeSubdomains, purgeHistory });
+    await loadExcludedDomains();
+    await loadUnattachedNotes();
+    return report;
+  }, [loadExcludedDomains, loadUnattachedNotes]);
+
+  const removeExcludedDomain = useCallback(async (domain: string): Promise<void> => {
+    await invoke("remove_excluded_domain", { domain });
+    await loadExcludedDomains();
+  }, [loadExcludedDomains]);
+
   // Apply theme class and data attribute
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -67,6 +107,9 @@ export function useSettings() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        await loadExcludedDomains();
+        await loadUnattachedNotes();
+
         const rawUrl = await invoke<string>("get_db_setting", { key: "ollama_url" });
         let effectiveUrl = "http://localhost:11434";
         if (rawUrl === "disabled") {
@@ -127,12 +170,17 @@ export function useSettings() {
     const unlistenTracking = listen<boolean>("tracking-changed", (event) => {
       setTrackingActive(event.payload);
     });
+    const unlistenExcluded = listen("excluded-domains-changed", () => {
+      loadExcludedDomains();
+      loadUnattachedNotes();
+    });
 
     return () => {
       unlistenIncognito.then(fn => fn());
       unlistenTracking.then(fn => fn());
+      unlistenExcluded.then(fn => fn());
     };
-  }, []);
+  }, [loadExcludedDomains, loadUnattachedNotes]);
 
   const updateMinLogDuration = async (duration: number) => {
     const clamped = Math.max(60, duration);
@@ -205,11 +253,13 @@ export function useSettings() {
     }
   };
 
-  // Re-verify AI availability when user returns to the window
+  // Re-verify AI availability & refresh domain rules when user returns to the window
   useEffect(() => {
     const handleRecheck = () => {
       if (document.visibilityState === "visible") {
         checkAiAvailability();
+        loadExcludedDomains();
+        loadUnattachedNotes();
       }
     };
     window.addEventListener("focus", handleRecheck);
@@ -218,7 +268,7 @@ export function useSettings() {
       window.removeEventListener("focus", handleRecheck);
       document.removeEventListener("visibilitychange", handleRecheck);
     };
-  }, [checkAiAvailability]);
+  }, [checkAiAvailability, loadExcludedDomains, loadUnattachedNotes]);
 
   const handleToggleIncognito = async () => {
     try {
@@ -262,5 +312,12 @@ export function useSettings() {
     toggleAutostart,
     handleToggleIncognito,
     handleToggleTracking,
+    excludedDomains,
+    unattachedNotes,
+    loadExcludedDomains,
+    loadUnattachedNotes,
+    previewDomainPurge,
+    addExcludedDomain,
+    removeExcludedDomain,
   };
 }

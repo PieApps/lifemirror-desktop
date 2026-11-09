@@ -139,7 +139,10 @@ function renderTopDomains(domainsObj = {}) {
           <span>${safeDom}</span>
           <span class="link-arrow">↗</span>
         </a>
-        <span>${formatDuration(data.seconds)} (${pct}%)</span>
+        <div class="domain-info-right">
+          <span>${formatDuration(data.seconds)} (${pct}%)</span>
+          <button class="btn-exclude-domain" data-domain="${safeDom}" title="Exclude ${safeDom} from tracking" aria-label="Exclude domain">🚫</button>
+        </div>
       </div>
       <div class="domain-bar-bg">
         <div class="domain-bar-fill" style="width: ${pct}%"></div>
@@ -151,6 +154,14 @@ function renderTopDomains(domainsObj = {}) {
       faviconImg.addEventListener("error", () => {
         faviconImg.src = DEFAULT_FAVICON;
       }, { once: true });
+    }
+
+    const excludeDomBtn = item.querySelector(".btn-exclude-domain");
+    if (excludeDomBtn) {
+      excludeDomBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPurgeModal(dom, true);
+      });
     }
 
     topDomainsList.appendChild(item);
@@ -273,6 +284,7 @@ function renderSessions(sessions = []) {
             <span>${safeTag}</span>
             <span style="opacity: 0.6; font-size: 8px;">▾</span>
           </button>
+          <button class="btn-exclude-card" data-domain="${safeDomain}" title="Exclude domain from tracking" aria-label="Exclude domain">🚫</button>
           <button class="btn-delete-card" data-domain="${safeDomain}" data-title="${safeTitle}" data-url="${safeUrl}" title="Remove this reflection" aria-label="Remove reflection">✕</button>
         </div>
       </div>
@@ -292,6 +304,15 @@ function renderSessions(sessions = []) {
       e.stopPropagation();
       openRevisePopover(e.currentTarget, session.domain);
     });
+
+    // Hook 1-click exclude button
+    const excludeBtn = item.querySelector(".btn-exclude-card");
+    if (excludeBtn) {
+      excludeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPurgeModal(session.domain, true);
+      });
+    }
 
     // Hook 1-click delete button (reflects in desktop SQLite via native messaging)
     const delBtn = item.querySelector(".btn-delete-card");
@@ -549,7 +570,187 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     loadData();
+    loadExcludedDomainsList();
   }
 });
-window.addEventListener("focus", loadData);
+window.addEventListener("focus", () => {
+  loadData();
+  loadExcludedDomainsList();
+});
+
+// ── Excluded Domains Drawer & Purge Modal Logic ────────────────────────────────
+let activePendingDomain = "";
+let activePendingIncludeSubdomains = true;
+
+const excludedDrawer = document.getElementById("excluded-drawer");
+const excludedToggleBtn = document.getElementById("excluded-domains-toggle-btn");
+const closeDrawerBtn = document.getElementById("close-drawer-btn");
+const drawerAddForm = document.getElementById("drawer-add-form");
+const drawerDomainInput = document.getElementById("drawer-domain-input");
+const drawerIncludeSubdomains = document.getElementById("drawer-include-subdomains");
+const drawerError = document.getElementById("drawer-error");
+const drawerExcludedList = document.getElementById("drawer-excluded-list");
+
+const purgeModal = document.getElementById("purge-modal");
+const purgeModalDomainBadge = document.getElementById("purge-modal-domain-badge");
+const purgeModalPreview = document.getElementById("purge-modal-preview");
+const cancelPurgeBtn = document.getElementById("cancel-purge-btn");
+const confirmPurgeBtn = document.getElementById("confirm-purge-btn");
+
+async function loadExcludedDomainsList() {
+  if (!drawerExcludedList) return;
+  try {
+    const res = await chrome.runtime.sendMessage({ action: "get_excluded_domains" });
+    const list = (res && res.excludedDomains) || [];
+    if (list.length === 0) {
+      drawerExcludedList.innerHTML = `<span style="font-size:11px; color:var(--text-muted); font-style:italic;">No domains excluded yet.</span>`;
+      return;
+    }
+    drawerExcludedList.innerHTML = "";
+    list.forEach((item) => {
+      const el = document.createElement("div");
+      el.className = "drawer-item";
+      el.innerHTML = `
+        <div>
+          <span class="drawer-item-domain">${escapeHtml(item.domain)}</span>
+          <span class="drawer-item-badge">${item.include_subdomains !== false ? "*.subdomains" : "exact"}</span>
+        </div>
+        <button class="btn-remove-drawer-item" data-domain="${escapeHtml(item.domain)}" title="Unexclude">✕</button>
+      `;
+      el.querySelector(".btn-remove-drawer-item").addEventListener("click", async () => {
+        await chrome.runtime.sendMessage({ action: "remove_excluded_domain", domain: item.domain });
+        loadExcludedDomainsList();
+      });
+      drawerExcludedList.appendChild(el);
+    });
+  } catch (err) {
+    console.error("Failed to load excluded domains list:", err);
+  }
+}
+
+if (excludedToggleBtn && excludedDrawer) {
+  excludedToggleBtn.addEventListener("click", () => {
+    excludedDrawer.classList.toggle("hidden");
+    if (!excludedDrawer.classList.contains("hidden")) {
+      loadExcludedDomainsList();
+      if (drawerDomainInput) drawerDomainInput.focus();
+    }
+  });
+}
+
+if (closeDrawerBtn && excludedDrawer) {
+  closeDrawerBtn.addEventListener("click", () => {
+    excludedDrawer.classList.add("hidden");
+  });
+}
+
+if (drawerAddForm) {
+  drawerAddForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (drawerError) drawerError.classList.add("hidden");
+    const raw = drawerDomainInput.value.trim();
+    if (!raw) return;
+
+    const norm = LifeMirrorDomainRules.normalizeDomain(raw);
+    if (!norm.valid || !norm.domain) {
+      if (drawerError) {
+        drawerError.textContent = norm.error || "Invalid domain";
+        drawerError.classList.remove("hidden");
+      }
+      return;
+    }
+
+    openPurgeModal(norm.domain, drawerIncludeSubdomains ? drawerIncludeSubdomains.checked : true);
+  });
+}
+
+async function openPurgeModal(domain, includeSubdomains = true) {
+  activePendingDomain = domain;
+  activePendingIncludeSubdomains = includeSubdomains;
+
+  if (purgeModalDomainBadge) {
+    purgeModalDomainBadge.textContent = includeSubdomains
+      ? `All subdomains (*.${domain})`
+      : `Exact site (${domain}) only`;
+  }
+
+  if (purgeModalPreview) {
+    purgeModalPreview.innerHTML = `Scanning local history...`;
+  }
+
+  if (purgeModal) {
+    purgeModal.classList.remove("hidden");
+  }
+
+  try {
+    const preview = await chrome.runtime.sendMessage({
+      action: "preview_domain_purge",
+      domain,
+      includeSubdomains
+    });
+    if (purgeModalPreview) {
+      const count = (preview && preview.matchingSessions) || 0;
+      const hosts = (preview && preview.matchingHosts) || [];
+      purgeModalPreview.innerHTML = `
+        <strong>Existing History Found:</strong><br>
+        • ${count} visit(s) in local browser stream.<br>
+        ${hosts.length > 0 ? `• Matching hosts: <code style="font-size:10px;">${escapeHtml(hosts.join(", "))}</code>` : ""}
+      `;
+    }
+  } catch (err) {
+    if (purgeModalPreview) {
+      purgeModalPreview.textContent = "Ready to exclude domain.";
+    }
+  }
+}
+
+if (cancelPurgeBtn && purgeModal) {
+  cancelPurgeBtn.addEventListener("click", () => {
+    purgeModal.classList.add("hidden");
+    activePendingDomain = "";
+  });
+}
+
+if (confirmPurgeBtn) {
+  confirmPurgeBtn.addEventListener("click", async () => {
+    if (!activePendingDomain) return;
+    const choice = document.querySelector('input[name="ext_purge_choice"]:checked')?.value || "purge";
+    const purgeHistory = choice === "purge";
+
+    confirmPurgeBtn.disabled = true;
+    confirmPurgeBtn.textContent = "Excluding...";
+
+    try {
+      await chrome.runtime.sendMessage({
+        action: "add_excluded_domain",
+        domain: activePendingDomain,
+        includeSubdomains: activePendingIncludeSubdomains,
+        purgeHistory
+      });
+
+      if (drawerDomainInput) drawerDomainInput.value = "";
+      if (purgeModal) purgeModal.classList.add("hidden");
+      loadData();
+      loadExcludedDomainsList();
+    } catch (err) {
+      console.error("Failed to exclude domain:", err);
+    } finally {
+      confirmPurgeBtn.disabled = false;
+      confirmPurgeBtn.textContent = "Exclude Domain";
+      activePendingDomain = "";
+    }
+  });
+}
+
+// Dismiss modals/drawers on Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (purgeModal && !purgeModal.classList.contains("hidden")) {
+      purgeModal.classList.add("hidden");
+      activePendingDomain = "";
+    } else if (excludedDrawer && !excludedDrawer.classList.contains("hidden")) {
+      excludedDrawer.classList.add("hidden");
+    }
+  }
+});
 

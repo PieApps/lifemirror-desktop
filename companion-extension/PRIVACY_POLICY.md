@@ -7,9 +7,17 @@ The LifeMirror Companion Tracker extension is designed to work securely with you
 ## What Data We Collect
 
 The extension collects the following information locally:
-- **Active Tab Information:** The URL, page title, favicon URL, and timestamp of the web pages you actively visit.
+- **Active Tab Information:** The URL (sanitized: query parameters and hash fragments stripped), sanitized page title, favicon URL, and timestamp of the web pages you actively visit.
 
 *Note: The extension explicitly filters out internal browser pages and only tracks standard `http://` and `https://` URLs.*
+
+## Excluded Domains & Privacy Protection
+
+- **Domain Exclusion (Blacklist):** Users can permanently exclude sensitive domains (e.g. banking, healthcare, private intranets). Excluded sites are never recorded, summarized, or sent over native messaging.
+- **Immediate Discard:** When an excluded site is visited, any in-flight active session is discarded immediately.
+- **Historical Data Purge:** Adding an exclusion provides an option to permanently purge past visits and derived summaries from both browser storage and the LifeMirror Desktop vault.
+- **URL & Search Query Sanitization:** URLs are stripped of query parameters and hash fragments by default to avoid logging tokens or private identifiers. Major search engine page titles are sanitized to prevent search query leakage.
+- **Incognito Isolation:** Incognito tabs and private browsing windows are never tracked.
 
 ## How Data Is Stored and Transmitted
 

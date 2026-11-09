@@ -1,0 +1,182 @@
+{
+  "normalization_vectors": [
+    {
+      "input": "https://User:pw@Chase.com:443/path?x#y",
+      "expected": "chase.com",
+      "valid": true
+    },
+    {
+      "input": "WWW.Chase.com.",
+      "expected": "chase.com",
+      "valid": true
+    },
+    {
+      "input": "http://127.0.0.1:8080/dashboard?auth=123",
+      "expected": "127.0.0.1",
+      "valid": true
+    },
+    {
+      "input": "localhost:3000/app",
+      "expected": "localhost",
+      "valid": true
+    },
+    {
+      "input": "https://xn--e1afmkfd.xn--p1ai/path",
+      "expected": "xn--e1afmkfd.xn--p1ai",
+      "valid": true
+    },
+    {
+      "input": "com",
+      "expected": null,
+      "valid": false,
+      "reason": "bare public suffix"
+    },
+    {
+      "input": "co.uk",
+      "expected": null,
+      "valid": false,
+      "reason": "bare public suffix"
+    },
+    {
+      "input": "co.in",
+      "expected": null,
+      "valid": false,
+      "reason": "bare public suffix"
+    },
+    {
+      "input": "github.io",
+      "expected": null,
+      "valid": false,
+      "reason": "bare private suffix"
+    },
+    {
+      "input": "vercel.app",
+      "expected": null,
+      "valid": false,
+      "reason": "bare private suffix"
+    },
+    {
+      "input": "blogspot.com",
+      "expected": null,
+      "valid": false,
+      "reason": "bare private suffix"
+    },
+    {
+      "input": "",
+      "expected": null,
+      "valid": false,
+      "reason": "empty input"
+    },
+    {
+      "input": "   ",
+      "expected": null,
+      "valid": false,
+      "reason": "whitespace input"
+    }
+  ],
+  "matching_vectors": [
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "chase.com",
+      "expected_match": true
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "secure.chase.com",
+      "expected_match": true
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "www.chase.com",
+      "expected_match": true
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": false,
+      "candidate_host": "secure.chase.com",
+      "expected_match": false
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": false,
+      "candidate_host": "chase.com",
+      "expected_match": true
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "notchase.com",
+      "expected_match": false
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "chase.com.evil.com",
+      "expected_match": false
+    },
+    {
+      "rule_domain": "chase.com",
+      "include_subdomains": true,
+      "candidate_host": "chase.co",
+      "expected_match": false
+    },
+    {
+      "rule_domain": "127.0.0.1",
+      "include_subdomains": true,
+      "candidate_host": "127.0.0.1",
+      "expected_match": true
+    },
+    {
+      "rule_domain": "127.0.0.1",
+      "include_subdomains": true,
+      "candidate_host": "sub.127.0.0.1",
+      "expected_match": false
+    },
+    {
+      "rule_domain": "localhost",
+      "include_subdomains": true,
+      "candidate_host": "localhost",
+      "expected_match": true
+    }
+  ],
+  "url_sanitization_vectors": [
+    {
+      "raw_url": "https://chase.com/login?token=secret123&ref=banner#state",
+      "expected_url": "https://chase.com/login"
+    },
+    {
+      "raw_url": "https://www.google.com/search?q=sensitive+medical+query",
+      "expected_url": "https://www.google.com/search"
+    },
+    {
+      "raw_url": "http://127.0.0.1:8080/dashboard?auth=bearer#top",
+      "expected_url": "http://127.0.0.1:8080/dashboard"
+    }
+  ],
+  "search_engine_vectors": [
+    {
+      "host": "www.google.com",
+      "raw_title": "sensitive condition symptoms - Google Search",
+      "expected_title": "Google Search"
+    },
+    {
+      "host": "duckduckgo.com",
+      "raw_title": "private medical topic at DuckDuckGo",
+      "expected_title": "DuckDuckGo Search"
+    },
+    {
+      "host": "www.bing.com",
+      "raw_title": "confidential business inquiry - Bing",
+      "expected_title": "Bing Search"
+    },
+    {
+      "host": "github.com",
+      "raw_title": "PieApps/lifemirror-desktop: Privacy first timeline",
+      "expected_title": "PieApps/lifemirror-desktop: Privacy first timeline"
+    }
+  ]
+}
+

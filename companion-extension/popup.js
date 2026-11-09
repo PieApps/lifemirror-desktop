@@ -21,6 +21,11 @@ const activeTabDesc = document.getElementById("active-tab-desc");
 const activeTabTagBtn = document.getElementById("active-tab-tag-btn");
 const activeTabTagText = document.getElementById("active-tab-tag-text");
 
+const tabExclusionWrap = document.getElementById("tab-exclusion-wrap");
+const btnExcludeActiveTab = document.getElementById("btn-exclude-active-tab");
+const tabExcludedBadge = document.getElementById("tab-excluded-badge");
+const btnUnexcludeActiveTab = document.getElementById("btn-unexclude-active-tab");
+
 const openSidepanelBtn = document.getElementById("open-sidepanel-btn");
 const todayTotalTime = document.getElementById("today-total-time");
 const todaySwitches = document.getElementById("today-switches");
@@ -135,12 +140,38 @@ async function updateActiveTabPreview() {
           activeTabTagText.textContent = status.currentSession.tag;
         }
       }
+
+      // Check if current domain is excluded
+      let isExcluded = false;
+      try {
+        const exclRes = await chrome.runtime.sendMessage({ action: "get_excluded_domains" });
+        const list = (exclRes && exclRes.excludedDomains) || [];
+        for (const entry of list) {
+          if (!entry.removed && LifeMirrorDomainRules.hostMatches(currentActiveDomain, entry.domain, entry.include_subdomains !== false)) {
+            isExcluded = true;
+            break;
+          }
+        }
+      } catch {}
+
+      if (tabExclusionWrap) {
+        tabExclusionWrap.classList.remove("hidden");
+        if (isExcluded) {
+          tabExcludedBadge?.classList.remove("hidden");
+          btnExcludeActiveTab?.classList.add("hidden");
+          activeTabTagText.textContent = "🚫 Excluded";
+        } else {
+          tabExcludedBadge?.classList.add("hidden");
+          btnExcludeActiveTab?.classList.remove("hidden");
+        }
+      }
     } else {
       activeTabTitle.textContent = tab.title || "Internal / System Page";
       activeTabDomain.textContent = urlStr.split("/")[0] || "Excluded Protocol";
       activeTabFavicon.src = DEFAULT_FAVICON;
       currentActiveDomain = "";
       if (activeTabDesc) activeTabDesc.classList.add("hidden");
+      if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");
       activeTabTagText.textContent = "Excluded";
     }
 
@@ -218,6 +249,45 @@ async function checkNativeHostStatus() {
 function setConnectionStatus(isConnected, label, stateClass = "disconnected") {
   connectionBadge.className = `status-badge ${stateClass}`;
   connectionText.textContent = label;
+}
+
+// ── Excluded Domains Buttons ─────────────────────────────────────────────────
+if (btnExcludeActiveTab) {
+  btnExcludeActiveTab.addEventListener("click", async () => {
+    if (!currentActiveDomain) return;
+    btnExcludeActiveTab.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({
+        action: "add_excluded_domain",
+        domain: currentActiveDomain,
+        includeSubdomains: true,
+        purgeHistory: true
+      });
+      await updateActiveTabPreview();
+    } catch (err) {
+      console.error("Failed to exclude domain:", err);
+    } finally {
+      btnExcludeActiveTab.disabled = false;
+    }
+  });
+}
+
+if (btnUnexcludeActiveTab) {
+  btnUnexcludeActiveTab.addEventListener("click", async () => {
+    if (!currentActiveDomain) return;
+    btnUnexcludeActiveTab.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({
+        action: "remove_excluded_domain",
+        domain: currentActiveDomain
+      });
+      await updateActiveTabPreview();
+    } catch (err) {
+      console.error("Failed to unexclude domain:", err);
+    } finally {
+      btnUnexcludeActiveTab.disabled = false;
+    }
+  });
 }
 
 // ── Initialization ────────────────────────────────────────────────────────────

@@ -117,6 +117,13 @@ Stores individual sub-events (like tab switches) separately from active OS-level
 * `metadata`: `TEXT` (Nullable)
 * `timestamp`: `TEXT NOT NULL` (ISO 8601 string, UTC format)
 
+### Table 9: `excluded_domains`
+Stores user-excluded privacy domains synchronized between the Desktop app and the Chrome extension.
+* `domain`: `TEXT PRIMARY KEY` (normalized bare host, e.g. `"chase.com"`)
+* `include_subdomains`: `INTEGER NOT NULL DEFAULT 1` (`1` = match subdomains, `0` = site only)
+* `updated_at`: `INTEGER NOT NULL` (millisecond timestamp for offline LWW sync)
+* `removed`: `INTEGER NOT NULL DEFAULT 0` (tombstone flag ensuring removals sync without resurrection)
+
 ### Fail-Safe Zero-Data-Loss Vault Architecture & Inter-Process Locking
 
 To guarantee that user data is never compromised, corrupted, or wiped under headless subprocess runs or credential hiccups:
@@ -154,6 +161,12 @@ To guarantee that user data is never compromised, corrupted, or wiped under head
    - Backups are formatted as `lifemirror-desktop.{tag}.{YYYYMMDD_HHMMSS_fff}.bak` (millisecond timestamp precision).
    - Rolling retention automatically prunes backups beyond the newest 5 copies per tag.
 
+7. **Physical Secure Erasure & Lock-Free Atomic Invalidation:**
+   - When a domain is purged, `PRAGMA secure_delete = ON` is executed on the database connection, forcing SQLite to overwrite deleted B-tree cells and payload spaces with zeroes rather than leaving them in page freelists.
+   - Purge operations invoke `wal_checkpoint(TRUNCATE)` to flush WAL frames to the main encrypted database file and truncate the write-ahead log to zero bytes.
+   - An atomic version counter (`excluded_version: Arc<AtomicI64>`) is stored in `DbState` and incremented on every exclusion change. Poller threads in `tracker.rs` and reader handlers in `native_msg.rs` check this version to maintain an in-memory cache of excluded domains, executing domain checks in microseconds without database locks.
+   - Personal reflections and notes attached to purged `activity_logs` rows are preserved by copying them to `journal_entries` before deletion, guaranteeing that user journaling is never lost.
+
 ---
 
 ## 3. Browser Native Messaging Bridge (`native_msg.rs`)
@@ -174,6 +187,13 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
   ```
 * **Active Tab Caching & Rich Metadata:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event. The extracted page `description` is saved directly into `sub_session_events.metadata` and the smart `tag` into `sub_session_events.context_tag`. This metadata is subsequently rendered inside the S-Curve timeline details sidebar (`TimelineSidebar.tsx`) and passed to local Ollama AI reflection prompts (`useLocalAI.ts`) for high-fidelity daily journaling.
 * **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `sub_session_events` table via `insert_sub_session_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
+* **URL & Search Title Sanitization (`domain_rules.rs`):**
+  - All tab URLs pass through `sanitize_url()`, stripping query strings (`?token=...`) and hash fragments (`#...`) to avoid capturing reset tokens, session identifiers, or sensitive arguments.
+  - Page titles pass through `sanitize_title()`. If the host domain belongs to a known search engine (Google, Bing, DuckDuckGo, Yahoo, Baidu, Yandex, Ecosia, Brave, Qwant, Startpage), the title is masked to the bare search engine name (e.g. `"Google Search"` instead of `"symptoms of X - Google Search"`).
+* **Domain Exclusion Sync Protocol:**
+  - `sync_excluded_domains`: Stdin payload containing an array of `{ domain, include_subdomains, updated_at, removed }`. Rust reconciles entries with the `excluded_domains` table using Last-Writer-Wins (with exclusions winning on timestamp ties). Newly excluded domains trigger an immediate database purge (with `secure_delete = ON` and WAL truncation). Returns the full merged list to stdout.
+  - `get_excluded_domains`: Requests the active exclusion list from the vault.
+  - If a tab switch matches an active exclusion rule, `native_msg` drops the event immediately, clears `active_tab_url` / `active_tab_title` from `settings`, and sends a sync acknowledgment.
 * **Error Framing & Graceful Handshake:** If the host process cannot open the database (e.g., `vault_locked`, `vault_busy`, `vault_needs_upgrade`, or `vault_missing`), it serializes a 4-byte native-endian length-prefixed JSON error to `stdout` (e.g. `{"error": "vault_locked", "message": "..."}`) and exits cleanly with exit code 0. No unformatted log text is ever written to `stdout` (all diagnostics go to `stderr`), preserving the binary stream protocol of the browser native messaging interface.
 
 ---
@@ -186,12 +206,13 @@ The background window poller thread must support clean cancellation. Rather than
 - Tauri commands `toggle_tracking` and `is_tracking_active` coordinate frontend clicks with this atomic flag.
 - The tracking loop polls the atomic flag every 1 second. If disabled, it flushes the active parent session, clears memory buffers, and pauses (sleeps).
 
-### Browser-Window URL Extraction & Domain-Level Aggregation
+### Browser-Window URL Extraction, Domain Exclusion & Sanitization
 Under Linux compositor polling (`hyprctl activewindow`, `swaymsg get_tree`, or `xdotool`), the OS only exposes window titles (e.g. `"GitHub - Google Chrome"`). To enrich this data:
 1. The tracker identifies if the foreground app is a browser (via `is_browser_app`).
 2. If active, it reads `active_tab_title`, `active_tab_url`, and `active_tab_favicon` settings from the SQLite settings table.
-3. If the compositor window title contains the active tab title, the activity log is populated with `source: "Browser"`, `url: Some(url)`, and `icon_url: Some(favicon)`.
-4. Browser tab focus matches are resolved at the **domain name level** using the `extract_domain` utility. It strips protocols (`http://`, `https://`) and prefixes (`www.`) but preserves subdomains (e.g., matching `youtube.com/watch?v=A` and `youtube.com/watch?v=B` as the same continuous `youtube.com` focus node).
+3. The extracted domain is checked against the exclusion cache via `domain_rules::is_domain_excluded()`. If excluded, the tracker suppresses URL logging, drops active tab settings, and sanitizes the compositor window title to hide private activity.
+4. If not excluded and the compositor window title matches the active tab title, the activity log is populated with `source: "Browser"`, `url: Some(sanitized_url)`, and `icon_url: Some(favicon)`.
+5. Browser tab focus matches are resolved at the **domain name level** using the `extract_domain` utility. It strips protocols (`http://`, `https://`) and prefixes (`www.`) but preserves subdomains (e.g., matching `youtube.com/watch?v=A` and `youtube.com/watch?v=B` as the same continuous `youtube.com` focus node). Full URLs have queries and fragments stripped, and search engine titles are masked.
 
 ### Micro-Task Aggregation & Focus Transition Logic
 To avoid timeline fragmentation while accurately tracking user attention:

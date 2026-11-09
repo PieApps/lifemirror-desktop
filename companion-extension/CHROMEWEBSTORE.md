@@ -20,6 +20,8 @@ Built on Steve Krug's "Don't Make Me Think" usability principles, it provides in
 KEY FEATURES
 • Standalone Zero-Setup Reflection: Works immediately out of the box with zero external configuration. View your daily focus rhythm, top domains, and active browsing stream directly inside Chrome.
 • Dedicated Chrome Side Panel: Keep your daily reflection open side-by-side as you work without interrupting your browsing flow.
+• Domain Exclusion & Blacklisting: Excluded sites are never recorded. Permanently blacklist sensitive websites (banking, healthcare, private portals). Purge existing history in 1 click and sync bidirectionally with LifeMirror Desktop.
+• URL & Search Query Sanitization: Strips query parameters and hash fragments (e.g. auth tokens, reset codes) from URLs by default. Sanitizes major search engine titles to prevent search query leakage.
 • Automated Meta Descriptions: Extracts page summaries (<meta name="description">) so you immediately remember what you were reading without mental effort.
 • Smart Auto-Tags & 1-Click Revise: Automatically categorizes sites into Development, Research & Docs, Media / Learning, Communications, and Leisure. Reclassify any site in 1 click with zero typing.
 • Accurate Inactivity Tracking: Uses Chrome's idle detection to automatically pause focus accumulation when you step away from your computer.
@@ -32,16 +34,19 @@ DUAL OPERATION MODES
 
 SUPPORTED TABS & BROWSING SCOPE
 • Supported Tabs: Standard web URLs (http:// and https://) actively visited and focused by the user.
-• Ignored & Excluded Pages: Internal browser configuration pages (chrome://*, chrome-extension://*, edge://*, about:blank, devtools://*), file system URLs (file://*), and non-web protocol pages are strictly ignored.
+• Excluded Sites & Domains: Excluded sites are never recorded. Domains on your exclusion list (including subdomains) are ignored completely, discarded from memory, and never stored or sent.
+• Ignored Pages: Internal browser configuration pages (chrome://*, chrome-extension://*, edge://*, about:blank, devtools://*), file system URLs (file://*), and non-web protocol pages are strictly ignored.
 • Active-Only Focus: Only logs the currently focused tab in the active window; inactive background tabs and idle windows are never queried.
 
 HOW TO USE
 1. Install this extension from the Chrome Web Store.
 2. Click the LifeMirror icon to view your active tab reflection and click "Open Side Panel Reflection" to view your daily stream.
-3. (Optional) Download LifeMirror Desktop from https://pieapps.github.io/lifemirror-desktop.web/ for full-system offline reflection.
+3. Use the "Excluded Sites" drawer or the 🚫 icon on any reflection card to permanently blacklist sensitive websites.
+4. (Optional) Download LifeMirror Desktop from https://pieapps.github.io/lifemirror-desktop.web/ for full-system offline reflection.
 
 PRIVACY & ZERO-CLOUD MANDATE
 We believe your browsing history belongs to you alone:
+• Excluded Sites Are Never Recorded: Blacklisted domains are discarded in real time.
 • Zero Remote Servers: No telemetry, no cloud synchronization, no third-party analytics.
 • Direct Local Pipe: Data flows strictly between Chrome and the local LifeMirror native host binary via Chrome's Native Messaging API.
 • Full Data Ownership: All history is stored in your local encrypted SQLite database on your device, controllable and deletable at any time from the LifeMirror Desktop UI.

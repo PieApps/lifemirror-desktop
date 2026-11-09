@@ -2494,6 +2494,7 @@ dependencies = [
  "keyring",
  "libc",
  "once_cell",
+ "psl",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
@@ -2506,6 +2507,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "thiserror 1.0.69",
  "tokio",
+ "url",
  "uuid",
  "winreg 0.10.1",
  "zbus 4.4.0",
@@ -3426,6 +3428,21 @@ checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "psl"
+version = "2.1.249"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5a4e068733aa4f2ef06083331e02678699f997128ad66e57a8adc7e3f654ba0"
+dependencies = [
+ "psl-types",
+]
+
+[[package]]
+name = "psl-types"
+version = "2.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33cb294fe86a74cbcf50d4445b37da762029549ebeea341421c7c70370f86cac"
 
 [[package]]
 name = "pxfm"

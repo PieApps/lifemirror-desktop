@@ -223,9 +223,15 @@ fn resolve_current_activity(
         let active_url = db.get_setting("active_tab_url").unwrap_or_default();
         let active_favicon = db.get_setting("active_tab_favicon").unwrap_or_default();
 
+        let domain = extract_domain(&active_url);
+
+        // Privacy Blacklist: If the active browser domain is excluded, suppress URL, title, and favicon completely
+        if !domain.is_empty() && db.is_domain_excluded(&domain) {
+            return (app, "Browser".to_string(), None, None, "Browser".to_string());
+        }
+
         let title_lower = title.to_lowercase();
         let active_title_lower = active_title.to_lowercase();
-        let domain = extract_domain(&active_url);
         let domain_lower = domain.to_lowercase();
 
         let matches_title = active_title.is_empty()
@@ -239,10 +245,14 @@ fn resolve_current_activity(
             || title_lower == "chromium";
 
         if !active_url.is_empty() && matches_title {
+            let sanitized_url = crate::domain_rules::sanitize_url(&active_url);
+            let raw_effective_title = if active_title.is_empty() { title } else { active_title };
+            let sanitized_title = crate::domain_rules::sanitize_page_title(&domain, &raw_effective_title);
+
             return (
                 app,
-                if active_title.is_empty() { title } else { active_title },
-                Some(active_url),
+                sanitized_title,
+                Some(sanitized_url),
                 if active_favicon.is_empty() {
                     None
                 } else {

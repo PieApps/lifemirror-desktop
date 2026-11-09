@@ -41,6 +41,16 @@ pub fn send_native_error_response(error_code: &str, message: &str) {
     let _ = stdout.flush();
 }
 
+pub fn send_native_json<T: Serialize>(payload: &T) {
+    if let Ok(json_bytes) = serde_json::to_vec(payload) {
+        let length = json_bytes.len() as u32;
+        let mut stdout = std::io::stdout().lock();
+        let _ = stdout.write_all(&length.to_ne_bytes());
+        let _ = stdout.write_all(&json_bytes);
+        let _ = stdout.flush();
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn detect_parent_browser() -> String {
     let ppid = unsafe { libc::getppid() };
@@ -80,6 +90,8 @@ fn detect_parent_browser() -> String {
 enum NativeHostMsg {
     Tab(TabPayload),
     Delete { url: Option<String>, title: Option<String> },
+    SyncExcludedDomains { entries: Vec<crate::db::ExclusionEntry> },
+    GetExcludedDomains,
 }
 
 pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
@@ -159,32 +171,62 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                 .unwrap_or(60);
 
             match msg {
+                NativeHostMsg::SyncExcludedDomains { entries } => {
+                    let _ = db_clone.merge_excluded_entries(entries);
+                    if let Ok(full_list) = db_clone.get_excluded_entries() {
+                        let resp = serde_json::json!({
+                            "event": "sync_excluded_domains",
+                            "entries": full_list
+                        });
+                        send_native_json(&resp);
+                    }
+                }
+                NativeHostMsg::GetExcludedDomains => {
+                    if let Ok(full_list) = db_clone.get_excluded_entries() {
+                        let resp = serde_json::json!({
+                            "event": "sync_excluded_domains",
+                            "entries": full_list
+                        });
+                        send_native_json(&resp);
+                    }
+                }
                 NativeHostMsg::Delete { url, title } => {
                     let _ = db_clone.delete_sub_session_event_by_uri_or_title(url.as_deref(), title.as_deref());
                 }
                 NativeHostMsg::Tab(payload) => {
-                    if is_incognito {
+                    let domain = extract_domain(&payload.url);
+                    if is_incognito || db_clone.is_domain_excluded(&domain) {
                         if let Some(prev) = prev_event.take() {
                             let duration = (now - prev_time.unwrap()).num_seconds();
                             if duration >= min_sub_session_duration {
                                 let _ = db_clone.insert_sub_session_event(&prev);
                             }
                         }
+                        if db_clone.is_domain_excluded(&domain) {
+                            let _ = db_clone.set_setting("active_tab_url", "");
+                            let _ = db_clone.set_setting("active_tab_title", "");
+                            let _ = db_clone.set_setting("active_tab_favicon", "");
+                            prev_event = None;
+                            prev_time = None;
+                        }
                         continue;
                     }
                     
-                    // Not incognito
-                    let _ = db_clone.set_setting("active_tab_url", &payload.url);
-                    let _ = db_clone.set_setting("active_tab_title", &payload.title);
+                    // Sanitize URL (strip query parameters and hash fragments)
+                    let sanitized_url = crate::domain_rules::sanitize_url(&payload.url);
+                    // Sanitize title for search engines so query terms do not leak
+                    let sanitized_title = crate::domain_rules::sanitize_page_title(&domain, &payload.title);
+
+                    let _ = db_clone.set_setting("active_tab_url", &sanitized_url);
+                    let _ = db_clone.set_setting("active_tab_title", &sanitized_title);
                     let _ = db_clone.set_setting("active_tab_favicon", &payload.favIconUrl.clone().unwrap_or_default());
-                    let domain_tag = extract_domain(&payload.url);
+                    let domain_tag = extract_domain(&sanitized_url);
                     
                     let event = SubSessionEvent {
-                        id: None,
                         session_type: "Browser".to_string(),
                         parent_app_name: Some(parent_browser_clone.clone()),
-                        title: payload.title,
-                        primary_uri: Some(payload.url),
+                        title: sanitized_title,
+                        primary_uri: Some(sanitized_url),
                         icon_url: payload.favIconUrl,
                         context_tag: payload.tag.or_else(|| if domain_tag.is_empty() { None } else { Some(domain_tag) }),
                         metadata: payload.description.map(|d| {
@@ -198,6 +240,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                             }
                         }),
                         timestamp: now.to_rfc3339(),
+                        id: None,
                     };
 
                     // Process previous event
@@ -253,6 +296,14 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     let url = payload.get("url").and_then(|v| v.as_str()).map(|s| s.to_string());
                     let title = payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
                     let _ = tx.send(NativeHostMsg::Delete { url, title });
+                } else if event_type == "sync_excluded_domains" {
+                    if let Some(entries_val) = payload.get("entries") {
+                        if let Ok(entries) = serde_json::from_value::<Vec<crate::db::ExclusionEntry>>(entries_val.clone()) {
+                            let _ = tx.send(NativeHostMsg::SyncExcludedDomains { entries });
+                        }
+                    }
+                } else if event_type == "get_excluded_domains" {
+                    let _ = tx.send(NativeHostMsg::GetExcludedDomains);
                 }
             }
         }

@@ -4,6 +4,8 @@
  * and page descriptions entirely on-device (chrome.storage.local + optional native desktop sync).
  */
 
+importScripts("domain-rules.js");
+
 const HOST_NAME = "com.lifemirror.desktop";
 const IDLE_THRESHOLD_SECONDS = 60;
 const MAX_META_CACHE = 150;
@@ -17,6 +19,111 @@ let lastVaultError = null;
 let currentSession = null;
 let isUserIdle = false;
 const metaCache = new Map(); // url -> description
+
+// In-memory cache of domain exclusion rules
+let excludedEntries = []; // array of { domain, include_subdomains, updated_at, removed }
+
+async function loadExcludedEntries() {
+  try {
+    const data = await chrome.storage.local.get(["excluded_entries"]);
+    if (Array.isArray(data.excluded_entries)) {
+      excludedEntries = data.excluded_entries;
+    }
+  } catch (err) {
+    console.error("[LifeMirror] Failed to load excluded_entries:", err);
+  }
+}
+
+// Initial eager load
+loadExcludedEntries();
+
+function isDomainExcluded(hostname) {
+  if (!hostname || !excludedEntries || excludedEntries.length === 0) return false;
+  for (const entry of excludedEntries) {
+    if (!entry.removed && LifeMirrorDomainRules.hostMatches(hostname, entry.domain, entry.include_subdomains !== false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function mergeEntries(localList, incomingList) {
+  const map = new Map();
+  for (const item of localList) {
+    map.set(item.domain, item);
+  }
+
+  for (const incoming of incomingList) {
+    const existing = map.get(incoming.domain);
+    if (!existing) {
+      map.set(incoming.domain, incoming);
+    } else {
+      if (incoming.updated_at > existing.updated_at) {
+        map.set(incoming.domain, incoming);
+      } else if (incoming.updated_at === existing.updated_at) {
+        // On tie, exclusion wins (removed: false wins)
+        if (!incoming.removed) {
+          map.set(incoming.domain, incoming);
+        }
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
+async function purgeLocalDomainData(domain, includeSubdomains = true) {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const updates = {};
+    let purgedSessionsCount = 0;
+
+    for (const [key, val] of Object.entries(all)) {
+      if (!key.startsWith("daily_") || !val) continue;
+
+      let modified = false;
+      const dayRecord = { ...val };
+
+      if (dayRecord.domains) {
+        for (const dom of Object.keys(dayRecord.domains)) {
+          if (LifeMirrorDomainRules.hostMatches(dom, domain, includeSubdomains)) {
+            const purgedSeconds = dayRecord.domains[dom].seconds || 0;
+            dayRecord.totalActiveSeconds = Math.max(0, dayRecord.totalActiveSeconds - purgedSeconds);
+            delete dayRecord.domains[dom];
+            modified = true;
+          }
+        }
+      }
+
+      if (Array.isArray(dayRecord.recentSessions)) {
+        const originalLen = dayRecord.recentSessions.length;
+        dayRecord.recentSessions = dayRecord.recentSessions.filter((s) => {
+          return !LifeMirrorDomainRules.hostMatches(s.domain, domain, includeSubdomains);
+        });
+        if (dayRecord.recentSessions.length !== originalLen) {
+          purgedSessionsCount += (originalLen - dayRecord.recentSessions.length);
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        updates[key] = dayRecord;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await chrome.storage.local.set(updates);
+    }
+
+    if (currentSession && LifeMirrorDomainRules.hostMatches(currentSession.domain, domain, includeSubdomains)) {
+      currentSession = null;
+    }
+
+    return purgedSessionsCount;
+  } catch (err) {
+    console.error("[LifeMirror] Purge local domain data error:", err);
+    return 0;
+  }
+}
 
 // ── Multi-Signal Semantic Classifier ──────────────────────────────────────────
 
@@ -245,6 +352,20 @@ function getNativePort() {
     isNativeConnected = true;
 
     port.onMessage.addListener((msg) => {
+      if (msg && msg.event === "sync_excluded_domains" && Array.isArray(msg.entries)) {
+        const prevExcluded = new Set(
+          excludedEntries.filter(e => !e.removed).map(e => e.domain)
+        );
+        const merged = mergeEntries(excludedEntries, msg.entries);
+        excludedEntries = merged;
+        chrome.storage.local.set({ excluded_entries: merged }).catch(console.error);
+
+        for (const entry of merged) {
+          if (!entry.removed && !prevExcluded.has(entry.domain)) {
+            purgeLocalDomainData(entry.domain, entry.include_subdomains !== false).catch(console.error);
+          }
+        }
+      }
       if (msg && msg.error) {
         lastVaultError = msg.error;
         if (msg.error === "vault_locked") {
@@ -256,6 +377,11 @@ function getNativePort() {
         }
       }
     });
+
+    // Request current excluded domains from desktop host
+    try {
+      port.postMessage({ event: "get_excluded_domains" });
+    } catch {}
 
     port.onDisconnect.addListener(() => {
       isNativeConnected = false;
@@ -405,19 +531,27 @@ async function reportTabActivity(tabId, changeInfo, tab) {
   }
 
   const hostname = extractHostname(url);
-  const cleanUrl = stripQueryParams(url);
-  const title = tab.title || hostname || "Web Page";
-  const category = await classifyTab(url, title, hostname);
+
+  // Check Domain Exclusion: Immediately discard in-flight session and halt tracking
+  if (isDomainExcluded(hostname)) {
+    currentSession = null;
+    return;
+  }
+
+  const cleanUrl = LifeMirrorDomainRules.sanitizeUrl(url);
+  const rawTitle = tab.title || hostname || "Web Page";
+  const sanitizedTitle = LifeMirrorDomainRules.sanitizePageTitle(hostname, rawTitle);
+  const category = await classifyTab(url, sanitizedTitle, hostname);
   const description = metaCache.get(url) || metaCache.get(cleanUrl) || null;
 
   // 1. Guard against duplicate sessions on the SAME tab and SAME URL
   if (currentSession && currentSession.tabId === tabId && currentSession.url === cleanUrl) {
     // Update title, favicon, or description if they became available without resetting duration
     if (tab.title && tab.title !== hostname) {
-      currentSession.title = tab.title;
+      currentSession.title = sanitizedTitle;
       // If current tag was "Other", re-evaluate now that the real page title has loaded
       if (currentSession.tag === "🌐 Other") {
-        const upgradedCategory = await classifyTab(url, tab.title, hostname);
+        const upgradedCategory = await classifyTab(url, sanitizedTitle, hostname);
         if (upgradedCategory !== "🌐 Other") {
           currentSession.tag = upgradedCategory;
         }
@@ -443,7 +577,7 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     tabId,
     url: cleanUrl,
     domain: hostname,
-    title: tab.title || hostname || "Web Page",
+    title: sanitizedTitle,
     favIconUrl: tab.favIconUrl || "",
     description: description,
     tag: category,
@@ -456,7 +590,7 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     const payload = {
       event: "tab_activity",
       url: cleanUrl,
-      title: tab.title || hostname || "Untitled Tab",
+      title: sanitizedTitle,
       favIconUrl: tab.favIconUrl || "",
       description: description,
       tag: category,
@@ -672,6 +806,128 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       metaCache.clear();
       sendResponse({ success: true });
     });
+    return true;
+  }
+
+  // Domain Exclusion: Get list of active excluded domains
+  if (request.action === "get_excluded_domains") {
+    const activeList = excludedEntries.filter((e) => !e.removed);
+    sendResponse({ excludedDomains: activeList });
+    return true;
+  }
+
+  // Domain Exclusion: Preview purge counts in local extension storage
+  if (request.action === "preview_domain_purge") {
+    const { domain, includeSubdomains } = request;
+    chrome.storage.local.get(null).then((all) => {
+      let matchingSessions = 0;
+      const matchingHosts = new Set();
+      for (const [key, val] of Object.entries(all)) {
+        if (!key.startsWith("daily_") || !val) continue;
+        if (val.domains) {
+          for (const d of Object.keys(val.domains)) {
+            if (LifeMirrorDomainRules.hostMatches(d, domain, includeSubdomains !== false)) {
+              matchingHosts.add(d);
+            }
+          }
+        }
+        if (Array.isArray(val.recentSessions)) {
+          for (const s of val.recentSessions) {
+            if (LifeMirrorDomainRules.hostMatches(s.domain, domain, includeSubdomains !== false)) {
+              matchingSessions += 1;
+              matchingHosts.add(s.domain);
+            }
+          }
+        }
+      }
+      sendResponse({
+        matchingSessions,
+        matchingHosts: Array.from(matchingHosts)
+      });
+    });
+    return true;
+  }
+
+  // Domain Exclusion: Add excluded domain with optional purge & native sync
+  if (request.action === "add_excluded_domain") {
+    const { domain, includeSubdomains = true, purgeHistory = true } = request;
+    const norm = LifeMirrorDomainRules.normalizeDomain(domain);
+    if (!norm.valid || !norm.domain) {
+      sendResponse({ success: false, error: norm.error || "Invalid domain" });
+      return true;
+    }
+
+    const cleanDomain = norm.domain;
+    const entry = {
+      domain: cleanDomain,
+      include_subdomains: Boolean(includeSubdomains),
+      updated_at: Date.now(),
+      removed: false
+    };
+
+    (async () => {
+      const merged = mergeEntries(excludedEntries, [entry]);
+      excludedEntries = merged;
+      await chrome.storage.local.set({ excluded_entries: merged });
+
+      let purgedCount = 0;
+      if (purgeHistory) {
+        purgedCount = await purgeLocalDomainData(cleanDomain, includeSubdomains);
+      } else {
+        if (currentSession && LifeMirrorDomainRules.hostMatches(currentSession.domain, cleanDomain, includeSubdomains)) {
+          currentSession = null;
+        }
+      }
+
+      const nativePort = getNativePort();
+      if (nativePort) {
+        try {
+          nativePort.postMessage({
+            event: "sync_excluded_domains",
+            entries: [entry]
+          });
+        } catch {
+          // ignore if native port not connected
+        }
+      }
+
+      sendResponse({
+        success: true,
+        domain: cleanDomain,
+        purgedSessions: purgedCount
+      });
+    })();
+    return true;
+  }
+
+  // Domain Exclusion: Remove excluded domain (creates tombstone & syncs)
+  if (request.action === "remove_excluded_domain") {
+    const { domain } = request;
+    const cleanDomain = (domain || "").toLowerCase().trim();
+    const entry = {
+      domain: cleanDomain,
+      include_subdomains: false,
+      updated_at: Date.now(),
+      removed: true
+    };
+
+    (async () => {
+      const merged = mergeEntries(excludedEntries, [entry]);
+      excludedEntries = merged;
+      await chrome.storage.local.set({ excluded_entries: merged });
+
+      const nativePort = getNativePort();
+      if (nativePort) {
+        try {
+          nativePort.postMessage({
+            event: "sync_excluded_domains",
+            entries: [entry]
+          });
+        } catch {}
+      }
+
+      sendResponse({ success: true, domain: cleanDomain });
+    })();
     return true;
   }
 });

@@ -37,3 +37,31 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
+export interface ExclusionEntry {
+  domain: string;
+  include_subdomains: boolean;
+  updated_at: number;
+  removed: boolean;
+}
+
+export interface PurgePreview {
+  sub_sessions_count: number;
+  activity_logs_count: number;
+  matching_hosts: string[];
+  attached_notes_count: number;
+}
+
+export interface PurgeReport {
+  domain: string;
+  sub_sessions_purged: number;
+  activity_logs_purged: number;
+  attached_notes_detached: number;
+  derived_rollups_purged: number;
+}
+
+export interface JournalEntry {
+  id?: number;
+  timestamp: string;
+  notes: string;
+}

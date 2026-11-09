@@ -1,10 +1,42 @@
 use rusqlite::{functions::FunctionFlags, params, Connection, OpenFlags, Result};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicI64, Ordering}, Arc, Mutex, RwLock};
 use fs2::FileExt;
 use crate::memory_engine::collector::NormalizedEvent;
 
 use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExclusionEntry {
+    pub domain: String,
+    pub include_subdomains: bool,
+    pub updated_at: i64,
+    pub removed: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct PurgePreview {
+    pub sub_sessions_count: usize,
+    pub activity_logs_count: usize,
+    pub matching_hosts: Vec<String>,
+    pub attached_notes_count: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct PurgeReport {
+    pub domain: String,
+    pub sub_sessions_purged: usize,
+    pub activity_logs_purged: usize,
+    pub attached_notes_detached: usize,
+    pub derived_rollups_purged: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct MergeReport {
+    pub newly_excluded: Vec<ExclusionEntry>,
+    pub newly_unexcluded: Vec<String>,
+    pub total_active: usize,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ActivityLog {
@@ -621,6 +653,8 @@ fn atomic_staged_rekey<K: KeyStore>(
 
 pub struct DbState {
     pub conn: Mutex<Connection>,
+    pub excluded_cache: Arc<RwLock<(i64, Vec<(String, bool)>)>>,
+    pub excluded_version: Arc<AtomicI64>,
 }
 
 impl DbState {
@@ -650,9 +684,13 @@ impl DbState {
             return Err(VaultError::NeedsUpgrade);
         }
 
-        Ok(DbState {
+        let state = DbState {
             conn: Mutex::new(conn),
-        })
+            excluded_cache: Arc::new(RwLock::new((-1, Vec::new()))),
+            excluded_version: Arc::new(AtomicI64::new(0)),
+        };
+        state.sync_excluded_version_from_db();
+        Ok(state)
     }
 
     pub fn init_or_migrate<K: KeyStore>(db_path: &Path, key_store: &K) -> VaultResult<Self> {
@@ -695,8 +733,11 @@ impl DbState {
 
         let state = DbState {
             conn: Mutex::new(conn),
+            excluded_cache: Arc::new(RwLock::new((-1, Vec::new()))),
+            excluded_version: Arc::new(AtomicI64::new(0)),
         };
         state.run_migrations().map_err(VaultError::Sqlite)?;
+        state.sync_excluded_version_from_db();
         Ok(state)
     }
 
@@ -764,8 +805,11 @@ impl DbState {
         let conn = Self::open_and_verify(db_path, &new_key)?;
         let state = DbState {
             conn: Mutex::new(conn),
+            excluded_cache: Arc::new(RwLock::new((-1, Vec::new()))),
+            excluded_version: Arc::new(AtomicI64::new(0)),
         };
         state.run_migrations().map_err(VaultError::Sqlite)?;
+        state.sync_excluded_version_from_db();
 
         eprintln!("[vault] Fresh vault initialized successfully with secure new key.");
         Ok(state)
@@ -774,6 +818,7 @@ impl DbState {
     fn open_and_verify(db_path: &Path, encryption_key: &str) -> VaultResult<Connection> {
         let conn = Connection::open(db_path)?;
         conn.pragma_update(None, "key", encryption_key)?;
+        let _ = conn.pragma_update(None, "secure_delete", "ON");
         Self::register_custom_functions(&conn)?;
         let _: u32 = conn.query_row("SELECT count(*) FROM sqlite_master;", [], |row| row.get(0))?;
         Ok(conn)
@@ -858,6 +903,23 @@ impl DbState {
         // Seed default incognito setting
         conn.execute(
             "INSERT OR IGNORE INTO settings (key, value) VALUES ('incognito', 'false');",
+            [],
+        )?;
+
+        // Create excluded_domains table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS excluded_domains (
+                domain TEXT PRIMARY KEY,
+                include_subdomains BOOLEAN NOT NULL DEFAULT 1,
+                updated_at INTEGER NOT NULL,
+                removed INTEGER NOT NULL DEFAULT 0
+            );",
+            [],
+        )?;
+
+        // Seed default excluded_domains_version
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('excluded_domains_version', '0');",
             [],
         )?;
 
@@ -1117,8 +1179,8 @@ impl DbState {
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url, icon_url, domain_tag)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO activity_logs (app_name, window_title, start_time, duration, source, url, icon_url, domain_tag, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 log.app_name,
                 log.window_title,
@@ -1127,7 +1189,8 @@ impl DbState {
                 log.source,
                 log.url,
                 log.icon_url,
-                log.domain_tag
+                log.domain_tag,
+                log.notes
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -2083,6 +2146,392 @@ impl DbState {
         Ok(())
     }
 
+    // ── Domain Exclusion & Privacy Blacklist ───────────────────────────────────
+
+    pub fn sync_excluded_version_from_db(&self) {
+        if let Ok(conn) = self.conn.lock() {
+            if let Ok(ver_str) = conn.query_row(
+                "SELECT value FROM settings WHERE key = 'excluded_domains_version'",
+                [],
+                |r| r.get::<_, String>(0),
+            ) {
+                if let Ok(v) = ver_str.parse::<i64>() {
+                    self.excluded_version.store(v, Ordering::SeqCst);
+                }
+            }
+        }
+    }
+
+    pub fn bump_excluded_domains_version(&self) -> i64 {
+        let next = self.excluded_version.fetch_add(1, Ordering::SeqCst) + 1;
+        let _ = self.set_setting("excluded_domains_version", &next.to_string());
+        next
+    }
+
+    pub fn get_excluded_entries(&self) -> Result<Vec<ExclusionEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT domain, include_subdomains, updated_at, removed FROM excluded_domains ORDER BY domain ASC",
+        )?;
+        let entries = stmt
+            .query_map([], |row| {
+                Ok(ExclusionEntry {
+                    domain: row.get(0)?,
+                    include_subdomains: row.get(1)?,
+                    updated_at: row.get(2)?,
+                    removed: row.get::<_, i64>(3)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    pub fn get_excluded_domains(&self) -> Result<Vec<ExclusionEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT domain, include_subdomains, updated_at, removed FROM excluded_domains WHERE removed = 0 ORDER BY domain ASC",
+        )?;
+        let entries = stmt
+            .query_map([], |row| {
+                Ok(ExclusionEntry {
+                    domain: row.get(0)?,
+                    include_subdomains: row.get(1)?,
+                    updated_at: row.get(2)?,
+                    removed: false,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    pub fn is_domain_excluded(&self, candidate_host: &str) -> bool {
+        let current_ver = self.excluded_version.load(Ordering::Relaxed);
+
+        let needs_reload = {
+            let read_guard = self.excluded_cache.read().unwrap();
+            read_guard.0 != current_ver
+        };
+
+        if needs_reload {
+            let entries = {
+                let conn = self.conn.lock().unwrap();
+                let _ = conn.execute(
+                    "CREATE TABLE IF NOT EXISTS excluded_domains (
+                        domain TEXT PRIMARY KEY,
+                        include_subdomains BOOLEAN NOT NULL DEFAULT 1,
+                        updated_at INTEGER NOT NULL,
+                        removed INTEGER NOT NULL DEFAULT 0
+                    );",
+                    [],
+                );
+                let loaded = if let Ok(mut stmt) = conn.prepare(
+                    "SELECT domain, include_subdomains FROM excluded_domains WHERE removed = 0",
+                ) {
+                    if let Ok(rows) = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?))) {
+                        rows.filter_map(|r| r.ok()).collect::<Vec<_>>()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+                loaded
+            };
+            let mut write_guard = self.excluded_cache.write().unwrap();
+            write_guard.0 = current_ver;
+            write_guard.1 = entries;
+        }
+
+        let read_guard = self.excluded_cache.read().unwrap();
+        for (rule, include_subs) in &read_guard.1 {
+            if crate::domain_rules::host_matches(candidate_host, rule, *include_subs) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn preview_domain_purge(&self, domain: &str, include_subdomains: bool) -> Result<PurgePreview> {
+        let norm_domain = crate::domain_rules::normalize_domain(domain)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let conn = self.conn.lock().unwrap();
+
+        let mut matching_hosts = std::collections::BTreeSet::new();
+        let mut sub_sessions_count = 0;
+
+        let mut stmt = conn.prepare("SELECT id, primary_uri FROM sub_session_events")?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)))?;
+        for r in rows.flatten() {
+            if let Some(uri) = r.1 {
+                let host = extract_domain(&uri);
+                if crate::domain_rules::host_matches(&host, &norm_domain, include_subdomains) {
+                    sub_sessions_count += 1;
+                    if !host.is_empty() {
+                        matching_hosts.insert(host);
+                    }
+                }
+            }
+        }
+
+        let mut activity_logs_count = 0;
+        let mut attached_notes_count = 0;
+        let mut stmt2 = conn.prepare("SELECT id, url, notes FROM activity_logs WHERE source = 'Browser'")?;
+        let rows2 = stmt2.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })?;
+        for r in rows2.flatten() {
+            if let Some(url) = r.1 {
+                let host = extract_domain(&url);
+                if crate::domain_rules::host_matches(&host, &norm_domain, include_subdomains) {
+                    activity_logs_count += 1;
+                    if let Some(note) = r.2 {
+                        if !note.trim().is_empty() {
+                            attached_notes_count += 1;
+                        }
+                    }
+                    if !host.is_empty() {
+                        matching_hosts.insert(host);
+                    }
+                }
+            }
+        }
+
+        Ok(PurgePreview {
+            sub_sessions_count,
+            activity_logs_count,
+            matching_hosts: matching_hosts.into_iter().collect(),
+            attached_notes_count,
+        })
+    }
+
+    pub fn purge_domain_data(&self, domain: &str, include_subdomains: bool) -> Result<PurgeReport> {
+        let norm_domain = crate::domain_rules::normalize_domain(domain)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let conn = self.conn.lock().unwrap();
+
+        // 1. Process activity_logs: detach notes into journal_entries, then delete matching
+        let mut select_logs = conn.prepare("SELECT id, start_time, url, notes FROM activity_logs WHERE source = 'Browser'")?;
+        let matching_logs: Vec<(i64, String, Option<String>)> = select_logs
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, start_time, url_opt, notes_opt): (i64, String, Option<String>, Option<String>)| {
+                if let Some(ref url) = url_opt {
+                    let host = extract_domain(url);
+                    if crate::domain_rules::host_matches(&host, &norm_domain, include_subdomains) {
+                        return Some((id, start_time, notes_opt));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        let mut attached_notes_detached = 0;
+        let mut activity_logs_purged = 0;
+        for (id, start_time, notes_opt) in matching_logs {
+            if let Some(notes) = notes_opt {
+                let trimmed = notes.trim();
+                if !trimmed.is_empty() {
+                    let _ = conn.execute(
+                        "INSERT INTO journal_entries (timestamp, notes) VALUES (?1, ?2)",
+                        rusqlite::params![start_time, trimmed],
+                    );
+                    attached_notes_detached += 1;
+                }
+            }
+            conn.execute("DELETE FROM activity_logs WHERE id = ?1", rusqlite::params![id])?;
+            activity_logs_purged += 1;
+        }
+
+        // 2. Process sub_session_events: delete matching
+        let mut select_subs = conn.prepare("SELECT id, primary_uri FROM sub_session_events")?;
+        let matching_subs: Vec<i64> = select_subs
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, uri_opt): (i64, Option<String>)| {
+                if let Some(ref uri) = uri_opt {
+                    let host = extract_domain(uri);
+                    if crate::domain_rules::host_matches(&host, &norm_domain, include_subdomains) {
+                        return Some(id);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        let mut sub_sessions_purged = 0;
+        for id in matching_subs {
+            conn.execute("DELETE FROM sub_session_events WHERE id = ?1", rusqlite::params![id])?;
+            sub_sessions_purged += 1;
+        }
+
+        // 3. Clear active_tab_url/title in settings if matching
+        if let Ok(active_url) = conn.query_row("SELECT value FROM settings WHERE key = 'active_tab_url'", [], |r| r.get::<_, String>(0)) {
+            let host = extract_domain(&active_url);
+            if crate::domain_rules::host_matches(&host, &norm_domain, include_subdomains) {
+                let _ = conn.execute("DELETE FROM settings WHERE key IN ('active_tab_url', 'active_tab_title', 'active_tab_favicon')", []);
+            }
+        }
+
+        // 4. Physical zeroing via WAL checkpoint
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+
+        Ok(PurgeReport {
+            domain: norm_domain,
+            sub_sessions_purged,
+            activity_logs_purged,
+            attached_notes_detached,
+            derived_rollups_purged: 0,
+        })
+    }
+
+    pub fn add_excluded_domain(&self, domain: &str, include_subdomains: bool, purge_history: bool) -> Result<PurgeReport> {
+        let norm = crate::domain_rules::normalize_domain(domain)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO excluded_domains (domain, include_subdomains, updated_at, removed)
+                 VALUES (?1, ?2, ?3, 0)
+                 ON CONFLICT(domain) DO UPDATE SET include_subdomains = ?2, updated_at = ?3, removed = 0",
+                rusqlite::params![norm, include_subdomains, now],
+            )?;
+        }
+        self.bump_excluded_domains_version();
+
+        if purge_history {
+            self.purge_domain_data(&norm, include_subdomains)
+        } else {
+            Ok(PurgeReport {
+                domain: norm,
+                ..Default::default()
+            })
+        }
+    }
+
+    pub fn remove_excluded_domain(&self, domain: &str) -> Result<()> {
+        let norm = crate::domain_rules::normalize_domain(domain)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE excluded_domains SET removed = 1, updated_at = ?1 WHERE domain = ?2",
+                rusqlite::params![now, norm],
+            )?;
+        }
+        self.bump_excluded_domains_version();
+        Ok(())
+    }
+
+    pub fn merge_excluded_entries(&self, incoming: Vec<ExclusionEntry>) -> Result<MergeReport> {
+        let mut newly_excluded = Vec::new();
+        let mut newly_unexcluded = Vec::new();
+
+        {
+            let conn = self.conn.lock().unwrap();
+            for entry in incoming {
+                let norm = match crate::domain_rules::normalize_domain(&entry.domain) {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+
+                let existing: Option<(bool, i64, bool)> = conn
+                    .query_row(
+                        "SELECT include_subdomains, updated_at, removed FROM excluded_domains WHERE domain = ?1",
+                        [&norm],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)),
+                    )
+                    .ok();
+
+                if let Some((_ex_subs, ex_updated_at, ex_removed)) = existing {
+                    if entry.updated_at > ex_updated_at {
+                        // Incoming is newer
+                        conn.execute(
+                            "UPDATE excluded_domains SET include_subdomains = ?1, updated_at = ?2, removed = ?3 WHERE domain = ?4",
+                            rusqlite::params![entry.include_subdomains, entry.updated_at, if entry.removed { 1 } else { 0 }, norm],
+                        )?;
+                        if ex_removed && !entry.removed {
+                            newly_excluded.push(ExclusionEntry {
+                                domain: norm.clone(),
+                                include_subdomains: entry.include_subdomains,
+                                updated_at: entry.updated_at,
+                                removed: false,
+                            });
+                        } else if !ex_removed && entry.removed {
+                            newly_unexcluded.push(norm.clone());
+                        }
+                    } else if entry.updated_at == ex_updated_at {
+                        // On tie: exclusion wins (removed: false)
+                        if ex_removed && !entry.removed {
+                            conn.execute(
+                                "UPDATE excluded_domains SET include_subdomains = ?1, removed = 0 WHERE domain = ?2",
+                                rusqlite::params![entry.include_subdomains, norm],
+                            )?;
+                            newly_excluded.push(ExclusionEntry {
+                                domain: norm.clone(),
+                                include_subdomains: entry.include_subdomains,
+                                updated_at: entry.updated_at,
+                                removed: false,
+                            });
+                        }
+                    }
+                } else {
+                    // New entry
+                    conn.execute(
+                        "INSERT INTO excluded_domains (domain, include_subdomains, updated_at, removed) VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![norm, entry.include_subdomains, entry.updated_at, if entry.removed { 1 } else { 0 }],
+                    )?;
+                    if !entry.removed {
+                        newly_excluded.push(ExclusionEntry {
+                            domain: norm.clone(),
+                            include_subdomains: entry.include_subdomains,
+                            updated_at: entry.updated_at,
+                            removed: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Automatically purge history for any newly excluded domains
+        for ex in &newly_excluded {
+            let _ = self.purge_domain_data(&ex.domain, ex.include_subdomains);
+        }
+
+        self.bump_excluded_domains_version();
+
+        let total_active: usize = {
+            let conn = self.conn.lock().unwrap();
+            conn.query_row("SELECT count(*) FROM excluded_domains WHERE removed = 0", [], |r| r.get(0)).unwrap_or(0)
+        };
+
+        Ok(MergeReport {
+            newly_excluded,
+            newly_unexcluded,
+            total_active,
+        })
+    }
+
+    pub fn get_unattached_journal_notes(&self) -> Result<Vec<JournalEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, timestamp, notes FROM journal_entries ORDER BY timestamp DESC")?;
+        let entries = stmt
+            .query_map([], |row| {
+                Ok(JournalEntry {
+                    id: row.get(0)?,
+                    timestamp: row.get(1)?,
+                    notes: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
     pub fn insert_distraction_event(
         &self,
         timestamp: &str,
@@ -2641,6 +3090,95 @@ mod tests {
         let subs = n2.sub_events.as_ref().unwrap();
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].title, "Rust Docs");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_domain_exclusion_db_operations() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_exclusion_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("test.db");
+        let store = MockKeyStore::new();
+        let db = DbState::init_or_migrate(&db_path, &store).unwrap();
+
+        // 1. Add some initial activity logs and sub sessions
+        let log1 = ActivityLog {
+            id: None,
+            app_name: "Google Chrome".to_string(),
+            window_title: "Account Overview - Chase".to_string(),
+            start_time: "2026-11-09T10:00:00Z".to_string(),
+            duration: 120,
+            source: "Browser".to_string(),
+            url: Some("https://secure.chase.com/auth".to_string()),
+            icon_url: None,
+            domain_tag: Some("chase.com".to_string()),
+            notes: Some("Monthly budget review note".to_string()),
+        };
+        db.insert_activity_log(&log1).unwrap();
+
+        let sub1 = SubSessionEvent {
+            id: None,
+            session_type: "Browser".to_string(),
+            parent_app_name: Some("Google Chrome".to_string()),
+            title: "Chase Checking".to_string(),
+            primary_uri: Some("https://secure.chase.com/checking".to_string()),
+            icon_url: None,
+            context_tag: Some("chase.com".to_string()),
+            metadata: None,
+            timestamp: "2026-11-09T10:01:00Z".to_string(),
+        };
+        db.insert_sub_session_event(&sub1).unwrap();
+
+        // 2. Preview purge
+        let preview = db.preview_domain_purge("chase.com", true).unwrap();
+        assert_eq!(preview.sub_sessions_count, 1);
+        assert_eq!(preview.activity_logs_count, 1);
+        assert_eq!(preview.attached_notes_count, 1);
+        assert!(preview.matching_hosts.contains(&"secure.chase.com".to_string()));
+
+        // 3. Add excluded domain with purge_history = true
+        let report = db.add_excluded_domain("chase.com", true, true).unwrap();
+        assert_eq!(report.sub_sessions_purged, 1);
+        assert_eq!(report.activity_logs_purged, 1);
+        assert_eq!(report.attached_notes_detached, 1);
+
+        // 4. Verify notes were detached into journal_entries
+        let unattached = db.get_unattached_journal_notes().unwrap();
+        assert_eq!(unattached.len(), 1);
+        assert_eq!(unattached[0].notes, "Monthly budget review note");
+
+        // 5. Verify is_domain_excluded
+        assert!(db.is_domain_excluded("chase.com"));
+        assert!(db.is_domain_excluded("secure.chase.com"));
+        assert!(!db.is_domain_excluded("other.com"));
+
+        // 6. Test LWW merge and tombstones
+        let now = chrono::Utc::now().timestamp_millis();
+        let incoming = vec![
+            ExclusionEntry {
+                domain: "chase.com".to_string(),
+                include_subdomains: true,
+                updated_at: now + 1000,
+                removed: true, // tombstone
+            },
+            ExclusionEntry {
+                domain: "paypal.com".to_string(),
+                include_subdomains: false,
+                updated_at: now + 500,
+                removed: false,
+            },
+        ];
+        let merge_rep = db.merge_excluded_entries(incoming).unwrap();
+        assert!(merge_rep.newly_unexcluded.contains(&"chase.com".to_string()));
+        assert!(merge_rep.newly_excluded.iter().any(|e| e.domain == "paypal.com"));
+
+        // Verify chase.com is now unexcluded
+        assert!(!db.is_domain_excluded("chase.com"));
+        // Verify paypal.com is now excluded
+        assert!(db.is_domain_excluded("paypal.com"));
+        // Verify paypal.com with include_subdomains = false doesn't match subdomains
+        assert!(!db.is_domain_excluded("sandbox.paypal.com"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

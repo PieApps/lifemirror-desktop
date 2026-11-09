@@ -5,6 +5,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.4.0] — 2026-11-09
+
+### Added
+* **Domain Exclusion & Privacy Blacklist System (`domain-rules.js`, `background.js`)**:
+  * Complete domain exclusion engine synchronizing between standalone extension storage and LifeMirror Desktop's encrypted SQLCipher database.
+  * Hierarchical subdomain matching with user choice: "This site only" or "Include all subdomains".
+  * Strict domain normalization: validates inputs with URL parser, strips protocol/port/path/query, lowercases, and rejects bare public suffixes (`.com`, `.co.uk`, `.org`) using an embedded public suffix check to prevent accidental over-blocking.
+  * In-flight session abort: Immediately aborts active timers, discards pending Native Messaging frames, and wipes matching records from local 48-hour rolling storage when a domain is excluded.
+  * Excluded domains are completely blocked from tracking—zero dwell time, zero page titles, zero URLs, and zero metadata are stored or forwarded over native messaging.
+* **URL Sanitization & Search Query Title Masking**:
+  * Strips URL query strings (`?token=...`, `?session=...`) and hash fragments (`#...`) before caching or streaming to eliminate sensitive query parameter leaks (OAuth tokens, session identifiers, reset tokens).
+  * Automatically masks page titles for major search engines (Google, Bing, DuckDuckGo, Yahoo, Baidu, Yandex, Ecosia, Brave, Qwant, Startpage) to protect private search queries (e.g. `"symptoms of X - Google Search"` becomes `"Google Search"`).
+* **Side Panel Excluded Sites Drawer (`sidepanel.html`, `sidepanel.js`, `sidepanel.css`)**:
+  * Full-featured "Excluded Sites" slide-out drawer accessible from the side panel header.
+  * Instant search and filter across blacklisted domains with real-time count badge.
+  * One-click `🚫 Exclude Domain` button directly on every reflection card in the daily activity feed.
+  * Interactive Purge Confirmation Modal providing two options:
+    1. *Also delete existing history from LifeMirror (recommended)*: Cleans matching historical visits.
+    2. *Only stop tracking from now on*: Keeps past timeline records and only blocks future tracking.
+  * Reassuring privacy disclosure: clearly reminds users that Chrome's internal browsing history is not touched and that third-party SSO/payment redirects operate on separate domains.
+* **Popup Quick-Exclusion Controls (`popup.html`, `popup.js`, `popup.css`)**:
+  * Context-aware exclusion toggle button in the extension popup for the currently active browser tab.
+  * Visual `"EXCLUDED"` badge with warning shield when visiting a blacklisted site.
+* **Offline-Safe Bidirectional Native Sync**:
+  * Real-time synchronization over Native Messaging (`sync_excluded_domains` and `get_excluded_domains`).
+  * Tombstone-based Last-Writer-Wins (LWW) conflict resolution: exclusions take precedence on timestamp ties, and removals offline are never resurrected upon reconnection.
+* **Journal Note Preservation Guarantee**:
+  * Personal reflections and notes attached to purged sessions are never deleted; they are preserved as unattached entries in the LifeMirror Desktop vault.
+
+---
+
 ## [1.3.0] — 2026-11-09
 
 ### Added

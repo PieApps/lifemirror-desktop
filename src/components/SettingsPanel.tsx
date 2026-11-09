@@ -2,8 +2,10 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText } from "lucide-react";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
+import { ExclusionEntry, PurgePreview, PurgeReport, JournalEntry } from "../types";
+import { normalizeDomain } from "../utils/domainRules";
 
 type SettingsTab = "general" | "focus" | "ai" | "about";
 
@@ -26,6 +28,12 @@ interface SettingsPanelProps {
   onDonateClick?: () => void;
   initialTab?: SettingsTab;
   onAiConnectionTested?: (connected: boolean) => void;
+  excludedDomains?: ExclusionEntry[];
+  unattachedNotes?: JournalEntry[];
+  onAddExcludedDomain?: (domain: string, includeSubdomains: boolean, purgeHistory: boolean) => Promise<PurgeReport>;
+  onRemoveExcludedDomain?: (domain: string) => Promise<void>;
+  onPreviewPurge?: (domain: string, includeSubdomains: boolean) => Promise<PurgePreview>;
+  onRefreshUnattachedNotes?: () => Promise<void>;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -47,6 +55,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onDonateClick,
   initialTab = "general",
   onAiConnectionTested,
+  excludedDomains,
+  unattachedNotes,
+  onAddExcludedDomain,
+  onRemoveExcludedDomain,
+  onPreviewPurge,
+  onRefreshUnattachedNotes,
 }) => {
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(initialTab);
 
@@ -60,6 +74,134 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [subSessionInputValue, setSubSessionInputValue] = React.useState(String(minSubSessionDuration));
   const [distractionRules, setDistractionRules] = React.useState<Array<{id: number, rule_type: string, value: string, is_active: boolean}>>([]);
   const [newRuleValue, setNewRuleValue] = React.useState("");
+
+  // Domain Exclusion states
+  const [localExcludedDomains, setLocalExcludedDomains] = React.useState<ExclusionEntry[]>(excludedDomains || []);
+  const [localUnattachedNotes, setLocalUnattachedNotes] = React.useState<JournalEntry[]>(unattachedNotes || []);
+  const [domainInput, setDomainInput] = React.useState("");
+  const [includeSubdomains, setIncludeSubdomains] = React.useState(true);
+  const [domainInputError, setDomainInputError] = React.useState<string | null>(null);
+
+  // Modal & purge flow state
+  const [purgeModalOpen, setPurgeModalOpen] = React.useState(false);
+  const [pendingDomain, setPendingDomain] = React.useState("");
+  const [pendingIncludeSubdomains, setPendingIncludeSubdomains] = React.useState(true);
+  const [purgePreview, setPurgePreview] = React.useState<PurgePreview | null>(null);
+  const [purgeExistingHistory, setPurgeExistingHistory] = React.useState(true);
+  const [isPurging, setIsPurging] = React.useState(false);
+  const [purgeReportToast, setPurgeReportToast] = React.useState<PurgeReport | null>(null);
+  const [notesModalOpen, setNotesModalOpen] = React.useState(false);
+  const [copiedNoteId, setCopiedNoteId] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (excludedDomains) {
+      setLocalExcludedDomains(excludedDomains);
+    }
+  }, [excludedDomains]);
+
+  React.useEffect(() => {
+    if (unattachedNotes) {
+      setLocalUnattachedNotes(unattachedNotes);
+    }
+  }, [unattachedNotes]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (purgeModalOpen && !isPurging) {
+          setPurgeModalOpen(false);
+        } else if (notesModalOpen) {
+          setNotesModalOpen(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [purgeModalOpen, isPurging, notesModalOpen]);
+
+  const handleSelectPreset = (preset: string) => {
+    setDomainInput(preset);
+    setDomainInputError(null);
+  };
+
+  const handleStartExclude = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setDomainInputError(null);
+    const norm = normalizeDomain(domainInput);
+    if (!norm.valid || !norm.domain) {
+      setDomainInputError(norm.error || "Invalid domain format");
+      return;
+    }
+
+    try {
+      const preview = onPreviewPurge
+        ? await onPreviewPurge(norm.domain, includeSubdomains)
+        : await invoke<PurgePreview>("preview_domain_purge", { domain: norm.domain, includeSubdomains });
+      setPendingDomain(norm.domain);
+      setPendingIncludeSubdomains(includeSubdomains);
+      setPurgePreview(preview);
+      setPurgeExistingHistory(true);
+      setPurgeModalOpen(true);
+    } catch (err: any) {
+      console.error("Failed to preview purge:", err);
+      setDomainInputError(String(err));
+    }
+  };
+
+  const handleConfirmExclude = async () => {
+    if (!pendingDomain) return;
+    setIsPurging(true);
+    try {
+      const report = onAddExcludedDomain
+        ? await onAddExcludedDomain(pendingDomain, pendingIncludeSubdomains, purgeExistingHistory)
+        : await invoke<PurgeReport>("add_excluded_domain", {
+            domain: pendingDomain,
+            includeSubdomains: pendingIncludeSubdomains,
+            purgeHistory: purgeExistingHistory,
+          });
+
+      setPurgeReportToast(report);
+      setTimeout(() => setPurgeReportToast(null), 6000);
+      setDomainInput("");
+      setPurgeModalOpen(false);
+
+      if (!onAddExcludedDomain) {
+        const updated = await invoke<ExclusionEntry[]>("get_excluded_domains");
+        setLocalExcludedDomains(updated);
+        const updatedNotes = await invoke<JournalEntry[]>("get_unattached_journal_notes");
+        setLocalUnattachedNotes(updatedNotes);
+      }
+    } catch (err: any) {
+      console.error("Failed to exclude domain:", err);
+      setDomainInputError(String(err));
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
+  const handleRemoveExcluded = async (domain: string) => {
+    try {
+      if (onRemoveExcludedDomain) {
+        await onRemoveExcludedDomain(domain);
+      } else {
+        await invoke("remove_excluded_domain", { domain });
+        const updated = await invoke<ExclusionEntry[]>("get_excluded_domains");
+        setLocalExcludedDomains(updated);
+      }
+    } catch (err) {
+      console.error("Failed to remove excluded domain:", err);
+    }
+  };
+
+  const handleCopyNote = async (note: JournalEntry) => {
+    try {
+      await navigator.clipboard.writeText(note.notes);
+      setCopiedNoteId(note.id || -1);
+      setTimeout(() => setCopiedNoteId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy note:", err);
+    }
+  };
   const [appVersion, setAppVersion] = React.useState<string>("");
   const [customImage, setCustomImage] = React.useState<string | null>(null);
   const [customQuote, setCustomQuote] = React.useState<string>("");
@@ -553,6 +695,183 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Privacy & Domain Exclusion Card */}
+          <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 shrink-0">
+                  <ShieldAlert className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-[var(--text-color)]">Privacy & Excluded Domains</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Never track banking, healthcare, or private portals
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 shrink-0">
+                Bidirectional Sync
+              </span>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Excluded domains are never recorded, summarized, or sent over native messaging. Subdomains are covered automatically. Exclusions sync seamlessly with the companion browser extension.
+            </p>
+
+            {/* Success Report Toast */}
+            {purgeReportToast && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 flex items-start gap-2 animate-in fade-in">
+                <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold block">Domain Excluded: {purgeReportToast.domain}</span>
+                  <p className="text-[11px] text-emerald-300/80 mt-0.5">
+                    {purgeReportToast.sub_sessions_purged} browser visit(s) purged, {purgeReportToast.activity_logs_purged} window log(s) purged.
+                    {purgeReportToast.attached_notes_detached > 0 && ` ${purgeReportToast.attached_notes_detached} reflection note(s) preserved.`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Unattached Notes Notification Banner */}
+            {localUnattachedNotes.length > 0 && (
+              <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="w-4 h-4 text-violet-400 shrink-0" />
+                  <span className="text-xs text-[var(--text-color)] truncate">
+                    {localUnattachedNotes.length} unattached reflection note(s) preserved
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRefreshUnattachedNotes?.();
+                    setNotesModalOpen(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 text-violet-300 text-xs font-medium transition-colors shrink-0 cursor-pointer"
+                >
+                  View Notes
+                </button>
+              </div>
+            )}
+
+            {/* Quick Presets */}
+            <div>
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)] block mb-1.5">
+                Suggested Financial & Sensitive Portals:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "chase.com",
+                  "paypal.com",
+                  "bankofamerica.com",
+                  "wellsfargo.com",
+                  "mychart.org",
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleSelectPreset(preset)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-[var(--surface-color)] border border-[var(--border-color)] text-[var(--text-color)] hover:border-violet-500/40 hover:text-violet-400 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-2.5 h-2.5 text-zinc-400" />
+                    <span>{preset}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Input Form */}
+            <form onSubmit={handleStartExclude} className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={domainInput}
+                    onChange={(e) => {
+                      setDomainInput(e.target.value);
+                      if (domainInputError) setDomainInputError(null);
+                    }}
+                    placeholder="e.g. chase.com, paypal.com"
+                    className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] placeholder:text-[var(--text-muted)]/50 focus:outline-none focus:border-violet-500/60 font-mono"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!domainInput.trim()}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-rose-600/20 cursor-pointer shrink-0"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>Exclude Domain</span>
+                </button>
+              </div>
+
+              {/* Subdomain Scope Toggle */}
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-muted)] select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeSubdomains}
+                    onChange={(e) => setIncludeSubdomains(e.target.checked)}
+                    className="rounded border-[var(--border-color)] text-violet-600 focus:ring-0 w-3.5 h-3.5 accent-violet-600 cursor-pointer"
+                  />
+                  <span>Include all subdomains (e.g. *.chase.com)</span>
+                </label>
+              </div>
+
+              {domainInputError && (
+                <p className="text-[11px] text-rose-400 font-medium flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  <span>{domainInputError}</span>
+                </p>
+              )}
+
+              <p className="text-[10px] text-[var(--text-muted)] leading-tight pt-1">
+                * Note: Authentication gateways (SSO, identity providers) often redirect through separate domains and must be excluded individually.
+              </p>
+            </form>
+
+            {/* Excluded Domains Chip List */}
+            <div className="pt-2 border-t border-[var(--border-color)]/60">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)]">
+                  Active Exclusions ({localExcludedDomains.length})
+                </span>
+              </div>
+
+              {localExcludedDomains.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] italic py-2">
+                  No domains excluded yet. Sensitive sites you exclude will appear here.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                  {localExcludedDomains.map((entry) => (
+                    <div
+                      key={entry.domain}
+                      className="p-2 rounded-lg bg-[var(--surface-color)]/70 border border-[var(--border-color)] flex items-center justify-between gap-2 group hover:border-[var(--border-color)]/80 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-xs font-semibold text-[var(--text-color)] font-mono block truncate">
+                          {entry.domain}
+                        </span>
+                        <span className="text-[9px] text-[var(--text-muted)] block">
+                          {entry.include_subdomains ? "*.subdomains covered" : "Exact site only"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExcluded(entry.domain)}
+                        className="text-[var(--text-muted)] hover:text-rose-400 p-1 rounded transition-colors cursor-pointer shrink-0"
+                        title={`Remove exclusion for ${entry.domain}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -925,6 +1244,230 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <p>
               Your logs are stored inside a locally encrypted SQLCipher database on your machine. No telemetry or analytics data ever leaves your device.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Purge Confirmation Modal */}
+      {purgeModalOpen && purgePreview && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => !isPurging && setPurgeModalOpen(false)}
+          />
+          <div className="relative bg-[var(--bg-primary)] dark:bg-zinc-900 border border-[var(--border-color)] dark:border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center shrink-0">
+                <Ban className="w-5 h-5 text-rose-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[var(--text-color)]">
+                  Exclude {pendingDomain}
+                </h3>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {pendingIncludeSubdomains ? `All subdomains (*.${pendingDomain}) will be excluded` : `Only exact host (${pendingDomain})`}
+                </span>
+              </div>
+            </div>
+
+            {/* Impact Count Summary */}
+            <div className="p-3.5 rounded-xl bg-[var(--surface-color)]/70 border border-[var(--border-color)] space-y-2 text-xs">
+              <span className="font-semibold text-[var(--text-color)] block">Existing History in LifeMirror:</span>
+              <div className="flex items-center justify-between text-[var(--text-muted)]">
+                <span>Matching browser tab visits:</span>
+                <span className="font-semibold font-mono text-[var(--text-color)]">{purgePreview.sub_sessions_count}</span>
+              </div>
+              <div className="flex items-center justify-between text-[var(--text-muted)]">
+                <span>Matching window activity logs:</span>
+                <span className="font-semibold font-mono text-[var(--text-color)]">{purgePreview.activity_logs_count}</span>
+              </div>
+              {purgePreview.attached_notes_count > 0 && (
+                <div className="flex items-center justify-between text-violet-400 font-medium pt-1 border-t border-[var(--border-color)]/50">
+                  <span>Attached journal notes:</span>
+                  <span>{purgePreview.attached_notes_count} (will be preserved in Unattached Notes)</span>
+                </div>
+              )}
+
+              {purgePreview.matching_hosts.length > 0 && (
+                <div className="pt-2 border-t border-[var(--border-color)]/50">
+                  <span className="text-[10px] text-[var(--text-muted)] block mb-1">Subdomains found in history:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {purgePreview.matching_hosts.map((host) => (
+                      <span key={host} className="px-1.5 py-0.5 rounded bg-[var(--bg-color)] border border-[var(--border-color)] text-[10px] font-mono text-[var(--text-color)]">
+                        {host}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Purge Choice (Directive 1) */}
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-[var(--text-color)] block">Choose action:</span>
+              
+              <label
+                onClick={() => setPurgeExistingHistory(true)}
+                className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-colors ${
+                  purgeExistingHistory
+                    ? "border-rose-500/50 bg-rose-500/10"
+                    : "border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:border-zinc-500/30"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="purge_choice"
+                  checked={purgeExistingHistory}
+                  onChange={() => setPurgeExistingHistory(true)}
+                  className="mt-0.5 accent-rose-500"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-[var(--text-color)] block">
+                    Also delete existing history from LifeMirror (recommended)
+                  </span>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                    Permanently purges matching visits, window titles, and AI summaries from LifeMirror's local database. Chrome's own history is untouched.
+                  </p>
+                </div>
+              </label>
+
+              <label
+                onClick={() => setPurgeExistingHistory(false)}
+                className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-colors ${
+                  !purgeExistingHistory
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-[var(--border-color)] bg-[var(--bg-color)]/20 hover:border-zinc-500/30"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="purge_choice"
+                  checked={!purgeExistingHistory}
+                  onChange={() => setPurgeExistingHistory(false)}
+                  className="mt-0.5 accent-violet-500"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-[var(--text-color)] block">
+                    Only stop tracking from now on
+                  </span>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                    Keep previous history in LifeMirror, but never log or record visits to this domain in the future.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Reassurance notes */}
+            <div className="p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-[11px] text-emerald-400 flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 shrink-0" />
+              <span>Chrome's own browsing history will not be touched.</span>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={() => setPurgeModalOpen(false)}
+                className="flex-1 py-2 rounded-xl text-xs font-medium text-[var(--text-color)] bg-[var(--bg-color)] border border-[var(--border-color)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={handleConfirmExclude}
+                className="flex-1 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isPurging ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Purging...</span>
+                  </>
+                ) : (
+                  <span>Exclude Domain</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unattached Notes Modal */}
+      {notesModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setNotesModalOpen(false)}
+          />
+          <div className="relative bg-[var(--bg-primary)] dark:bg-zinc-900 border border-[var(--border-color)] dark:border-zinc-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FileText className="w-5 h-5 text-violet-400" />
+                <h3 className="text-base font-semibold text-[var(--text-color)]">
+                  Unattached Reflection Notes
+                </h3>
+              </div>
+              <button
+                onClick={() => setNotesModalOpen(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-color)] p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)]">
+              These notes were preserved when their timeline events were purged during domain exclusion. Your personal reflections are never lost.
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              {localUnattachedNotes.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)] italic py-4 text-center">
+                  No unattached notes found.
+                </p>
+              ) : (
+                localUnattachedNotes.map((note, index) => (
+                  <div
+                    key={note.id || index}
+                    className="p-3 rounded-xl bg-[var(--surface-color)] border border-[var(--border-color)] space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                      <span>{note.timestamp}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNote(note)}
+                        className="inline-flex items-center gap-1 hover:text-violet-400 transition-colors cursor-pointer"
+                      >
+                        {copiedNoteId === note.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400 font-semibold">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-[var(--text-color)] whitespace-pre-wrap leading-relaxed">
+                      {note.notes}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setNotesModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text-color)] bg-[var(--surface-color)] hover:bg-zinc-500/10 border border-[var(--border-color)] transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -22,12 +22,48 @@
       </div>
       <div class="header-sub">
         <span id="date-label" class="brand-subtitle">Today's In-Browser Stream</span>
-        <button id="copy-summary-btn" class="btn-copy-summary" title="Copy 1-click standup summary to clipboard">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-          <span>Copy Summary</span>
-        </button>
+        <div class="header-actions">
+          <button id="excluded-domains-toggle-btn" class="btn-header-action" title="Manage excluded domains">
+            <span class="btn-icon">🛡️</span>
+            <span>Excluded Sites</span>
+          </button>
+          <button id="copy-summary-btn" class="btn-copy-summary" title="Copy 1-click standup summary to clipboard">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy Summary</span>
+          </button>
+        </div>
       </div>
     </header>
+
+    <!-- Excluded Domains Drawer -->
+    <section id="excluded-drawer" class="card excluded-drawer hidden">
+      <div class="drawer-header">
+        <div class="drawer-title-wrap">
+          <span class="drawer-icon">🛡️</span>
+          <span class="section-title">EXCLUDED WEBSITES</span>
+        </div>
+        <button id="close-drawer-btn" class="btn-close-drawer" aria-label="Close drawer">✕</button>
+      </div>
+      <p class="drawer-desc">
+        Sensitive portals (banking, healthcare) are never tracked. Changes sync automatically with LifeMirror Desktop.
+      </p>
+
+      <form id="drawer-add-form" class="drawer-add-form">
+        <div class="drawer-input-row">
+          <input type="text" id="drawer-domain-input" placeholder="e.g. chase.com" class="drawer-input" autocomplete="off" spellcheck="false">
+          <button type="submit" class="btn-drawer-add">Exclude</button>
+        </div>
+        <label class="drawer-subdomain-toggle">
+          <input type="checkbox" id="drawer-include-subdomains" checked>
+          <span>Include all subdomains (*.domain.com)</span>
+        </label>
+        <div id="drawer-error" class="drawer-error hidden"></div>
+      </form>
+
+      <div id="drawer-excluded-list" class="drawer-list">
+        <!-- Rendered via JS -->
+      </div>
+    </section>
 
     <!-- Key Metrics Row -->
     <section class="metrics-grid">
@@ -149,8 +185,50 @@
       <button class="popover-opt" data-tag="☕ Break / Leisure"><span>☕</span> Break / Leisure</button>
       <button class="popover-opt" data-tag="🌐 Other"><span>🌐</span> Other</button>
     </div>
+
+    <!-- Purge Confirmation Modal -->
+    <div id="purge-modal" class="purge-modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="purge-modal-card">
+        <div class="purge-modal-header">
+          <div class="purge-icon-circle">🚫</div>
+          <div>
+            <h3 class="purge-modal-title">Exclude Domain</h3>
+            <span id="purge-modal-domain-badge" class="purge-modal-sub"></span>
+          </div>
+        </div>
+
+        <div id="purge-modal-preview" class="purge-modal-preview"></div>
+
+        <div class="purge-choice-group">
+          <label class="purge-radio-opt">
+            <input type="radio" name="ext_purge_choice" value="purge" checked>
+            <div>
+              <strong>Also delete past visits from LifeMirror (recommended)</strong>
+              <p>Permanently purges matching visits from extension storage and LifeMirror Desktop.</p>
+            </div>
+          </label>
+          <label class="purge-radio-opt">
+            <input type="radio" name="ext_purge_choice" value="future_only">
+            <div>
+              <strong>Only stop tracking from now on</strong>
+              <p>Keeps past reflections, but prevents future visits from being recorded.</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="purge-reassurance">
+          <span>🛡️ Chrome's own browsing history will not be touched.</span>
+        </div>
+
+        <div class="purge-modal-actions">
+          <button id="cancel-purge-btn" class="btn-secondary">Cancel</button>
+          <button id="confirm-purge-btn" class="btn-danger">Exclude Domain</button>
+        </div>
+      </div>
+    </div>
   </div>
 
+  <script src="domain-rules.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

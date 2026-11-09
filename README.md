@@ -179,6 +179,20 @@ The Windows Registry key is also written automatically:
 HKCU\Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop
 ```
 
+### Privacy, Domain Exclusion & URL Sanitization
+
+LifeMirror is built on a local-first, zero-cloud architecture with comprehensive privacy defenses:
+
+* **Domain Exclusion / Blacklist**: Permanently exclude sensitive websites (banking, healthcare, webmail, private intranets). Excluded domains are **never recorded**—dwell time, page titles, URLs, and summaries are blocked before storage and transmission.
+* **Granular Purge Options**: When adding a domain to the exclusion list, choose between:
+  1. *Also delete existing history from LifeMirror (recommended)*: Scrubs past records from `sub_session_events`, related `activity_logs` window titles, and regenerable daily summaries.
+  2. *Only stop tracking from now on*: Preserves historical timeline data while blocking all future tracking.
+* **Physical Erasure**: Purging activates SQLite's `PRAGMA secure_delete = ON` and executes a WAL truncation checkpoint (`wal_checkpoint(TRUNCATE)`), physically overwriting freed database pages on disk.
+* **Journal Reflections Safe**: User notes and reflections attached to purged timeline nodes are never lost—they are preserved as unattached entries and remain accessible under Settings → View Unattached Notes.
+* **URL Parameter Stripping**: Query strings (`?token=...`) and hash fragments (`#...`) are stripped by default across the extension and desktop backend to prevent leaking reset tokens, session IDs, or private arguments.
+* **Search Engine Query Masking**: Window and tab titles for major search engines (Google, Bing, DuckDuckGo, Yahoo, Baidu, Yandex, Ecosia, Brave, Qwant, Startpage) are automatically masked (e.g. `"Google Search"` instead of `"symptoms of X - Google Search"`).
+* **Scope Clarification**: LifeMirror manages its own local records and does not alter Chrome's internal history. Third-party authentication portals (OAuth/SAML) and payment gateways redirect through independent domains and should be excluded individually.
+
 ### Pluggable Local AI (No Cloud APIs)
 
 LifeMirror features an abstracted `InferenceProvider` allowing you to securely plug in local AI models without sending your timeline data to the cloud. Currently, **Ollama** is the default supported backend.

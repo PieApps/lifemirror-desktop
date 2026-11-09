@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod domain_rules;
 #[path = "inference/mod.rs"]
 pub mod inference;
 pub mod db;
@@ -668,6 +669,54 @@ fn delete_distraction_rule(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), S
 }
 
 #[tauri::command]
+fn get_excluded_domains(db: State<'_, Arc<DbState>>) -> Result<Vec<db::ExclusionEntry>, String> {
+    db.get_excluded_domains().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_excluded_entries(db: State<'_, Arc<DbState>>) -> Result<Vec<db::ExclusionEntry>, String> {
+    db.get_excluded_entries().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn preview_domain_purge(
+    db: State<'_, Arc<DbState>>,
+    domain: String,
+    include_subdomains: bool,
+) -> Result<db::PurgePreview, String> {
+    db.preview_domain_purge(&domain, include_subdomains).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn add_excluded_domain(
+    app: tauri::AppHandle,
+    db: State<'_, Arc<DbState>>,
+    domain: String,
+    include_subdomains: bool,
+    purge_history: bool,
+) -> Result<db::PurgeReport, String> {
+    let report = db.add_excluded_domain(&domain, include_subdomains, purge_history).map_err(|e| e.to_string())?;
+    let _ = app.emit("excluded-domains-changed", ());
+    Ok(report)
+}
+
+#[tauri::command]
+fn remove_excluded_domain(
+    app: tauri::AppHandle,
+    db: State<'_, Arc<DbState>>,
+    domain: String,
+) -> Result<(), String> {
+    db.remove_excluded_domain(&domain).map_err(|e| e.to_string())?;
+    let _ = app.emit("excluded-domains-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn get_unattached_journal_notes(db: State<'_, Arc<DbState>>) -> Result<Vec<db::JournalEntry>, String> {
+    db.get_unattached_journal_notes().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn get_weekly_summary(
     state: State<'_, Arc<DbState>>,
     start_date: String,
@@ -1185,7 +1234,13 @@ pub fn run() {
             fix_autostart_registry_path,
             generate_resume_context,
             ai::generate_chat_suggestions,
-            pull_ai_model
+            pull_ai_model,
+            get_excluded_domains,
+            get_excluded_entries,
+            preview_domain_purge,
+            add_excluded_domain,
+            remove_excluded_domain,
+            get_unattached_journal_notes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

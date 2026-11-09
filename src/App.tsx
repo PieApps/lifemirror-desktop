@@ -268,6 +268,12 @@ function App() {
               onDonateClick={() => setIsDonateOpen(true)}
               initialTab={settingsDefaultTab}
               onAiConnectionTested={settings.setIsAiAvailable}
+              excludedDomains={settings.excludedDomains}
+              unattachedNotes={settings.unattachedNotes}
+              onAddExcludedDomain={settings.addExcludedDomain}
+              onRemoveExcludedDomain={settings.removeExcludedDomain}
+              onPreviewPurge={settings.previewDomainPurge}
+              onRefreshUnattachedNotes={settings.loadUnattachedNotes}
             />
           ) : (
             <AISidebar

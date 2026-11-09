@@ -51,6 +51,18 @@
       </div>
       <div id="active-tab-desc" class="tab-desc-quote hidden"></div>
       
+      <!-- Domain Exclusion Action / Badge -->
+      <div id="tab-exclusion-wrap" class="tab-exclusion-wrap hidden">
+        <button id="btn-exclude-active-tab" class="btn-exclude-tab" title="Exclude this domain from tracking">
+          <span>🚫 Exclude Domain</span>
+        </button>
+        <div id="tab-excluded-badge" class="tab-excluded-badge hidden">
+          <span class="shield-icon">🛡️</span>
+          <span>Excluded from tracking</span>
+          <button id="btn-unexclude-active-tab" class="btn-unexclude-tab" title="Unexclude domain">✕</button>
+        </div>
+      </div>
+
       <!-- Quick Glance Bar -->
       <div class="today-glance-bar">
         <span>Today: <strong id="today-total-time">0m</strong></span>
@@ -194,6 +206,7 @@
     </div>
   </div>
 
+  <script src="domain-rules.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
