@@ -10,32 +10,35 @@
 LifeMirror Desktop
 
 ### Short Description / Package Summary (Max 132 characters)
-Companion extension for LifeMirror Desktop. Privately syncs active browser tabs to your personal on-device timeline.
+Companion extension for LifeMirror Desktop. Privately reflects active browsing time, smart tags, and page descriptions to your on-device timeline.
 
 ### Detailed Description (Plain Text / CWS Format)
-LifeMirror Desktop Companion securely connects your web browsing activity to your local LifeMirror Desktop timeline application.
+LifeMirror Desktop Companion brings mindful, private productivity reflection directly to your browser and local desktop.
 
-LifeMirror Desktop is a private, zero-cloud desktop companion that helps you reflect on your digital day, work habits, and time spent across applications. This extension provides seamless active tab awareness to ensure your browsing context is faithfully captured on your local timeline.
+Built on Steve Krug's "Don't Make Me Think" usability principles, it provides instant clarity on where your time goes without requiring you to decipher cryptic URLs or configure cloud accounts.
 
 KEY FEATURES
-• Automatic Tab Sync: Safely detects your active web tab to build a comprehensive personal timeline in LifeMirror Desktop.
-• 100% On-Device & Zero-Cloud: All tab data is sent directly to your local computer via Chrome Native Messaging. No data ever touches remote servers or cloud databases.
-• Battery & Resource Efficient: Runs quietly as a Manifest V3 background service worker, waking only on tab navigation or focus change.
-• Strict Protocol Filtering: Respects user privacy by only monitoring standard web traffic and ignoring internal browser or sensitive pages.
+• Standalone Zero-Setup Reflection: Works immediately out of the box with zero external configuration. View your daily focus rhythm, top domains, and active browsing stream directly inside Chrome.
+• Dedicated Chrome Side Panel: Keep your daily reflection open side-by-side as you work without interrupting your browsing flow.
+• Automated Meta Descriptions: Extracts page summaries (<meta name="description">) so you immediately remember what you were reading without mental effort.
+• Smart Auto-Tags & 1-Click Revise: Automatically categorizes sites into Development, Research & Docs, Media / Learning, Communications, and Leisure. Reclassify any site in 1 click with zero typing.
+• Accurate Inactivity Tracking: Uses Chrome's idle detection to automatically pause focus accumulation when you step away from your computer.
+• 100% On-Device & Zero-Cloud: All browsing data is stored in your local browser storage (chrome.storage.local) with an automatic 48-hour rolling purge. Zero analytics, zero telemetry.
+• Optional Desktop Sync: Connect LifeMirror Desktop anytime to unify your browser tabs with your IDE, terminal, and desktop applications into an encrypted offline timeline powered by local Ollama AI.
+
+DUAL OPERATION MODES
+1. Standalone Mode: Fully functional in-browser experience. View hourly focus rhythms, top domain progress bars, and recent sessions directly in the Chrome Side Panel or popup.
+2. Desktop Companion Mode: When LifeMirror Desktop is running, streams enriched tab metadata directly to your on-device SQLCipher vault over a secure Native Messaging channel.
 
 SUPPORTED TABS & BROWSING SCOPE
 • Supported Tabs: Standard web URLs (http:// and https://) actively visited and focused by the user.
 • Ignored & Excluded Pages: Internal browser configuration pages (chrome://*, chrome-extension://*, edge://*, about:blank, devtools://*), file system URLs (file://*), and non-web protocol pages are strictly ignored.
 • Active-Only Focus: Only logs the currently focused tab in the active window; inactive background tabs and idle windows are never queried.
 
-REQUIREMENTS
-This companion extension requires the LifeMirror Desktop application installed on your machine to receive and record your timeline events.
-• Download LifeMirror Desktop: https://pieapps.github.io/lifemirror-desktop.web/
-
 HOW TO USE
-1. Download and install the LifeMirror Desktop application from https://pieapps.github.io/lifemirror-desktop.web/
-2. Install this LifeMirror Desktop extension from the Chrome Web Store.
-3. Browse the web normally. The extension will automatically log your active web tabs directly into your local LifeMirror timeline.
+1. Install this extension from the Chrome Web Store.
+2. Click the LifeMirror icon to view your active tab reflection and click "Open Side Panel Reflection" to view your daily stream.
+3. (Optional) Download LifeMirror Desktop from https://pieapps.github.io/lifemirror-desktop.web/ for full-system offline reflection.
 
 PRIVACY & ZERO-CLOUD MANDATE
 We believe your browsing history belongs to you alone:

@@ -1973,6 +1973,43 @@ impl DbState {
         Ok(conn.last_insert_rowid())
     }
 
+    pub fn delete_sub_session_event(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM sub_session_events WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn delete_sub_session_event_by_uri_or_title(&self, uri: Option<&str>, title: Option<&str>) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        if let Some(u) = uri {
+            if !u.is_empty() {
+                // Delete only the most recent sub_session_event matching this primary_uri to avoid wiping history
+                let count = conn.execute(
+                    "DELETE FROM sub_session_events WHERE id = (
+                        SELECT id FROM sub_session_events WHERE primary_uri = ?1 ORDER BY timestamp DESC LIMIT 1
+                    )",
+                    [u],
+                )?;
+                if count > 0 {
+                    return Ok(count);
+                }
+            }
+        }
+        if let Some(t) = title {
+            if !t.is_empty() {
+                // Delete only the most recent sub_session_event matching this title to avoid wiping history
+                let count = conn.execute(
+                    "DELETE FROM sub_session_events WHERE id = (
+                        SELECT id FROM sub_session_events WHERE title = ?1 ORDER BY timestamp DESC LIMIT 1
+                    )",
+                    [t],
+                )?;
+                return Ok(count);
+            }
+        }
+        Ok(0)
+    }
+
     pub fn get_sub_session_events_for_day(&self, date: &str) -> Result<Vec<SubSessionEvent>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(

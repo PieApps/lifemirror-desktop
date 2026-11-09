@@ -5,6 +5,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.3.0] — 2026-11-09
+
+### Added
+* **Multi-Signal Semantic URL & Title Classifier (`background.js`)**:
+  * Replaced brittle domain-only matching with a 5-tier semantic heuristic:
+    1. **User manual overrides** (`tag_overrides`)
+    2. **URL Path semantic regex** (`/docs/`, `/api/`, `/guides/`, `/learn/`, `/tutorials/`, `/pull/`, `/issues/`, etc.)
+    3. **Page Title keywords** (`Documentation`, `Docs`, `API Reference`, `Pull Request`, etc.)
+    4. **Subdomain / TLD signals** (`docs.*`, `api.*`, `developer.*`, `.dev`, `.edu`)
+    5. **Base platform fallbacks** (e.g. `youtube.com`, `slack.com`)
+  * Accurately categorizes modern product documentation like `https://antigravity.google/docs/getting-started`, `stripe.com/docs`, and `supabase.com/docs` into `📚 Research & Docs` with zero manual configuration.
+* **High-Frequency Browsing Clarity & Noise Filtering**:
+  * **Transparent Counter Badge**: Displays `Showing 25 recent • 100 hops today` with hover tooltip explaining that high-frequency visits and dwell times are fully tracked in Top Websites and Hourly Activity above.
+  * **Micro-Hop Noise Filter (`background.js`)**: Fast skips (< 3 seconds) increment the Tab Hops counter and domain dwell totals without cluttering the Page Reflections feed with single-second junk cards.
+  * **Fast Browsing Guidance Pill (`sidepanel.js`, `sidepanel.css`)**: Reassuring notice at the bottom of the feed explaining why older tabs are consolidated into Top Websites during rapid browsing bursts.
+  * **Expanded Storage Buffer**: Expanded rolling session memory buffer from 25 to 50 items.
+* **1-Click "Copy Standup Summary" (`sidepanel.html`, `sidepanel.js`)**:
+  * One-click action button in side panel header copying a Markdown-formatted daily standup summary to the clipboard.
+  * Formats total active focus time, sites visited, context switches, category breakdown, and key pages.
+  * Instant feedback with temporary `✔ Copied!` indicator.
+* **"NOW" Real-Time Indicator on Hourly Activity Strip (`sidepanel.js`, `sidepanel.css`)**:
+  * Distinct cyan indicator pin and pulsing ring marking the user's current hour on the 24-hour activity strip.
+* **Delete Single Card on Hover with Full Bidirectional Sync**:
+  * Subtle hover delete button (`✕`) on individual reflection cards in the side panel.
+  * Deducts duration from active daily totals and domain records in `chrome.storage.local`.
+  * Emits native message `{ "event": "delete_tab_activity", "url", "title" }` to propagate deletion directly to the LifeMirror Desktop SQLCipher database (`sub_session_events`).
+* **Warm Empty-State Guidance**:
+  * Replaced blank placeholders with welcoming, privacy-reassuring empty states and helpful search/filter fallback messages.
+* **Instant Live Search & Clickable Page Links**:
+  * Multi-field real-time filter across page titles, domains, and meta descriptions.
+  * All domain badges and page titles are direct, clickable links with external arrow indicators (`↗`).
+* **Tab Fragmentation Guard & Consecutive Session Consolidation (`background.js`)**:
+  * Eliminated fragmented short sessions on the same URL caused by multi-stage browser tab updates.
+  * Automatic consolidation of consecutive sessions for identical pages.
+* **Zero-Setup Standalone Mode (`chrome.storage.local`)**:
+  * Extension operates completely out-of-the-box without requiring the LifeMirror Desktop app to be installed or running.
+  * Encrypted on-device 48-hour rolling storage with automatic pruning of older activity.
+  * Inactivity tracking powered by `chrome.idle` (60-second threshold) to eliminate idle duration inflation when stepping away.
+* **Persistent Chrome Side Panel (`sidepanel.html`, `sidepanel.css`, `sidepanel.js`)**:
+  * Dedicated full-height dashboard alongside active web browsing.
+  * 24-hour **Hourly Focus Rhythm** heat-strip visualizing daily work velocity.
+  * **Top Domains** breakdown with animated percentage progress bars.
+  * Recent page reflection feed with page titles, active duration, and extracted meta descriptions.
+* **Steve Krug "Don't Make Me Think" Usability Innovations**:
+  * **Automated Meta Descriptions (`content.js`)**: Extracts `<meta name="description">` and Open Graph snippets so users immediately recognize what they were reading.
+  * **Smart Auto-Tags**: Automatically classifies sites into `💻 Development`, `📚 Research & Docs`, `🎬 Media / Learning`, `💬 Communications`, and `☕ Break / Leisure`.
+  * **1-Click Easy Revise Popover**: Instant category reclassification directly from the tag pill with zero typing required.
+  * **Category Filter Chips**: 1-click filtering of daily browsing stream by intent.
+* **Desktop App Native Messaging Sync (`src-tauri/src/native_msg.rs`, `TimelineSidebar.tsx`)**:
+  * Enriched native messaging payload streaming page descriptions and category tags directly into the local SQLCipher vault (`sub_session_events.metadata`).
+  * Display of page descriptions and category tags in the LifeMirror Desktop S-Curve Timeline details sidebar.
+  * Enriched context fed into local Ollama AI reflection prompts for high-fidelity daily journaling.
+* **Desktop Bridge & Growth Engine**:
+  * Clean standalone status badge with non-intrusive card guiding users to install LifeMirror Desktop for OS/IDE reflection.
+
+---
+
 ## [1.2.1] — 2026-11-07
 
 ### Changed

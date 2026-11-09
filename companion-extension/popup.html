@@ -14,7 +14,7 @@
         <img src="icons/icon48.png" alt="" class="brand-logo" width="28" height="28" aria-hidden="true">
         <div class="brand-info">
           <h1 class="brand-name">LifeMirror Desktop</h1>
-          <span class="brand-tag">Companion v1.2.1</span>
+          <span class="brand-tag">Companion v1.3.0</span>
         </div>
       </div>
       <div id="connection-badge" class="status-badge checking" role="status" aria-live="polite">
@@ -23,19 +23,51 @@
       </div>
     </header>
 
-    <!-- Currently Active Tab Preview -->
+    <!-- 1-Click Action: Open Chrome Side Panel -->
+    <button id="open-sidepanel-btn" class="btn-sidepanel-cta">
+      <svg class="cta-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h8m-8 6h16"/></svg>
+      <span>Open Side Panel Reflection</span>
+      <span class="cta-arrow">→</span>
+    </button>
+
+    <!-- Currently Active Tab Preview with Meta Description & Tag -->
     <section class="card active-tab-card" aria-labelledby="active-tab-heading">
       <div class="card-header">
-        <span id="active-tab-heading" class="section-title">CURRENT ACTIVE TAB</span>
-        <span id="tab-status-pill" class="pill pill-syncing">Syncing</span>
+        <span id="active-tab-heading" class="section-title">CURRENT ACTIVE PAGE</span>
+        <button id="active-tab-tag-btn" class="tag-chip-pill" title="Click to revise category">
+          <span id="active-tab-tag-text">💻 Dev</span>
+          <span style="opacity: 0.6; font-size: 8px;">▾</span>
+        </button>
       </div>
       <div class="tab-preview">
         <img id="active-tab-favicon" class="tab-favicon" src="icons/icon16.png" alt="" width="16" height="16" aria-hidden="true">
         <div class="tab-details">
-          <div id="active-tab-title" class="tab-title">Detecting active page...</div>
+          <a id="active-tab-link" href="#" target="_blank" rel="noopener noreferrer" class="tab-title-link" title="Open active page">
+            <span id="active-tab-title" class="tab-title">Detecting active page...</span>
+            <span class="link-arrow">↗</span>
+          </a>
           <div id="active-tab-domain" class="tab-domain">---</div>
         </div>
       </div>
+      <div id="active-tab-desc" class="tab-desc-quote hidden"></div>
+      
+      <!-- Quick Glance Bar -->
+      <div class="today-glance-bar">
+        <span>Today: <strong id="today-total-time">0m</strong></span>
+        <span>Switches: <strong id="today-switches">0</strong></span>
+      </div>
+    </section>
+
+    <!-- Desktop Bridge Card (Standalone Mode) -->
+    <section id="popup-bridge-card" class="card popup-bridge-card hidden">
+      <div class="bridge-mini-content">
+        <span class="bridge-mini-icon">🚀</span>
+        <div>
+          <strong class="bridge-mini-title">Connect LifeMirror Desktop</strong>
+          <p class="bridge-mini-desc">Reflect on your code editor, terminal, and local Ollama AI offline.</p>
+        </div>
+      </div>
+      <a href="https://github.com/PieApps/lifemirror-desktop#readme" target="_blank" rel="noopener noreferrer" class="bridge-mini-link">Get Desktop App →</a>
     </section>
 
     <!-- User Acknowledgments & Privacy Notice -->
@@ -150,6 +182,16 @@
       <span>LifeMirror Desktop • Local-First Reflection</span>
       <a href="mailto:vrpieapps@gmail.com" class="footer-link external-link" title="Contact Developer Support" rel="noopener noreferrer" aria-label="Contact Developer Support via Email">Contact</a>
     </footer>
+    <!-- 1-Click Easy Revise Floating Popover -->
+    <div id="revise-popover" class="revise-popover hidden" role="menu">
+      <div class="popover-title">1-Click Quick Revise</div>
+      <button class="popover-opt" data-tag="💻 Development"><span>💻</span> Development</button>
+      <button class="popover-opt" data-tag="📚 Research & Docs"><span>📚</span> Research & Docs</button>
+      <button class="popover-opt" data-tag="🎬 Media / Learning"><span>🎬</span> Media / Learning</button>
+      <button class="popover-opt" data-tag="💬 Communications"><span>💬</span> Communications</button>
+      <button class="popover-opt" data-tag="☕ Break / Leisure"><span>☕</span> Break / Leisure</button>
+      <button class="popover-opt" data-tag="🌐 Other"><span>🌐</span> Other</button>
+    </div>
   </div>
 
   <script src="popup.js"></script>

@@ -2,7 +2,9 @@
 
 The official companion browser extension for [LifeMirror Desktop](https://pieapps.github.io/lifemirror-desktop.web/).
 
-This extension privately and safely captures the currently focused active web tab and sends metadata (URL, page title, favicon, timestamp) directly to the local LifeMirror Desktop application via Chrome Native Messaging (`com.lifemirror.desktop`).
+This extension provides **dual-mode on-device productivity reflection**:
+1. **Standalone Mode (Zero-Config)**: Operates out-of-the-box inside Chrome without requiring any desktop software. Records active dwell time, context switches, smart intent tags, and page descriptions into encrypted local browser storage (`chrome.storage.local`) with a 48-hour rolling auto-pruning window. Includes a dedicated **Chrome Side Panel** and quick toolbar popup.
+2. **Desktop Sync Mode**: When [LifeMirror Desktop](https://github.com/PieApps/lifemirror-desktop) is running, streams enriched tab metadata (title, URL, meta description, category tag, favicon, timestamp) over a sandboxed stdin/stdout Native Messaging channel into the local encrypted SQLCipher vault for OS-level timeline visualization and local Ollama AI reflection cards.
 
 ---
 
@@ -10,11 +12,15 @@ This extension privately and safely captures the currently focused active web ta
 
 ```
 companion-extension/
-├── manifest.json                    # Manifest V3 extension configuration
-├── background.js                    # Background service worker (Native Messaging bridge & context menus)
-├── popup.html                       # Companion popup flyout UI
+├── manifest.json                    # Manifest V3 extension configuration (SidePanel, Storage, Idle)
+├── background.js                    # Background service worker (dwell time, idle detection, tags, native bridge)
+├── content.js                       # Content script extracting page descriptions (<meta> / og:description)
+├── sidepanel.html                   # Dedicated Chrome Side Panel reflection dashboard
+├── sidepanel.css                    # Dark-mode side panel styles (heat-strip, progress bars, cards)
+├── sidepanel.js                     # Side panel analytics renderer, category filters & 1-click revise popover
+├── popup.html                       # Companion popup flyout UI (quick glance + side panel trigger)
 ├── popup.css                        # Cyber-zen dark mode popup styles
-├── popup.js                         # Tab preview, connection status & app launcher logic
+├── popup.js                         # Tab preview, meta reflection, 1-click revise & connection status
 ├── icons/                           # Extension icon assets
 │   ├── icon16.png                   # 16x16 icon (favicon / toolbar)
 │   ├── icon48.png                   # 48x48 icon (extensions manager)

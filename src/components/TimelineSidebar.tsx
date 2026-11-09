@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Edit2, Check, MessageSquare, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
@@ -24,6 +25,7 @@ interface TimelineSidebarItem {
   source: string;
   duration: number;
   notes?: string;
+  metadata?: string;
   isActivity: boolean;
 }
 
@@ -148,6 +150,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
             source: sub.session_type || 'Editor',
             duration: dur,
             notes: i === 0 ? act.notes : undefined,
+            metadata: sub.metadata,
             isActivity: false,
           });
         }
@@ -195,6 +198,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
           source: sub.session_type || 'SubSession',
           duration: dur,
           notes: undefined,
+          metadata: sub.metadata,
           isActivity: false,
         });
       }
@@ -209,6 +213,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
       if (prev && prev.title === item.title && prev.app === item.app && prev.context === item.context) {
         prev.duration += item.duration;
         if (!prev.notes && item.notes) prev.notes = item.notes;
+        if (!prev.metadata && item.metadata) prev.metadata = item.metadata;
       } else {
         consolidatedItems.push({ ...item });
       }
@@ -419,19 +424,35 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                             </span>
                           </div>
                         </div>
-                        <span className="text-[11px] text-[var(--text-muted)] truncate flex items-center gap-1.5">
-                          {event.context || extractDomain(event.url) || event.app}
+                        <span className="text-[11px] text-[var(--text-muted)] truncate flex items-center gap-1.5 flex-wrap">
+                          <span>{extractDomain(event.url) || event.app}</span>
+                          {event.context && event.context !== extractDomain(event.url) && event.context !== event.app && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20">
+                              {event.context}
+                            </span>
+                          )}
                           {event.url && event.url.startsWith("http") && (
-                            <a
-                              href={event.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-500 hover:underline px-1 py-0.5 rounded hover:bg-blue-500/10 transition-colors"
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (event.url) {
+                                  openUrl(event.url).catch((err) => console.warn("Failed to open external url:", err));
+                                }
+                              }}
+                              className="text-blue-500 hover:underline px-1 py-0.5 rounded hover:bg-blue-500/10 transition-colors cursor-pointer text-[11px]"
+                              title={`Open ${event.url}`}
                             >
                               ↗
-                            </a>
+                            </button>
                           )}
                         </span>
+                        {event.metadata && (
+                          <p className="mt-1 text-[11px] text-[var(--text-muted)] bg-black/5 dark:bg-white/5 px-2 py-1 rounded border-l-2 border-emerald-500 italic line-clamp-2 leading-relaxed">
+                            "{event.metadata}"
+                          </p>
+                        )}
                         {event.notes && (
                           <div className="mt-1.5 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[11px] text-violet-600 dark:text-violet-300 italic flex items-center gap-1.5">
                             <MessageSquare className="w-3.5 h-3.5 text-violet-500 shrink-0" />

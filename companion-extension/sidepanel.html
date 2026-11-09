@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LifeMirror - Browsing Reflection</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="sidepanel-container">
+    <!-- Top Header -->
+    <header class="header">
+      <div class="header-top">
+        <div class="brand">
+          <img src="icons/icon48.png" alt="" class="brand-logo" width="28" height="28" aria-hidden="true">
+          <h1 class="brand-title">LifeMirror Reflection</h1>
+        </div>
+        <div id="mode-badge" class="mode-badge mode-standalone" role="status">
+          <span class="pulse-dot"></span>
+          <span id="mode-badge-text">Standalone Active</span>
+        </div>
+      </div>
+      <div class="header-sub">
+        <span id="date-label" class="brand-subtitle">Today's In-Browser Stream</span>
+        <button id="copy-summary-btn" class="btn-copy-summary" title="Copy 1-click standup summary to clipboard">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>Copy Summary</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Key Metrics Row -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <span class="metric-label">ACTIVE TIME</span>
+        <div id="total-time-val" class="metric-val">0m</div>
+        <span class="metric-sub">Focus time today</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">TAB HOPS</span>
+        <div id="switches-val" class="metric-val">0</div>
+        <span class="metric-sub">Switches today</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">WEBSITES</span>
+        <div id="domains-count-val" class="metric-val">0</div>
+        <span class="metric-sub">Sites visited</span>
+      </div>
+    </section>
+
+    <!-- Hourly Heat-Strip -->
+    <section class="card rhythm-card">
+      <div class="card-header">
+        <span class="section-title">HOURLY ACTIVITY</span>
+        <span class="section-sub">Active hours today (12am – 11pm)</span>
+      </div>
+      <div id="heat-strip" class="heat-strip">
+        <!-- Injected via sidepanel.js -->
+      </div>
+      <div class="heat-legend">
+        <span>12am</span>
+        <span>6am</span>
+        <span>12pm</span>
+        <span>6pm</span>
+        <span>11pm</span>
+      </div>
+    </section>
+
+    <!-- Category Filter Chips (Don't Make Me Think: 1-click filter) -->
+    <section class="filter-section">
+      <span class="section-title">FILTER BY TOPIC</span>
+      <div id="category-filters" class="category-filters">
+        <button class="filter-chip active" data-cat="all">All</button>
+        <button class="filter-chip" data-cat="💻 Development">💻 Dev</button>
+        <button class="filter-chip" data-cat="📚 Research & Docs">📚 Docs</button>
+        <button class="filter-chip" data-cat="🎬 Media / Learning">🎬 Media</button>
+        <button class="filter-chip" data-cat="💬 Communications">💬 Comms</button>
+        <button class="filter-chip" data-cat="☕ Break / Leisure">☕ Leisure</button>
+      </div>
+    </section>
+
+    <!-- Top Domains Breakdown -->
+    <section class="card domains-card">
+      <div class="card-header">
+        <span class="section-title">TOP WEBSITES</span>
+      </div>
+      <div id="top-domains-list" class="domains-list">
+        <div class="empty-state warm-empty-state">
+          <div class="empty-emoji">🌱</div>
+          <div class="empty-heading">No website activity yet</div>
+          <p class="empty-text">As you browse, your most-visited websites and focus time will show up here.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recent Session Activity Stream with Meta Descriptions -->
+    <section class="card sessions-card">
+      <div class="card-header">
+        <span class="section-title">TODAY'S PAGES & ARTICLES</span>
+        <span id="sessions-count-badge" class="section-sub">0 items</span>
+      </div>
+
+      <!-- Instant Search Bar -->
+      <div class="search-bar-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="session-search-input" class="search-input" placeholder="Search pages, topics, domains..." aria-label="Search browsing history">
+        <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear search" aria-label="Clear search">✕</button>
+      </div>
+
+      <div id="sessions-stream" class="sessions-stream">
+        <div class="empty-state warm-empty-state">
+          <div class="empty-emoji">✨</div>
+          <div class="empty-heading">Ready when you are!</div>
+          <p class="empty-text">Browse normally—your focus rhythm, top sites, and mindful page summaries will automatically reflect here 100% on-device.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Desktop Bridge Card (Krug: obvious next step, zero pressure) -->
+    <section id="desktop-bridge-card" class="card bridge-card">
+      <div class="bridge-content">
+        <div class="bridge-icon">🚀</div>
+        <div>
+          <h4 class="bridge-title">Unlock Full-System Reflection</h4>
+          <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
+        </div>
+      </div>
+      <a href="https://github.com/PieApps/lifemirror-desktop#readme" target="_blank" rel="noopener noreferrer" class="btn btn-bridge">
+        Get Desktop App →
+      </a>
+    </section>
+
+    <!-- Footer Controls -->
+    <footer class="footer">
+      <button id="clear-data-btn" class="btn-text">
+        <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Clear Browser Data
+      </button>
+      <span class="footer-note">Rolling 48h Vault • 100% On-Device</span>
+    </footer>
+
+    <!-- 1-Click Easy Revise Floating Popover (Zero Typing) -->
+    <div id="revise-popover" class="revise-popover hidden" role="menu">
+      <div class="popover-title">1-Click Quick Revise</div>
+      <button class="popover-opt" data-tag="💻 Development"><span>💻</span> Development</button>
+      <button class="popover-opt" data-tag="📚 Research & Docs"><span>📚</span> Research & Docs</button>
+      <button class="popover-opt" data-tag="🎬 Media / Learning"><span>🎬</span> Media / Learning</button>
+      <button class="popover-opt" data-tag="💬 Communications"><span>💬</span> Communications</button>
+      <button class="popover-opt" data-tag="☕ Break / Leisure"><span>☕</span> Break / Leisure</button>
+      <button class="popover-opt" data-tag="🌐 Other"><span>🌐</span> Other</button>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

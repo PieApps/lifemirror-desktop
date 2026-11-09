@@ -167,10 +167,12 @@ Browser tab synchronization operates via Chrome's Native Messaging API instead o
     "url": "https://github.com/...",
     "title": "Tauri Repository",
     "favIconUrl": "https://github.com/favicon.ico",
+    "description": "Build smaller, faster, and more secure desktop applications with a web frontend.",
+    "tag": "💻 Development",
     "timestamp": 1718330000
   }
   ```
-* **Active Tab Caching:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event, which are then read by the background OS focus poller to map active tab URLs to the OS-level window focus state.
+* **Active Tab Caching & Rich Metadata:** The native messaging host updates the `settings` table keys (`active_tab_url`, `active_tab_title`, and `active_tab_favicon`) on every tab switch event. The extracted page `description` is saved directly into `sub_session_events.metadata` and the smart `tag` into `sub_session_events.context_tag`. This metadata is subsequently rendered inside the S-Curve timeline details sidebar (`TimelineSidebar.tsx`) and passed to local Ollama AI reflection prompts (`useLocalAI.ts`) for high-fidelity daily journaling.
 * **FIFO Queue & DB Logging:** To handle high-frequency stdin events safely without blocking input readers, the host uses a Rust `mpsc::channel` queue. The stdin reader thread pushes incoming `TabPayload` events onto this queue, and a dedicated background consumer thread dequeues them, writes them to the `sub_session_events` table via `insert_sub_session_event`, and caches the active tab in settings. On process termination, the host drops the sender, flushes all remaining events, and joins the consumer thread to guarantee no logged data is lost.
 * **Error Framing & Graceful Handshake:** If the host process cannot open the database (e.g., `vault_locked`, `vault_busy`, `vault_needs_upgrade`, or `vault_missing`), it serializes a 4-byte native-endian length-prefixed JSON error to `stdout` (e.g. `{"error": "vault_locked", "message": "..."}`) and exits cleanly with exit code 0. No unformatted log text is ever written to `stdout` (all diagnostics go to `stderr`), preserving the binary stream protocol of the browser native messaging interface.
 

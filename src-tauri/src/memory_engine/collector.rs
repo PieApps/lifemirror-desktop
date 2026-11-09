@@ -60,7 +60,7 @@ impl MemorySource for BrowserTrackerSource {
     fn fetch_unprocessed_events(&self, db: &crate::db::DbState) -> Result<Vec<NormalizedEvent>, String> {
         let conn = db.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, timestamp, parent_app_name, title, primary_uri
+            "SELECT id, timestamp, parent_app_name, title, primary_uri, context_tag, metadata
              FROM sub_session_events
              WHERE processed = 0
              ORDER BY timestamp ASC",
@@ -69,7 +69,24 @@ impl MemorySource for BrowserTrackerSource {
         let iter = stmt.query_map([], |row| {
             let parent_app: Option<String> = row.get(2)?;
             let uri: Option<String> = row.get(4)?;
-            let context = format!("{} ({})", parent_app.unwrap_or_default(), uri.unwrap_or_default());
+            let tag: Option<String> = row.get(5)?;
+            let meta: Option<String> = row.get(6)?;
+            let raw_id: i64 = row.get(0)?;
+            let title: String = row.get(3)?;
+
+            let context = match (parent_app, tag) {
+                (Some(app), Some(t)) => format!("{app} [{t}]"),
+                (Some(app), None) => app,
+                (None, Some(t)) => t,
+                (None, None) => "browser".to_string(),
+            };
+
+            let detail = match (uri, meta) {
+                (Some(u), Some(m)) => format!("{title} - {u} (\"{m}\")"),
+                (Some(u), None) => format!("{title} - {u}"),
+                (None, Some(m)) => format!("{title} (\"{m}\")"),
+                (None, None) => title,
+            };
 
             Ok(NormalizedEvent {
                 id: None,
@@ -77,8 +94,8 @@ impl MemorySource for BrowserTrackerSource {
                 timestamp: row.get(1)?,
                 duration: 60, // Fixed block representation
                 context,
-                detail: row.get(3)?,
-                raw_id: row.get(0)?,
+                detail,
+                raw_id,
             })
         }).map_err(|e| e.to_string())?;
 

@@ -394,6 +394,11 @@ fn delete_activity_log(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), Strin
 }
 
 #[tauri::command]
+fn delete_sub_session_event(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
+    db.delete_sub_session_event(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn delete_distraction_event(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), String> {
     db.delete_distraction_event(id).map_err(|e| e.to_string())
 }
@@ -1150,6 +1155,7 @@ pub fn run() {
             get_journals,
             get_distraction_events_for_day,
             delete_activity_log,
+            delete_sub_session_event,
             delete_distraction_event,
             add_journal,
             toggle_incognito,

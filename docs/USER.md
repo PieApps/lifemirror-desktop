@@ -47,9 +47,17 @@ npm run tauri dev
 
 ## 2. Linking the Chrome Companion Extension
 
-The browser extension syncs active tabs using Chrome's secure **Native Messaging API** instead of local WebSockets.
+The LifeMirror Chrome extension operates in **dual modes**:
+* **Standalone In-Browser Mode (Zero Setup)**: Operates 100% inside Google Chrome (and Chromium, Brave, Edge, Arc, Opera, Vivaldi) without requiring the desktop application. Includes a dedicated **Chrome Side Panel** featuring a 24-hour focus rhythm heat-strip, top domain breakdown with animated progress bars, automated page descriptions (`<meta name="description">`), smart auto-tags (`💻 Dev`, `📚 Docs`, `🎬 Media`), and a 1-click easy revise popover.
+* **Desktop Sync Mode**: Automatically syncs active web browsing sessions, page descriptions, and category tags directly into the local LifeMirror Desktop application via Chrome's secure **Native Messaging API** (stdio pipes).
 
-### Step A: Configure the Host Manifest
+### Using the Chrome Side Panel (Standalone or Synced)
+1. Click the LifeMirror icon in the Chrome toolbar.
+2. Click **"Open Side Panel Reflection"** to open the side panel alongside your active browsing.
+3. Review your **Hourly Focus Rhythm**, filter sessions by intent, and click any tag chip to revise its category in 1 click (no typing required).
+4. Inactivity is detected automatically: if you step away from your keyboard for >60 seconds, time tracking pauses automatically (`chrome.idle`).
+
+### Linking Extension to LifeMirror Desktop (Native Messaging)
 Edit the descriptor template file: `companion-extension/com.lifemirror.desktop.json`
 * Change `"path"` to point to your compiled `lifemirror` binary (usually `/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror`).
 * Keep the configuration `"type": "stdio"`.

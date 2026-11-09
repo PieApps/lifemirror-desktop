@@ -162,9 +162,11 @@ Go to `chrome://extensions`, find **LifeMirror Companion**, and click **↺ Relo
 
 ## ⚙️ Configuration Guides
 
-### Browser Tab Tracking (Chrome Extension)
+### Browser Tab Tracking & Reflection (Chrome Extension)
 
-Browser tab sync operates over a secure, sandboxed stdin/stdout **Native Messaging** channel.
+The LifeMirror Chrome extension operates in **dual modes**:
+* **Standalone Mode**: Runs directly inside Chrome with zero setup. Captures dwell time, hourly rhythms, top domains, meta descriptions, and smart category tags (`💻 Dev`, `📚 Docs`, `🎬 Media`) in a persistent **Chrome Side Panel** with 1-click easy tag revision.
+* **Desktop Native Sync**: When LifeMirror Desktop is running, tab events stream over a sandboxed stdin/stdout **Native Messaging** channel directly into your encrypted SQLCipher database, displaying full page descriptions in the S-Curve sidebar and enriching local Ollama reflection prompts.
 
 | Platform | After running `npm run install-host`, the manifest is placed at… |
 |----------|------------------------------------------------------------------|

@@ -26,7 +26,7 @@ impl EntityExtractor {
         
         for event in &events {
             if event.source == "browser" {
-                if let Some(caps) = domain_regex.captures(&event.context) {
+                if let Some(caps) = domain_regex.captures(&event.detail).or_else(|| domain_regex.captures(&event.context)) {
                     if let Some(domain) = caps.get(1) {
                         let domain_str = domain.as_str().to_string();
                         if !domains.contains(&domain_str) {
