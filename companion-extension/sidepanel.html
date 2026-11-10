@@ -30,13 +30,13 @@
 
       <!-- Modern Responsive Tabs (100% visible, width-adaptive) -->
       <nav class="nav-tab-bar" role="tablist" aria-label="LifeMirror navigation views">
-        <button type="button" role="tab" id="tab-reflect" class="nav-tab active" aria-selected="true" aria-controls="panel-reflect" tabindex="0">
-          <span class="nav-tab-icon">🪞</span>
-          <span class="nav-tab-label">Reflect</span>
-        </button>
-        <button type="button" role="tab" id="tab-insights" class="nav-tab" aria-selected="false" aria-controls="panel-insights" tabindex="-1">
+        <button type="button" role="tab" id="tab-insights" class="nav-tab active" aria-selected="true" aria-controls="panel-insights" tabindex="0">
           <span class="nav-tab-icon">📊</span>
           <span class="nav-tab-label">Insights</span>
+        </button>
+        <button type="button" role="tab" id="tab-reflect" class="nav-tab" aria-selected="false" aria-controls="panel-reflect" tabindex="-1">
+          <span class="nav-tab-icon">🪞</span>
+          <span class="nav-tab-label">Reflect</span>
         </button>
         <button type="button" role="tab" id="tab-settings" class="nav-tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1">
           <span class="nav-tab-icon">⚙️</span>
@@ -45,8 +45,69 @@
       </nav>
     </header>
 
-    <!-- TAB PANEL 1: REFLECT (Active Tab Hero, Daily Focus Glance, Hourly Rhythm, Stream) -->
-    <main role="tabpanel" id="panel-reflect" aria-labelledby="tab-reflect" class="tab-panel active">
+    <!-- TAB PANEL 1: INSIGHTS (Standup Summary, Top Domains, Profile Scope, Bridge) -->
+    <main role="tabpanel" id="panel-insights" aria-labelledby="tab-insights" class="tab-panel active">
+      <!-- 1-Click Standup Summary Card -->
+      <section class="card standup-summary-card">
+        <div class="card-header">
+          <span class="section-title">DAILY STANDUP SUMMARY</span>
+          <span class="summary-badge">Markdown</span>
+        </div>
+        <p class="card-desc">Generate a clean, copyable summary of your focus hours and top websites for daily standups, Jira, or Slack.</p>
+        <button id="copy-summary-btn" class="btn-copy-summary-prominent" title="Copy standup summary to clipboard">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span id="copy-summary-text">Copy Standup Summary</span>
+        </button>
+      </section>
+
+      <!-- Profile Scope Selector -->
+      <section class="card scope-filter-card">
+        <div class="card-header">
+          <span class="section-title">PROFILE SCOPE</span>
+        </div>
+        <div class="scope-chips">
+          <button id="scope-profile-btn" class="scope-chip active" data-scope="profile">
+            <span class="scope-icon">📍</span>
+            <span id="scope-profile-label">Current Profile</span>
+          </button>
+          <button id="scope-all-btn" class="scope-chip" data-scope="all">
+            <span class="scope-icon">🌐</span>
+            <span>All Profiles</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Top Domains Breakdown -->
+      <section class="card domains-card">
+        <div class="card-header">
+          <span class="section-title">TOP WEBSITES TODAY</span>
+        </div>
+        <div id="top-domains-list" class="domains-list">
+          <div class="empty-state warm-empty-state">
+            <div class="empty-emoji">🌱</div>
+            <div class="empty-heading">No website activity yet</div>
+            <p class="empty-text">As you browse, your most-visited websites and focus time will show up here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Desktop Bridge Card -->
+      <section id="desktop-bridge-card" class="card bridge-card">
+        <div class="bridge-content">
+          <div class="bridge-icon">🚀</div>
+          <div>
+            <h4 class="bridge-title">Unlock Full-System Reflection</h4>
+            <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
+          </div>
+        </div>
+        <a href="https://pieapps.github.io/lifemirror-desktop.web/" target="_blank" rel="noopener noreferrer" class="btn btn-bridge external-link">
+          Get Desktop App →
+        </a>
+      </section>
+    </main>
+
+    <!-- TAB PANEL 2: REFLECT (Active Tab Hero, Daily Focus Glance, Hourly Rhythm, Stream) -->
+    <main role="tabpanel" id="panel-reflect" aria-labelledby="tab-reflect" class="tab-panel" hidden>
       <!-- Real-time Active Tab Hero -->
       <section class="card active-tab-card" aria-labelledby="active-tab-heading">
         <div class="card-header">
@@ -179,67 +240,6 @@
         <button id="load-more-btn" class="btn-load-more hidden">
           <span id="load-more-text">↓ Load earlier activity</span>
         </button>
-      </section>
-    </main>
-
-    <!-- TAB PANEL 2: INSIGHTS (Standup Summary, Top Domains, Profile Scope, Bridge) -->
-    <main role="tabpanel" id="panel-insights" aria-labelledby="tab-insights" class="tab-panel" hidden>
-      <!-- 1-Click Standup Summary Card -->
-      <section class="card standup-summary-card">
-        <div class="card-header">
-          <span class="section-title">DAILY STANDUP SUMMARY</span>
-          <span class="summary-badge">Markdown</span>
-        </div>
-        <p class="card-desc">Generate a clean, copyable summary of your focus hours and top websites for daily standups, Jira, or Slack.</p>
-        <button id="copy-summary-btn" class="btn-copy-summary-prominent" title="Copy standup summary to clipboard">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-          <span id="copy-summary-text">Copy Standup Summary</span>
-        </button>
-      </section>
-
-      <!-- Profile Scope Selector -->
-      <section class="card scope-filter-card">
-        <div class="card-header">
-          <span class="section-title">PROFILE SCOPE</span>
-        </div>
-        <div class="scope-chips">
-          <button id="scope-profile-btn" class="scope-chip active" data-scope="profile">
-            <span class="scope-icon">📍</span>
-            <span id="scope-profile-label">Current Profile</span>
-          </button>
-          <button id="scope-all-btn" class="scope-chip" data-scope="all">
-            <span class="scope-icon">🌐</span>
-            <span>All Profiles</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Top Domains Breakdown -->
-      <section class="card domains-card">
-        <div class="card-header">
-          <span class="section-title">TOP WEBSITES TODAY</span>
-        </div>
-        <div id="top-domains-list" class="domains-list">
-          <div class="empty-state warm-empty-state">
-            <div class="empty-emoji">🌱</div>
-            <div class="empty-heading">No website activity yet</div>
-            <p class="empty-text">As you browse, your most-visited websites and focus time will show up here.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Desktop Bridge Card -->
-      <section id="desktop-bridge-card" class="card bridge-card">
-        <div class="bridge-content">
-          <div class="bridge-icon">🚀</div>
-          <div>
-            <h4 class="bridge-title">Unlock Full-System Reflection</h4>
-            <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
-          </div>
-        </div>
-        <a href="https://github.com/PieApps/lifemirror-desktop#readme" target="_blank" rel="noopener noreferrer" class="btn btn-bridge">
-          Get Desktop App →
-        </a>
       </section>
     </main>
 

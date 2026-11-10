@@ -82,6 +82,44 @@ let nextCursor = null;
 let isFetchingMore = false;
 let loadedSessions = [];
 let isConnectedToDesktop = false;
+let lastDesktopTopSites = null;
+
+// ── Instant Sync Placeholders on Both Tabs ────────────────────────────────────
+function showSyncingPlaceholders(force = false) {
+  if (topDomainsList && (force || !topDomainsList.children.length || topDomainsList.querySelector(".empty-state") || topDomainsList.querySelector(".stream-fetching-placeholder"))) {
+    topDomainsList.innerHTML = `
+      <div class="stream-fetching-placeholder">
+        <div class="stream-spinner-lg"></div>
+        <div class="stream-fetching-title">Syncing with Desktop App...</div>
+        <p class="stream-fetching-sub">Fetching verified top sites from local SQLite vault</p>
+      </div>
+    `;
+  }
+  if (sessionsStream && (force || loadedSessions.length === 0 || sessionsStream.querySelector(".empty-state") || sessionsStream.querySelector(".stream-fetching-placeholder"))) {
+    if (streamDesktopLoader) streamDesktopLoader.classList.remove("hidden");
+    sessionsStream.innerHTML = `
+      <div class="stream-fetching-placeholder">
+        <div class="stream-spinner-lg"></div>
+        <div class="stream-fetching-title">Syncing with Desktop App...</div>
+        <p class="stream-fetching-sub">Fetching verified reflections from local SQLite vault</p>
+      </div>
+    `;
+  }
+}
+
+// Pre-render Desktop Sync state immediately if previously connected (zero-delay feedback on open)
+chrome.storage.local.get(["desktop_connected", "profile_id", "profile_label"]).then((res) => {
+  if (res && res.desktop_connected) {
+    isConnectedToDesktop = true;
+    if (modeBadge) modeBadge.className = "mode-badge mode-desktop";
+    if (modeBadgeText) modeBadgeText.textContent = "Desktop Sync Active";
+    if (desktopBridgeCard) desktopBridgeCard.style.display = "none";
+    if (dataManagementCard) dataManagementCard.classList.add("hidden");
+    showSyncingPlaceholders();
+  }
+  if (res && res.profile_id) myProfileId = res.profile_id;
+  if (res && res.profile_label) myProfileLabel = res.profile_label;
+}).catch(() => {});
 
 // ── Security: HTML Entity Escaping (Prevents Stored DOM XSS) ──────────────────
 function escapeHtml(str) {
@@ -472,10 +510,12 @@ categoryFilters.querySelectorAll(".filter-chip").forEach((btn) => {
     categoryFilters.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     activeFilter = btn.getAttribute("data-cat");
-    if (currentAnalytics) {
+    if (lastDesktopTopSites) {
+      renderTopDomains(lastDesktopTopSites);
+    } else if (currentAnalytics) {
       renderTopDomains(currentAnalytics.domains);
-      renderSessions(currentAnalytics.recentSessions);
     }
+    renderSessions(loadedSessions.length > 0 ? loadedSessions : (currentAnalytics ? currentAnalytics.recentSessions : []));
   });
 });
 
@@ -687,8 +727,11 @@ clearDataBtn.addEventListener("click", async () => {
   }
 });
 
+let loadDataSeq = 0;
+
 // ── Main Data Loading & Sync ──────────────────────────────────────────────────
 async function loadData() {
+  const currentSeq = ++loadDataSeq;
   try {
     // 0. Update friendly date label (compact to fit sidepanel header cleanly)
     if (dateLabel) {
@@ -701,22 +744,26 @@ async function loadData() {
       dateLabel.title = `Focus activity for ${dateFormatted}`;
     }
 
-    // 1. Fetch active profile identity
-    try {
-      const prof = await chrome.runtime.sendMessage({ action: "get_profile_identity" });
-      if (prof) {
-        myProfileId = prof.profileId;
-        myProfileLabel = prof.profileLabel || "Default";
-        myBrowserName = prof.browserName || "Chrome";
-        if (scopeProfileLabel) {
-          scopeProfileLabel.textContent = `${myProfileLabel} (${myBrowserName})`;
-        }
-      }
-    } catch {}
+    // 1. Concurrently fetch profile identity, status, and local analytics (zero waterfall)
+    const [prof, status, analytics] = await Promise.all([
+      chrome.runtime.sendMessage({ action: "get_profile_identity" }).catch(() => null),
+      chrome.runtime.sendMessage({ action: "get_status" }).catch(() => null),
+      chrome.runtime.sendMessage({ action: "get_today_analytics" }).catch(() => null)
+    ]);
 
-    // 2. Check desktop connection status
-    const status = await chrome.runtime.sendMessage({ action: "get_status" });
+    if (currentSeq !== loadDataSeq) return; // Stale sequence guard
+
+    if (prof) {
+      myProfileId = prof.profileId;
+      myProfileLabel = prof.profileLabel || "Default";
+      myBrowserName = prof.browserName || "Chrome";
+      if (scopeProfileLabel) {
+        scopeProfileLabel.textContent = `${myProfileLabel} (${myBrowserName})`;
+      }
+    }
+
     isConnectedToDesktop = Boolean(status && status.connected);
+    chrome.storage.local.set({ desktop_connected: isConnectedToDesktop }).catch(() => {});
 
     if (isConnectedToDesktop) {
       modeBadge.className = "mode-badge mode-desktop";
@@ -730,8 +777,6 @@ async function loadData() {
       if (dataManagementCard) dataManagementCard.classList.remove("hidden");
     }
 
-    // 3. Fetch today's local analytics (for switches, total time, and hourly strip)
-    const analytics = await chrome.runtime.sendMessage({ action: "get_today_analytics" });
     currentAnalytics = analytics || {
       totalActiveSeconds: 0,
       contextSwitches: 0,
@@ -745,45 +790,39 @@ async function loadData() {
     domainsCountVal.textContent = String(Object.keys(currentAnalytics.domains || {}).length);
     renderHeatStrip(currentAnalytics.hourly);
 
-    // 4. Hydrate Top Sites and Stream
+    // 2. Hydrate Top Sites and Stream in Parallel
     const targetProfileId = activeProfileScope === "profile" ? myProfileId : null;
 
     if (isConnectedToDesktop) {
-      // 4a. Top Sites from desktop SQLite
-      try {
-        const topRes = await chrome.runtime.sendMessage({
-          action: "get_desktop_top_sites",
-          profileId: targetProfileId,
-          limit: 5
-        });
+      // Immediately reflect syncing state on both tabs while querying desktop SQLite vault
+      showSyncingPlaceholders();
+
+      const topSitesPromise = chrome.runtime.sendMessage({
+        action: "get_desktop_top_sites",
+        profileId: targetProfileId,
+        limit: 5
+      }).then((topRes) => {
+        if (currentSeq !== loadDataSeq) return;
         if (topRes && Array.isArray(topRes.entries) && topRes.entries.length > 0) {
+          lastDesktopTopSites = topRes.entries;
           renderTopDomains(topRes.entries);
         } else {
+          lastDesktopTopSites = null;
           renderTopDomains(currentAnalytics.domains);
         }
-      } catch {
+      }).catch(() => {
+        if (currentSeq !== loadDataSeq) return;
+        lastDesktopTopSites = null;
         renderTopDomains(currentAnalytics.domains);
-      }
+      });
 
-      // 4b. Sub-sessions stream from desktop SQLite via Keyset Cursor
-      if (streamDesktopLoader) streamDesktopLoader.classList.remove("hidden");
-      if (loadedSessions.length === 0) {
-        sessionsStream.innerHTML = `
-          <div class="stream-fetching-placeholder">
-            <div class="stream-spinner-lg"></div>
-            <div class="stream-fetching-title">Syncing with Desktop App...</div>
-            <p class="stream-fetching-sub">Fetching verified reflections from local SQLite vault</p>
-          </div>
-        `;
-      }
-
-      try {
-        const sessRes = await chrome.runtime.sendMessage({
-          action: "get_desktop_sub_sessions",
-          profileId: targetProfileId,
-          cursor: null,
-          limit: 25
-        });
+      const sessionsPromise = chrome.runtime.sendMessage({
+        action: "get_desktop_sub_sessions",
+        profileId: targetProfileId,
+        cursor: null,
+        limit: 25
+      }).then((sessRes) => {
+        if (currentSeq !== loadDataSeq) return;
         if (sessRes && Array.isArray(sessRes.items) && sessRes.items.length > 0) {
           loadedSessions = sessRes.items.map((ev) => {
             let domain = ev.context_tag;
@@ -810,23 +849,29 @@ async function loadData() {
           nextCursor = null;
           renderSessions(loadedSessions);
         }
-      } catch {
+      }).catch(() => {
+        if (currentSeq !== loadDataSeq) return;
         loadedSessions = currentAnalytics.recentSessions;
         nextCursor = null;
         renderSessions(loadedSessions);
-      } finally {
-        if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
-      }
+      }).finally(() => {
+        if (currentSeq === loadDataSeq && streamDesktopLoader) {
+          streamDesktopLoader.classList.add("hidden");
+        }
+      });
+
+      await Promise.all([topSitesPromise, sessionsPromise]);
     } else {
       // Offline / Standalone mode fallback
       if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
+      lastDesktopTopSites = null;
       renderTopDomains(currentAnalytics.domains);
       loadedSessions = currentAnalytics.recentSessions;
       nextCursor = null;
       renderSessions(loadedSessions);
     }
 
-    // 5. Keep active tab hero preview synchronized
+    // 3. Keep active tab hero preview synchronized
     await updateActiveTabPreview();
   } catch (err) {
     console.warn("[LifeMirror SidePanel] Refresh warning:", err);
@@ -891,6 +936,8 @@ if (scopeProfileBtn && scopeAllBtn) {
     scopeProfileBtn.classList.add("active");
     scopeAllBtn.classList.remove("active");
     nextCursor = null;
+    loadedSessions = [];
+    if (isConnectedToDesktop) showSyncingPlaceholders(true);
     loadData();
   });
 
@@ -900,6 +947,8 @@ if (scopeProfileBtn && scopeAllBtn) {
     scopeAllBtn.classList.add("active");
     scopeProfileBtn.classList.remove("active");
     nextCursor = null;
+    loadedSessions = [];
+    if (isConnectedToDesktop) showSyncingPlaceholders(true);
     loadData();
   });
 }
@@ -1139,7 +1188,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ── Responsive Tab Navigation (Reflect, Insights, Settings) ───────────────
+// ── Responsive Tab Navigation (Insights, Reflect, Settings) ───────────────
 function switchTab(targetTabId, options = {}) {
   const tabs = document.querySelectorAll(".nav-tab");
   const panels = document.querySelectorAll(".tab-panel");
@@ -1165,7 +1214,12 @@ function switchTab(targetTabId, options = {}) {
     }
   });
 
-  chrome.storage.local.set({ active_tab: targetTabId }).catch(() => {});
+  // Track active tab within active browsing session, defaulting to tab-insights on fresh launches
+  if (chrome.storage?.session) {
+    chrome.storage.session.set({ active_tab: targetTabId }).catch(() => {});
+  } else {
+    try { sessionStorage.setItem("active_tab", targetTabId); } catch {}
+  }
 
   if (targetTabId === "tab-settings") {
     loadExcludedDomainsList();
@@ -1203,12 +1257,28 @@ function initNavTabs() {
     });
   });
 
-  // Restore persisted active tab
-  chrome.storage.local.get(["active_tab"]).then((res) => {
-    if (res && res.active_tab && document.getElementById(res.active_tab)) {
-      switchTab(res.active_tab);
+  // Clear legacy stored active_tab so Insights defaults as the 1st tab
+  chrome.storage?.local?.remove?.(["active_tab"]).catch(() => {});
+
+  const restoreSessionTab = (tabId) => {
+    if (tabId && document.getElementById(tabId)) {
+      switchTab(tabId);
+    } else {
+      switchTab("tab-insights");
     }
-  }).catch(() => {});
+  };
+
+  if (chrome.storage?.session) {
+    chrome.storage.session.get(["active_tab"]).then((res) => {
+      restoreSessionTab(res ? res.active_tab : null);
+    }).catch(() => switchTab("tab-insights"));
+  } else {
+    try {
+      restoreSessionTab(sessionStorage.getItem("active_tab"));
+    } catch {
+      switchTab("tab-insights");
+    }
+  }
 }
 
 // ── Theme Management (Adaptive to Browser / System, with 1-click toggle) ─────
@@ -1473,7 +1543,7 @@ function toggleAboutDrawer() {
 }
 
 if (aboutToggleBtn) aboutToggleBtn.addEventListener("click", toggleAboutDrawer);
-if (closeAboutDrawerBtn) closeAboutDrawerBtn.addEventListener("click", () => switchTab("tab-reflect"));
+if (closeAboutDrawerBtn) closeAboutDrawerBtn.addEventListener("click", () => switchTab("tab-insights"));
 if (footerAboutBtn) footerAboutBtn.addEventListener("click", toggleAboutDrawer);
 
 if (profileSaveBtn && profileLabelInput) {

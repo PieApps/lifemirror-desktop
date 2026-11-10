@@ -79,6 +79,11 @@ async function initProfileIdentity() {
 }
 initProfileIdentity();
 
+// Eagerly connect to desktop host so status & SQLite sync are ready immediately on user click
+try {
+  getNativePort();
+} catch {}
+
 // Pending RPC manager for request-response over Native Messaging
 const pendingNativeRpc = new Map();
 
@@ -425,6 +430,7 @@ function getNativePort() {
   try {
     port = chrome.runtime.connectNative(HOST_NAME);
     isNativeConnected = true;
+    chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
 
     port.onMessage.addListener((msg) => {
       if (msg && msg.requestId && pendingNativeRpc.has(msg.requestId)) {
@@ -469,12 +475,14 @@ function getNativePort() {
     port.onDisconnect.addListener(() => {
       isNativeConnected = false;
       port = null;
+      chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
       // In standalone mode, we do NOT set scary red badges
       chrome.action.setBadgeText({ text: "" });
     });
   } catch {
     port = null;
     isNativeConnected = false;
+    chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
   }
   return port;
 }
@@ -691,6 +699,7 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     } catch {
       port = null;
       isNativeConnected = false;
+      chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
     }
   }
 }
@@ -763,8 +772,17 @@ if (chrome.action && chrome.action.onClicked) {
   });
 }
 
+chrome.runtime.onStartup?.addListener(() => {
+  try {
+    getNativePort();
+  } catch {}
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   pruneOldData();
+  try {
+    getNativePort();
+  } catch {}
   // Ensure default action click opens side panel directly
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
     chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -830,8 +848,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Query status for popup/side panel
   if (request.action === "get_status") {
     const nativePort = getNativePort();
+    const connected = Boolean(isNativeConnected && nativePort !== null && !lastVaultError);
+    chrome.storage.local.set({ desktop_connected: connected }).catch(() => {});
     sendResponse({
-      connected: isNativeConnected && nativePort !== null && !lastVaultError,
+      connected,
       vaultError: lastVaultError,
       lastEvent: lastReportedPayload,
       currentSession: currentSession ? {
