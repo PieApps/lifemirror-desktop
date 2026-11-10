@@ -745,11 +745,29 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 });
 
 // ── Extension IPC & Side Panel Setup ──────────────────────────────────────────
+// Configure side panel to open immediately on action icon click (1-click reflection)
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+}
+
+// Fallback action click handler in case browser behavior needs direct trigger
+if (chrome.action && chrome.action.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    if (chrome.sidePanel && chrome.sidePanel.open && tab && tab.windowId) {
+      try {
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+      } catch (err) {
+        console.warn("Failed to open side panel on action click:", err);
+      }
+    }
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   pruneOldData();
-  // Ensure default action click opens popup
+  // Ensure default action click opens side panel directly
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   }
   // Setup context menu shortcuts for direct toolbar launch
   if (chrome.contextMenus) {

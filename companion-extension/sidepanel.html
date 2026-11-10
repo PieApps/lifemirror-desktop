@@ -3,109 +3,205 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>LifeMirror - Browsing Reflection</title>
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
   <div class="sidepanel-container">
-    <!-- Top Header -->
+    <!-- Top Header: Clean Single Row -->
     <header class="header">
       <div class="header-top">
         <div class="brand">
-          <img src="icons/icon48.png" alt="" class="brand-logo" width="28" height="28" aria-hidden="true">
-          <h1 class="brand-title">LifeMirror Reflection</h1>
+          <img src="icons/icon48.png" alt="" class="brand-logo" width="22" height="22" aria-hidden="true">
+          <span class="brand-title">LifeMirror</span>
+          <span id="date-label" class="header-date">Today</span>
         </div>
-        <div id="mode-badge" class="mode-badge mode-standalone" role="status">
-          <span class="pulse-dot"></span>
-          <span id="mode-badge-text">Standalone Active</span>
+        <div class="header-controls">
+          <button id="theme-toggle-btn" class="btn-theme-compact" title="Toggle theme (Auto / Light / Dark)" aria-label="Toggle theme">
+            <span id="theme-toggle-icon">🌓</span>
+          </button>
+          <div id="mode-badge" class="mode-badge mode-standalone" role="status">
+            <span class="pulse-dot"></span>
+            <span id="mode-badge-text">Standalone</span>
+          </div>
         </div>
       </div>
-      <div class="header-sub">
-        <span id="date-label" class="brand-subtitle">Today's In-Browser Stream</span>
-        <div class="header-actions">
-          <button id="excluded-domains-toggle-btn" class="btn-header-action" title="Manage excluded domains">
-            <span class="btn-icon">🛡️</span>
-            <span>Excluded Sites</span>
-          </button>
-          <button id="copy-summary-btn" class="btn-copy-summary" title="Copy 1-click standup summary to clipboard">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span>Copy Summary</span>
-          </button>
-        </div>
-      </div>
+
+      <!-- Modern Responsive Tabs (100% visible, width-adaptive) -->
+      <nav class="nav-tab-bar" role="tablist" aria-label="LifeMirror navigation views">
+        <button type="button" role="tab" id="tab-reflect" class="nav-tab active" aria-selected="true" aria-controls="panel-reflect" tabindex="0">
+          <span class="nav-tab-icon">🪞</span>
+          <span class="nav-tab-label">Reflect</span>
+        </button>
+        <button type="button" role="tab" id="tab-insights" class="nav-tab" aria-selected="false" aria-controls="panel-insights" tabindex="-1">
+          <span class="nav-tab-icon">📊</span>
+          <span class="nav-tab-label">Insights</span>
+        </button>
+        <button type="button" role="tab" id="tab-settings" class="nav-tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1">
+          <span class="nav-tab-icon">⚙️</span>
+          <span class="nav-tab-label">Settings</span>
+        </button>
+      </nav>
     </header>
 
-    <!-- Excluded Domains Drawer -->
-    <section id="excluded-drawer" class="card excluded-drawer hidden">
-      <div class="drawer-header">
-        <div class="drawer-title-wrap">
-          <span class="drawer-icon">🛡️</span>
-          <span class="section-title">EXCLUDED WEBSITES</span>
+    <!-- TAB PANEL 1: REFLECT (Active Tab Hero, Daily Focus Glance, Hourly Rhythm, Stream) -->
+    <main role="tabpanel" id="panel-reflect" aria-labelledby="tab-reflect" class="tab-panel active">
+      <!-- Real-time Active Tab Hero -->
+      <section class="card active-tab-card" aria-labelledby="active-tab-heading">
+        <div class="card-header">
+          <div class="active-tab-status">
+            <span class="radar-pulse" aria-hidden="true"></span>
+            <span id="active-tab-heading" class="section-title">NOW BROWSING</span>
+          </div>
+          <button id="active-tab-tag-btn" class="tag-chip-pill" title="Click to revise category">
+            <span id="active-tab-tag-text">💻 Dev</span>
+            <span class="chip-chevron">▾</span>
+          </button>
         </div>
-        <button id="close-drawer-btn" class="btn-close-drawer" aria-label="Close drawer">✕</button>
-      </div>
-      <p class="drawer-desc">
-        Sensitive portals (banking, healthcare) are never tracked. Changes sync automatically with LifeMirror Desktop.
-      </p>
 
-      <form id="drawer-add-form" class="drawer-add-form">
-        <div class="drawer-input-row">
-          <input type="text" id="drawer-domain-input" placeholder="e.g. chase.com" class="drawer-input" autocomplete="off" spellcheck="false">
-          <button type="submit" class="btn-drawer-add">Exclude</button>
+        <div class="tab-preview">
+          <img id="active-tab-favicon" class="tab-favicon" src="icons/icon16.png" alt="" width="16" height="16" aria-hidden="true">
+          <div class="tab-details">
+            <a id="active-tab-link" href="#" target="_blank" rel="noopener noreferrer" class="tab-title-link" title="Open active page">
+              <span id="active-tab-title" class="tab-title">Detecting active page...</span>
+              <span class="link-arrow">↗</span>
+            </a>
+            <div id="active-tab-domain" class="tab-domain">---</div>
+          </div>
         </div>
-        <label class="drawer-subdomain-toggle">
-          <input type="checkbox" id="drawer-include-subdomains" checked>
-          <span>Include all subdomains (*.domain.com)</span>
-        </label>
-        <div id="drawer-error" class="drawer-error hidden"></div>
-      </form>
 
-      <div id="drawer-excluded-list" class="drawer-list">
-        <!-- Rendered via JS -->
-      </div>
-    </section>
+        <div id="active-tab-desc" class="tab-desc-quote hidden"></div>
 
-    <!-- Key Metrics Row -->
-    <section class="metrics-grid">
-      <div class="metric-card">
-        <span class="metric-label">ACTIVE TIME</span>
-        <div id="total-time-val" class="metric-val">0m</div>
-        <span class="metric-sub">Focus time today</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">TAB HOPS</span>
-        <div id="switches-val" class="metric-val">0</div>
-        <span class="metric-sub">Switches today</span>
-      </div>
-      <div class="metric-card">
-        <span class="metric-label">WEBSITES</span>
-        <div id="domains-count-val" class="metric-val">0</div>
-        <span class="metric-sub">Sites visited</span>
-      </div>
-    </section>
+        <!-- Domain Exclusion Action / Badge -->
+        <div id="tab-exclusion-wrap" class="tab-exclusion-wrap hidden">
+          <button id="btn-exclude-active-tab" class="btn-exclude-tab" title="Exclude this domain from tracking">
+            <span>🚫 Exclude Domain</span>
+          </button>
+          <div id="tab-excluded-badge" class="tab-excluded-badge hidden">
+            <span class="shield-icon">🛡️</span>
+            <span>Excluded from tracking</span>
+            <button id="btn-unexclude-active-tab" class="btn-unexclude-tab" title="Unexclude domain">✕</button>
+          </div>
+        </div>
 
-    <!-- Hourly Heat-Strip -->
-    <section class="card rhythm-card">
-      <div class="card-header">
-        <span class="section-title">HOURLY ACTIVITY</span>
-        <span class="section-sub">Active hours today (12am – 11pm)</span>
-      </div>
-      <div id="heat-strip" class="heat-strip">
-        <!-- Injected via sidepanel.js -->
-      </div>
-      <div class="heat-legend">
-        <span>12am</span>
-        <span>6am</span>
-        <span>12pm</span>
-        <span>6pm</span>
-        <span>11pm</span>
-      </div>
-    </section>
+        <!-- Quick Glance Bar for current domain -->
+        <div class="today-glance-bar">
+          <span>Site today: <strong id="active-domain-time">0m</strong></span>
+          <span>Switches: <strong id="today-switches-preview">0</strong></span>
+        </div>
+      </section>
 
-    <!-- Profile & Scope Filter Bar -->
-    <section class="filter-section scope-filter-section">
-      <div class="scope-row">
-        <span class="section-title">PROFILE SCOPE</span>
+      <!-- Key Metrics Row -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">ACTIVE TIME</span>
+          <div id="total-time-val" class="metric-val">0m</div>
+          <span class="metric-sub">Focus time today</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">TAB HOPS</span>
+          <div id="switches-val" class="metric-val">0</div>
+          <span class="metric-sub">Switches today</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">WEBSITES</span>
+          <div id="domains-count-val" class="metric-val">0</div>
+          <span class="metric-sub">Sites visited</span>
+        </div>
+      </section>
+
+      <!-- Hourly Heat-Strip -->
+      <section class="card rhythm-card">
+        <div class="card-header">
+          <span class="section-title">HOURLY ACTIVITY</span>
+          <span class="section-sub">Active hours today (12am – 11pm)</span>
+        </div>
+        <div id="heat-strip" class="heat-strip"></div>
+        <div class="heat-legend">
+          <span>12am</span>
+          <span>6am</span>
+          <span>12pm</span>
+          <span>6pm</span>
+          <span>11pm</span>
+        </div>
+      </section>
+
+      <!-- Recent Session Activity Stream -->
+      <section class="card sessions-card">
+        <div class="card-header">
+          <div class="stream-header-left">
+            <span class="section-title">TODAY'S ACTIVITY STREAM</span>
+            <span id="stream-desktop-loader" class="stream-desktop-loader hidden" role="status" aria-label="Syncing with desktop app">
+              <span class="stream-spinner"></span>
+              <span class="stream-loader-text">Syncing...</span>
+            </span>
+          </div>
+          <span id="sessions-count-badge" class="section-sub">0 items</span>
+        </div>
+
+        <!-- Instant Search Bar -->
+        <div class="search-bar-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="session-search-input" class="search-input" placeholder="Search pages, topics, domains..." aria-label="Search browsing history">
+          <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear search" aria-label="Clear search">✕</button>
+        </div>
+
+        <!-- Category Filter Chips -->
+        <div class="category-filters-wrap" id="category-filters-wrap">
+          <button type="button" class="chip-scroll-btn scroll-btn-left hidden" id="chip-scroll-left" aria-label="Scroll topics left" tabindex="-1">‹</button>
+          <div id="category-filters" class="category-filters">
+            <button class="filter-chip active" data-cat="all">All</button>
+            <button class="filter-chip" data-cat="💻 Development">💻 Dev</button>
+            <button class="filter-chip" data-cat="📚 Research & Docs">📚 Docs</button>
+            <button class="filter-chip" data-cat="🎬 Media / Learning">🎬 Media</button>
+            <button class="filter-chip" data-cat="💬 Communications">💬 Comms</button>
+            <button class="filter-chip" data-cat="☕ Break / Leisure">☕ Leisure</button>
+          </div>
+          <button type="button" class="chip-scroll-btn scroll-btn-right hidden" id="chip-scroll-right" aria-label="Scroll topics right" tabindex="-1">›</button>
+        </div>
+
+        <!-- Floating Live Tab Pill -->
+        <button id="live-tab-pill" class="live-tab-pill hidden" title="Scroll to newest activity">
+          <span>↑ New tab activity available</span>
+        </button>
+
+        <div id="sessions-stream" class="sessions-stream">
+          <div class="empty-state warm-empty-state">
+            <div class="empty-emoji">✨</div>
+            <div class="empty-heading">Ready when you are!</div>
+            <p class="empty-text">Browse normally—your focus rhythm, top sites, and mindful page summaries will automatically reflect here 100% on-device.</p>
+          </div>
+        </div>
+
+        <!-- Keyset Pagination Sentinel & Soft-Cap Load More -->
+        <div id="stream-sentinel" class="stream-sentinel"></div>
+        <button id="load-more-btn" class="btn-load-more hidden">
+          <span id="load-more-text">↓ Load earlier activity</span>
+        </button>
+      </section>
+    </main>
+
+    <!-- TAB PANEL 2: INSIGHTS (Standup Summary, Top Domains, Profile Scope, Bridge) -->
+    <main role="tabpanel" id="panel-insights" aria-labelledby="tab-insights" class="tab-panel" hidden>
+      <!-- 1-Click Standup Summary Card -->
+      <section class="card standup-summary-card">
+        <div class="card-header">
+          <span class="section-title">DAILY STANDUP SUMMARY</span>
+          <span class="summary-badge">Markdown</span>
+        </div>
+        <p class="card-desc">Generate a clean, copyable summary of your focus hours and top websites for daily standups, Jira, or Slack.</p>
+        <button id="copy-summary-btn" class="btn-copy-summary-prominent" title="Copy standup summary to clipboard">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span id="copy-summary-text">Copy Standup Summary</span>
+        </button>
+      </section>
+
+      <!-- Profile Scope Selector -->
+      <section class="card scope-filter-card">
+        <div class="card-header">
+          <span class="section-title">PROFILE SCOPE</span>
+        </div>
         <div class="scope-chips">
           <button id="scope-profile-btn" class="scope-chip active" data-scope="profile">
             <span class="scope-icon">📍</span>
@@ -116,94 +212,182 @@
             <span>All Profiles</span>
           </button>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Category Filter Chips (Don't Make Me Think: 1-click filter) -->
-    <section class="filter-section">
-      <span class="section-title">FILTER BY TOPIC</span>
-      <div id="category-filters" class="category-filters">
-        <button class="filter-chip active" data-cat="all">All</button>
-        <button class="filter-chip" data-cat="💻 Development">💻 Dev</button>
-        <button class="filter-chip" data-cat="📚 Research & Docs">📚 Docs</button>
-        <button class="filter-chip" data-cat="🎬 Media / Learning">🎬 Media</button>
-        <button class="filter-chip" data-cat="💬 Communications">💬 Comms</button>
-        <button class="filter-chip" data-cat="☕ Break / Leisure">☕ Leisure</button>
-      </div>
-    </section>
-
-    <!-- Top Domains Breakdown -->
-    <section class="card domains-card">
-      <div class="card-header">
-        <span class="section-title">TOP WEBSITES</span>
-      </div>
-      <div id="top-domains-list" class="domains-list">
-        <div class="empty-state warm-empty-state">
-          <div class="empty-emoji">🌱</div>
-          <div class="empty-heading">No website activity yet</div>
-          <p class="empty-text">As you browse, your most-visited websites and focus time will show up here.</p>
+      <!-- Top Domains Breakdown -->
+      <section class="card domains-card">
+        <div class="card-header">
+          <span class="section-title">TOP WEBSITES TODAY</span>
         </div>
-      </div>
-    </section>
-
-    <!-- Recent Session Activity Stream with Meta Descriptions -->
-    <section class="card sessions-card">
-      <div class="card-header">
-        <span class="section-title">TODAY'S PAGES & ARTICLES</span>
-        <span id="sessions-count-badge" class="section-sub">0 items</span>
-      </div>
-
-      <!-- Instant Search Bar -->
-      <div class="search-bar-wrap">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <input type="text" id="session-search-input" class="search-input" placeholder="Search pages, topics, domains..." aria-label="Search browsing history">
-        <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear search" aria-label="Clear search">✕</button>
-      </div>
-
-      <!-- Floating Live Tab Pill (Zero layout shift on new visits) -->
-      <button id="live-tab-pill" class="live-tab-pill hidden" title="Scroll to newest activity">
-        <span>↑ New tab activity available</span>
-      </button>
-
-      <div id="sessions-stream" class="sessions-stream">
-        <div class="empty-state warm-empty-state">
-          <div class="empty-emoji">✨</div>
-          <div class="empty-heading">Ready when you are!</div>
-          <p class="empty-text">Browse normally—your focus rhythm, top sites, and mindful page summaries will automatically reflect here 100% on-device.</p>
+        <div id="top-domains-list" class="domains-list">
+          <div class="empty-state warm-empty-state">
+            <div class="empty-emoji">🌱</div>
+            <div class="empty-heading">No website activity yet</div>
+            <p class="empty-text">As you browse, your most-visited websites and focus time will show up here.</p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Keyset Pagination Sentinel & Soft-Cap Load More -->
-      <div id="stream-sentinel" class="stream-sentinel"></div>
-      <button id="load-more-btn" class="btn-load-more hidden">
-        <span id="load-more-text">↓ Load earlier activity</span>
-      </button>
-    </section>
-
-    <!-- Desktop Bridge Card (Krug: obvious next step, zero pressure) -->
-    <section id="desktop-bridge-card" class="card bridge-card">
-      <div class="bridge-content">
-        <div class="bridge-icon">🚀</div>
-        <div>
-          <h4 class="bridge-title">Unlock Full-System Reflection</h4>
-          <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
+      <!-- Desktop Bridge Card -->
+      <section id="desktop-bridge-card" class="card bridge-card">
+        <div class="bridge-content">
+          <div class="bridge-icon">🚀</div>
+          <div>
+            <h4 class="bridge-title">Unlock Full-System Reflection</h4>
+            <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
+          </div>
         </div>
-      </div>
-      <a href="https://github.com/PieApps/lifemirror-desktop#readme" target="_blank" rel="noopener noreferrer" class="btn btn-bridge">
-        Get Desktop App →
-      </a>
-    </section>
+        <a href="https://github.com/PieApps/lifemirror-desktop#readme" target="_blank" rel="noopener noreferrer" class="btn btn-bridge">
+          Get Desktop App →
+        </a>
+      </section>
+    </main>
 
-    <!-- Footer Controls -->
-    <footer class="footer">
-      <button id="clear-data-btn" class="btn-text">
-        <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        Clear Browser Data
-      </button>
-      <span class="footer-note">Rolling 48h Vault • 100% On-Device</span>
-    </footer>
+    <!-- TAB PANEL 3: SETTINGS (Excluded Sites, Browser Profile, Theme, Privacy, About, Data) -->
+    <main role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" class="tab-panel" hidden>
+      <!-- Excluded Websites Manager -->
+      <section class="card settings-card" aria-labelledby="excluded-heading">
+        <div class="card-header">
+          <div class="drawer-title-wrap">
+            <span class="section-icon">🛡️</span>
+            <span id="excluded-heading" class="section-title">EXCLUDED WEBSITES</span>
+          </div>
+        </div>
+        <p class="card-desc">Sensitive portals (banking, healthcare) are never recorded. Changes sync with LifeMirror Desktop.</p>
 
-    <!-- 1-Click Easy Revise Floating Popover (Zero Typing) -->
+        <form id="drawer-add-form" class="drawer-add-form">
+          <div class="drawer-input-row">
+            <input type="text" id="drawer-domain-input" placeholder="e.g. chase.com" class="drawer-input" autocomplete="off" spellcheck="false" aria-label="Domain to exclude">
+            <button type="submit" class="btn-drawer-add">Exclude</button>
+          </div>
+          <label class="drawer-subdomain-toggle">
+            <input type="checkbox" id="drawer-include-subdomains" checked>
+            <span>Include all subdomains (*.domain.com)</span>
+          </label>
+          <div id="drawer-error" class="drawer-error hidden"></div>
+        </form>
+
+        <div id="drawer-excluded-list" class="drawer-list"></div>
+      </section>
+
+      <!-- Browser Profile Identity -->
+      <section class="card settings-card" aria-labelledby="profile-heading">
+        <div class="card-header">
+          <span id="profile-heading" class="section-title">BROWSER PROFILE IDENTITY</span>
+          <span id="profile-browser-badge" class="profile-browser-badge">Chrome</span>
+        </div>
+        <p class="card-desc">Label this browser profile to distinguish tabs across personal and work contexts.</p>
+        <div class="profile-input-row">
+          <input type="text" id="profile-label-input" class="profile-label-input" maxlength="24" placeholder="e.g. Work, Personal" aria-label="Profile name">
+          <button id="profile-save-btn" class="btn-profile-save" title="Save profile label">Save</button>
+        </div>
+      </section>
+
+      <!-- Theme & Appearance -->
+      <section class="card settings-card" aria-labelledby="theme-heading">
+        <div class="card-header">
+          <span id="theme-heading" class="section-title">APPEARANCE &amp; THEME</span>
+        </div>
+        <div class="theme-select-grid">
+          <button type="button" class="theme-choice-btn" data-theme-val="system">
+            <span class="theme-choice-icon">🌓</span>
+            <span class="theme-choice-title">Auto</span>
+            <span class="theme-choice-sub">Follows Browser</span>
+          </button>
+          <button type="button" class="theme-choice-btn" data-theme-val="light">
+            <span class="theme-choice-icon">☀️</span>
+            <span class="theme-choice-title">Light</span>
+            <span class="theme-choice-sub">Bright Mode</span>
+          </button>
+          <button type="button" class="theme-choice-btn" data-theme-val="dark">
+            <span class="theme-choice-icon">🌙</span>
+            <span class="theme-choice-title">Dark</span>
+            <span class="theme-choice-sub">Slate Mode</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 100% On-Device Privacy Notice -->
+      <section class="card settings-card">
+        <div class="card-header">
+          <span class="section-title">100% ON-DEVICE PRIVACY</span>
+        </div>
+        <div class="privacy-bullet">
+          <span class="privacy-bullet-icon">🔒</span>
+          <p>Browsing metrics never leave your machine. Metadata syncs directly to your local LifeMirror SQLite database via native messaging.</p>
+        </div>
+        <div class="privacy-bullet">
+          <span class="privacy-bullet-icon">🛡️</span>
+          <p>Incognito browsing, password portals, and browser internal URLs (<code>chrome://</code>) are strictly excluded from reflection.</p>
+        </div>
+      </section>
+
+      <!-- Data Management (Hidden when Desktop sync is active) -->
+      <section class="card settings-card" id="data-management-card">
+        <div class="card-header">
+          <span class="section-title">DATA MANAGEMENT</span>
+        </div>
+        <div class="data-manage-row">
+          <button id="clear-data-btn" class="btn-clear-danger">
+            <svg class="icon-inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span>Clear 48h Browser History</span>
+          </button>
+          <span class="footer-note">Rolling 48h Vault</span>
+        </div>
+      </section>
+
+      <!-- Official Resources & Community Links -->
+      <section class="card settings-card">
+        <div class="card-header">
+          <span class="section-title">OFFICIAL RESOURCES &amp; COMMUNITY</span>
+        </div>
+        <div class="resource-grid">
+          <a href="https://pieapps.github.io/lifemirror-desktop.web/" class="link-tile external-link" title="Official Website" rel="noopener noreferrer">
+            <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10z"/></svg>
+            <span class="tile-label">Website</span>
+          </a>
+          <a href="https://github.com/PieApps/lifemirror-desktop#readme" class="link-tile external-link" title="Documentation & Setup" rel="noopener noreferrer">
+            <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <span class="tile-label">Docs</span>
+          </a>
+          <a href="https://github.com/PieApps/lifemirror-desktop/issues" class="link-tile external-link" title="Report Issue / Support" rel="noopener noreferrer">
+            <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span class="tile-label">Support</span>
+          </a>
+          <a href="https://github.com/PieApps/lifemirror-desktop/blob/main/companion-extension/PRIVACY_POLICY.md" class="link-tile external-link" title="Privacy Policy" rel="noopener noreferrer">
+            <svg class="tile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="tile-label">Privacy</span>
+          </a>
+        </div>
+
+        <div class="social-row" style="margin-top: 8px;">
+          <a href="https://x.com/pieapps" class="social-btn external-link" title="Follow @pieapps on X" rel="noopener noreferrer">
+            <svg class="social-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <span>X (Twitter)</span>
+          </a>
+          <a href="https://www.youtube.com/@pieapps" class="social-btn external-link" title="Subscribe to PieApps on YouTube" rel="noopener noreferrer">
+            <svg class="social-icon youtube-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            <span>YouTube</span>
+          </a>
+          <a href="https://www.facebook.com/vrpieapps" class="social-btn external-link" title="Follow vrpieapps on Facebook" rel="noopener noreferrer">
+            <svg class="social-icon facebook-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            <span>Facebook</span>
+          </a>
+          <a href="https://github.com/PieApps/lifemirror-desktop" class="social-btn external-link" title="View Source on GitHub" rel="noopener noreferrer">
+            <svg class="social-icon github-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+
+        <div class="drawer-footer-note" style="margin-top: 10px;">
+          <span>LifeMirror Companion v1.4.0</span>
+          <a href="mailto:vrpieapps@gmail.com" class="drawer-contact-link external-link" title="Contact Developer">Contact Support</a>
+        </div>
+      </section>
+    </main>
+
+    <!-- Global Floating Popovers & Modals -->
+    <!-- 1-Click Easy Revise Floating Popover -->
     <div id="revise-popover" class="revise-popover hidden" role="menu">
       <div class="popover-title">1-Click Quick Revise</div>
       <button class="popover-opt" data-tag="💻 Development"><span>💻</span> Development</button>

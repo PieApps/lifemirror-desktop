@@ -16,14 +16,48 @@ const heatStrip = document.getElementById("heat-strip");
 const topDomainsList = document.getElementById("top-domains-list");
 const sessionsStream = document.getElementById("sessions-stream");
 const desktopBridgeCard = document.getElementById("desktop-bridge-card");
+const dataManagementCard = document.getElementById("data-management-card");
 const clearDataBtn = document.getElementById("clear-data-btn");
 const categoryFilters = document.getElementById("category-filters");
 const revisePopover = document.getElementById("revise-popover");
 const sessionSearchInput = document.getElementById("session-search-input");
 const searchClearBtn = document.getElementById("search-clear-btn");
 const sessionsCountBadge = document.getElementById("sessions-count-badge");
+const streamDesktopLoader = document.getElementById("stream-desktop-loader");
 const copySummaryBtn = document.getElementById("copy-summary-btn");
 const dateLabel = document.getElementById("date-label");
+
+// Theme Elements
+const themeToggleBtn = document.getElementById("theme-toggle-btn");
+const themeToggleIcon = document.getElementById("theme-toggle-icon");
+const themeToggleText = document.getElementById("theme-toggle-text");
+let currentTheme = "system"; // "system" | "light" | "dark"
+
+// Real-time Active Tab Hero Elements (Merged from Popup)
+const activeTabCard = document.querySelector(".active-tab-card");
+const activeTabFavicon = document.getElementById("active-tab-favicon");
+const activeTabLink = document.getElementById("active-tab-link");
+const activeTabTitle = document.getElementById("active-tab-title");
+const activeTabDomain = document.getElementById("active-tab-domain");
+const activeTabDesc = document.getElementById("active-tab-desc");
+const activeTabTagBtn = document.getElementById("active-tab-tag-btn");
+const activeTabTagText = document.getElementById("active-tab-tag-text");
+const tabExclusionWrap = document.getElementById("tab-exclusion-wrap");
+const btnExcludeActiveTab = document.getElementById("btn-exclude-active-tab");
+const tabExcludedBadge = document.getElementById("tab-excluded-badge");
+const btnUnexcludeActiveTab = document.getElementById("btn-unexclude-active-tab");
+const activeDomainTime = document.getElementById("active-domain-time");
+const todaySwitchesPreview = document.getElementById("today-switches-preview");
+let currentActiveDomain = "";
+
+// About Drawer & Profile Elements (Merged from Popup)
+const aboutDrawer = document.getElementById("about-drawer");
+const aboutToggleBtn = document.getElementById("about-toggle-btn");
+const closeAboutDrawerBtn = document.getElementById("close-about-drawer-btn");
+const footerAboutBtn = document.getElementById("footer-about-btn");
+const profileBrowserBadge = document.getElementById("profile-browser-badge");
+const profileLabelInput = document.getElementById("profile-label-input");
+const profileSaveBtn = document.getElementById("profile-save-btn");
 
 // Profile & Stream Elements
 const scopeProfileBtn = document.getElementById("scope-profile-btn");
@@ -382,6 +416,7 @@ function renderSessions(sessions = []) {
   }
 
   // When high-frequency browsing occurred, convey why older tabs are rolled up
+  const totalSwitches = (currentAnalytics && currentAnalytics.contextSwitches) || 0;
   if (totalSwitches > consolidated.length && !query && activeFilter === "all") {
     const summaryPill = document.createElement("div");
     summaryPill.className = "stream-summary-pill";
@@ -416,6 +451,7 @@ document.querySelectorAll(".popover-opt").forEach((btn) => {
       });
       revisePopover.classList.add("hidden");
       loadData(); // Re-render smoothly
+      updateActiveTabPreview();
     }
   });
 });
@@ -427,6 +463,10 @@ document.addEventListener("click", (e) => {
 });
 
 // ── Category Filter Logic ─────────────────────────────────────────────────────
+const categoryFiltersWrap = document.getElementById("category-filters-wrap");
+const chipScrollLeft = document.getElementById("chip-scroll-left");
+const chipScrollRight = document.getElementById("chip-scroll-right");
+
 categoryFilters.querySelectorAll(".filter-chip").forEach((btn) => {
   btn.addEventListener("click", () => {
     categoryFilters.querySelectorAll(".filter-chip").forEach((b) => b.classList.remove("active"));
@@ -438,6 +478,98 @@ categoryFilters.querySelectorAll(".filter-chip").forEach((btn) => {
     }
   });
 });
+
+function updateFilterScrollButtons() {
+  if (!categoryFilters) return;
+  const scrollLeft = categoryFilters.scrollLeft;
+  const maxScroll = categoryFilters.scrollWidth - categoryFilters.clientWidth;
+  const canLeft = scrollLeft > 4;
+  const canRight = scrollLeft < maxScroll - 4;
+
+  if (categoryFiltersWrap) {
+    categoryFiltersWrap.classList.toggle("can-scroll-left", canLeft);
+    categoryFiltersWrap.classList.toggle("can-scroll-right", canRight);
+  }
+  if (chipScrollLeft) chipScrollLeft.classList.toggle("hidden", !canLeft);
+  if (chipScrollRight) chipScrollRight.classList.toggle("hidden", !canRight);
+}
+
+function initCategoryFiltersScroll() {
+  if (!categoryFilters) return;
+
+  // 1. Mouse wheel horizontal scroll on hover
+  categoryFilters.addEventListener("wheel", (e) => {
+    if (Math.abs(e.deltaY) > 0 || Math.abs(e.deltaX) > 0) {
+      e.preventDefault();
+      categoryFilters.scrollLeft += (e.deltaY || e.deltaX);
+      updateFilterScrollButtons();
+    }
+  }, { passive: false });
+
+  // 2. Edge-hover auto scrolling
+  let hoverScrollTimer = null;
+  function startHoverScroll(speed) {
+    if (hoverScrollTimer) return;
+    hoverScrollTimer = setInterval(() => {
+      if (!categoryFilters) return;
+      categoryFilters.scrollLeft += speed;
+      updateFilterScrollButtons();
+    }, 16);
+  }
+  function stopHoverScroll() {
+    if (hoverScrollTimer) {
+      clearInterval(hoverScrollTimer);
+      hoverScrollTimer = null;
+    }
+  }
+
+  if (categoryFiltersWrap) {
+    categoryFiltersWrap.addEventListener("mousemove", (e) => {
+      const rect = categoryFiltersWrap.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const edgeThreshold = 36;
+      const maxScroll = categoryFilters.scrollWidth - categoryFilters.clientWidth;
+
+      if (x < edgeThreshold && categoryFilters.scrollLeft > 0) {
+        const speed = -Math.max(2, Math.round((edgeThreshold - x) / 7));
+        stopHoverScroll();
+        startHoverScroll(speed);
+      } else if (x > rect.width - edgeThreshold && categoryFilters.scrollLeft < maxScroll - 1) {
+        const speed = Math.max(2, Math.round((x - (rect.width - edgeThreshold)) / 7));
+        stopHoverScroll();
+        startHoverScroll(speed);
+      } else {
+        stopHoverScroll();
+      }
+    });
+
+    categoryFiltersWrap.addEventListener("mouseleave", stopHoverScroll);
+  }
+
+  // 3. Scroll buttons hover & click
+  if (chipScrollLeft) {
+    chipScrollLeft.addEventListener("mouseenter", () => startHoverScroll(-4));
+    chipScrollLeft.addEventListener("mouseleave", stopHoverScroll);
+    chipScrollLeft.addEventListener("click", () => {
+      categoryFilters.scrollBy({ left: -110, behavior: "smooth" });
+      setTimeout(updateFilterScrollButtons, 200);
+    });
+  }
+
+  if (chipScrollRight) {
+    chipScrollRight.addEventListener("mouseenter", () => startHoverScroll(4));
+    chipScrollRight.addEventListener("mouseleave", stopHoverScroll);
+    chipScrollRight.addEventListener("click", () => {
+      categoryFilters.scrollBy({ left: 110, behavior: "smooth" });
+      setTimeout(updateFilterScrollButtons, 200);
+    });
+  }
+
+  categoryFilters.addEventListener("scroll", updateFilterScrollButtons, { passive: true });
+  window.addEventListener("resize", updateFilterScrollButtons);
+
+  setTimeout(updateFilterScrollButtons, 100);
+}
 
 // ── Instant Search Logic ──────────────────────────────────────────────────────
 if (sessionSearchInput) {
@@ -558,14 +690,15 @@ clearDataBtn.addEventListener("click", async () => {
 // ── Main Data Loading & Sync ──────────────────────────────────────────────────
 async function loadData() {
   try {
-    // 0. Update friendly date label
+    // 0. Update friendly date label (compact to fit sidepanel header cleanly)
     if (dateLabel) {
       const dateFormatted = new Date().toLocaleDateString(undefined, {
         weekday: "short",
-        month: "short",
-        day: "numeric"
+        day: "numeric",
+        month: "short"
       });
-      dateLabel.textContent = `${dateFormatted} • Today's In-Browser Stream`;
+      dateLabel.textContent = dateFormatted;
+      dateLabel.title = `Focus activity for ${dateFormatted}`;
     }
 
     // 1. Fetch active profile identity
@@ -589,10 +722,12 @@ async function loadData() {
       modeBadge.className = "mode-badge mode-desktop";
       modeBadgeText.textContent = "Desktop Sync Active";
       if (desktopBridgeCard) desktopBridgeCard.style.display = "none";
+      if (dataManagementCard) dataManagementCard.classList.add("hidden");
     } else {
       modeBadge.className = "mode-badge mode-standalone";
       modeBadgeText.textContent = "Standalone Active";
       if (desktopBridgeCard) desktopBridgeCard.style.display = "flex";
+      if (dataManagementCard) dataManagementCard.classList.remove("hidden");
     }
 
     // 3. Fetch today's local analytics (for switches, total time, and hourly strip)
@@ -631,6 +766,17 @@ async function loadData() {
       }
 
       // 4b. Sub-sessions stream from desktop SQLite via Keyset Cursor
+      if (streamDesktopLoader) streamDesktopLoader.classList.remove("hidden");
+      if (loadedSessions.length === 0) {
+        sessionsStream.innerHTML = `
+          <div class="stream-fetching-placeholder">
+            <div class="stream-spinner-lg"></div>
+            <div class="stream-fetching-title">Syncing with Desktop App...</div>
+            <p class="stream-fetching-sub">Fetching verified reflections from local SQLite vault</p>
+          </div>
+        `;
+      }
+
       try {
         const sessRes = await chrome.runtime.sendMessage({
           action: "get_desktop_sub_sessions",
@@ -668,14 +814,20 @@ async function loadData() {
         loadedSessions = currentAnalytics.recentSessions;
         nextCursor = null;
         renderSessions(loadedSessions);
+      } finally {
+        if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
       }
     } else {
       // Offline / Standalone mode fallback
+      if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
       renderTopDomains(currentAnalytics.domains);
       loadedSessions = currentAnalytics.recentSessions;
       nextCursor = null;
       renderSessions(loadedSessions);
     }
+
+    // 5. Keep active tab hero preview synchronized
+    await updateActiveTabPreview();
   } catch (err) {
     console.warn("[LifeMirror SidePanel] Refresh warning:", err);
   }
@@ -684,7 +836,8 @@ async function loadData() {
 async function fetchMoreSessions() {
   if (isFetchingMore || !nextCursor || !isConnectedToDesktop) return;
   isFetchingMore = true;
-  if (loadMoreText) loadMoreText.textContent = "Loading earlier activity...";
+  if (loadMoreText) loadMoreText.textContent = "Loading earlier activity from Desktop...";
+  if (streamDesktopLoader) streamDesktopLoader.classList.remove("hidden");
 
   try {
     const targetProfileId = activeProfileScope === "profile" ? myProfileId : null;
@@ -726,6 +879,7 @@ async function fetchMoreSessions() {
   } finally {
     isFetchingMore = false;
     if (loadMoreText) loadMoreText.textContent = "↓ Load earlier activity";
+    if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
   }
 }
 
@@ -858,13 +1012,11 @@ async function loadExcludedDomainsList() {
   }
 }
 
-if (excludedToggleBtn && excludedDrawer) {
+if (excludedToggleBtn) {
   excludedToggleBtn.addEventListener("click", () => {
-    excludedDrawer.classList.toggle("hidden");
-    if (!excludedDrawer.classList.contains("hidden")) {
-      loadExcludedDomainsList();
-      if (drawerDomainInput) drawerDomainInput.focus();
-    }
+    switchTab("tab-settings");
+    loadExcludedDomainsList();
+    if (drawerDomainInput) drawerDomainInput.focus();
   });
 }
 
@@ -962,6 +1114,7 @@ if (confirmPurgeBtn) {
       if (purgeModal) purgeModal.classList.add("hidden");
       loadData();
       loadExcludedDomainsList();
+      updateActiveTabPreview();
     } catch (err) {
       console.error("Failed to exclude domain:", err);
     } finally {
@@ -980,7 +1133,392 @@ document.addEventListener("keydown", (e) => {
       activePendingDomain = "";
     } else if (excludedDrawer && !excludedDrawer.classList.contains("hidden")) {
       excludedDrawer.classList.add("hidden");
+    } else if (aboutDrawer && !aboutDrawer.classList.contains("hidden")) {
+      aboutDrawer.classList.add("hidden");
     }
   }
 });
+
+// ── Responsive Tab Navigation (Reflect, Insights, Settings) ───────────────
+function switchTab(targetTabId, options = {}) {
+  const tabs = document.querySelectorAll(".nav-tab");
+  const panels = document.querySelectorAll(".tab-panel");
+
+  tabs.forEach((tab) => {
+    const isTarget = tab.id === targetTabId;
+    tab.classList.toggle("active", isTarget);
+    tab.setAttribute("aria-selected", isTarget ? "true" : "false");
+    tab.setAttribute("tabindex", isTarget ? "0" : "-1");
+    if (isTarget && options.focus) {
+      tab.focus();
+    }
+  });
+
+  panels.forEach((panel) => {
+    const isTarget = panel.getAttribute("aria-labelledby") === targetTabId;
+    if (isTarget) {
+      panel.removeAttribute("hidden");
+      panel.classList.add("active");
+    } else {
+      panel.setAttribute("hidden", "");
+      panel.classList.remove("active");
+    }
+  });
+
+  chrome.storage.local.set({ active_tab: targetTabId }).catch(() => {});
+
+  if (targetTabId === "tab-settings") {
+    loadExcludedDomainsList();
+    loadProfileIdentity();
+  }
+}
+
+function initNavTabs() {
+  const tabs = Array.from(document.querySelectorAll(".nav-tab"));
+  if (tabs.length === 0) return;
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => {
+      switchTab(tab.id);
+    });
+
+    tab.addEventListener("keydown", (e) => {
+      let nextIndex = index;
+      if (e.key === "ArrowRight") {
+        nextIndex = (index + 1) % tabs.length;
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        nextIndex = (index - 1 + tabs.length) % tabs.length;
+        e.preventDefault();
+      } else if (e.key === "Home") {
+        nextIndex = 0;
+        e.preventDefault();
+      } else if (e.key === "End") {
+        nextIndex = tabs.length - 1;
+        e.preventDefault();
+      } else {
+        return;
+      }
+      switchTab(tabs[nextIndex].id, { focus: true });
+    });
+  });
+
+  // Restore persisted active tab
+  chrome.storage.local.get(["active_tab"]).then((res) => {
+    if (res && res.active_tab && document.getElementById(res.active_tab)) {
+      switchTab(res.active_tab);
+    }
+  }).catch(() => {});
+}
+
+// ── Theme Management (Adaptive to Browser / System, with 1-click toggle) ─────
+async function initTheme() {
+  try {
+    const res = await chrome.storage.local.get(["theme_preference"]);
+    currentTheme = res.theme_preference || "system";
+    applyTheme(currentTheme);
+  } catch {
+    applyTheme("system");
+  }
+
+  // React to OS/Browser color-scheme changes if in system mode (Modern Web Guidance)
+  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  mediaQuery.addEventListener("change", () => {
+    if (currentTheme === "system") {
+      applyTheme("system");
+    }
+  });
+
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", () => {
+      // Cycle: system (auto) -> light -> dark -> system
+      if (currentTheme === "system") {
+        currentTheme = "light";
+      } else if (currentTheme === "light") {
+        currentTheme = "dark";
+      } else {
+        currentTheme = "system";
+      }
+      chrome.storage.local.set({ theme_preference: currentTheme });
+      applyTheme(currentTheme);
+    });
+  }
+
+  // Synchronize Settings tab theme buttons
+  document.querySelectorAll(".theme-choice-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selected = btn.getAttribute("data-theme-val");
+      if (selected && ["system", "light", "dark"].includes(selected)) {
+        currentTheme = selected;
+        chrome.storage.local.set({ theme_preference: currentTheme });
+        applyTheme(currentTheme);
+      }
+    });
+  });
+}
+
+function applyTheme(theme) {
+  if (theme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+    if (themeToggleIcon) themeToggleIcon.textContent = "☀️";
+    if (themeToggleText) themeToggleText.textContent = "Light";
+    if (themeToggleBtn) themeToggleBtn.title = "Theme: Light (click to cycle)";
+  } else if (theme === "dark") {
+    document.documentElement.setAttribute("data-theme", "dark");
+    if (themeToggleIcon) themeToggleIcon.textContent = "🌙";
+    if (themeToggleText) themeToggleText.textContent = "Dark";
+    if (themeToggleBtn) themeToggleBtn.title = "Theme: Dark (click to cycle)";
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    if (themeToggleIcon) themeToggleIcon.textContent = isDark ? "🌙" : "☀️";
+    if (themeToggleText) themeToggleText.textContent = "Auto";
+    if (themeToggleBtn) themeToggleBtn.title = `Theme: Auto (${isDark ? "Dark" : "Light"} system scheme, click to cycle)`;
+  }
+
+  // Update active state on Settings tab theme buttons
+  document.querySelectorAll(".theme-choice-btn").forEach((btn) => {
+    const val = btn.getAttribute("data-theme-val");
+    btn.classList.toggle("active", val === theme);
+  });
+}
+
+// ── Active Tab Live Hero & Inspection (Merged from Popup) ────────────────────
+if (activeTabFavicon) {
+  activeTabFavicon.onerror = () => {
+    activeTabFavicon.onerror = null;
+    activeTabFavicon.src = DEFAULT_FAVICON;
+  };
+}
+
+async function updateActiveTabPreview() {
+  if (!activeTabTitle || !activeTabDomain) return;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) {
+      activeTabTitle.textContent = "No active tab detected";
+      activeTabDomain.textContent = "---";
+      if (activeTabFavicon) activeTabFavicon.src = DEFAULT_FAVICON;
+      if (activeTabDesc) activeTabDesc.classList.add("hidden");
+      if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");
+      currentActiveDomain = "";
+      return;
+    }
+
+    if (tab.incognito) {
+      activeTabTitle.textContent = "Incognito Tab (Private)";
+      activeTabDomain.textContent = "Tracking Paused";
+      if (activeTabFavicon) activeTabFavicon.src = DEFAULT_FAVICON;
+      if (activeTabDesc) activeTabDesc.classList.add("hidden");
+      if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");
+      if (activeTabTagText) activeTabTagText.textContent = "Incognito";
+      currentActiveDomain = "";
+      return;
+    }
+
+    const urlStr = tab.url || "";
+    const isWebPage = urlStr.startsWith("http://") || urlStr.startsWith("https://");
+
+    if (isWebPage) {
+      activeTabTitle.textContent = tab.title || "Untitled Tab";
+      if (activeTabLink) {
+        activeTabLink.href = urlStr;
+      }
+      try {
+        const parsed = new URL(urlStr);
+        currentActiveDomain = parsed.hostname.replace(/^www\./, "");
+        activeTabDomain.textContent = currentActiveDomain;
+      } catch {
+        currentActiveDomain = urlStr;
+        activeTabDomain.textContent = urlStr;
+      }
+
+      if (activeTabFavicon) {
+        activeTabFavicon.src = tab.favIconUrl || DEFAULT_FAVICON;
+      }
+
+      // Check current session from background
+      const status = await chrome.runtime.sendMessage({ action: "get_status" });
+      if (status && status.currentSession) {
+        if (status.currentSession.description) {
+          activeTabDesc.textContent = `"${status.currentSession.description}"`;
+          activeTabDesc.classList.remove("hidden");
+        } else {
+          activeTabDesc.classList.add("hidden");
+        }
+
+        if (status.currentSession.tag && activeTabTagText) {
+          activeTabTagText.textContent = status.currentSession.tag;
+        }
+      }
+
+      // Check domain exclusion status
+      let isExcluded = false;
+      try {
+        const exclRes = await chrome.runtime.sendMessage({ action: "get_excluded_domains" });
+        const list = (exclRes && exclRes.excludedDomains) || [];
+        for (const entry of list) {
+          if (!entry.removed && LifeMirrorDomainRules.hostMatches(currentActiveDomain, entry.domain, entry.include_subdomains !== false)) {
+            isExcluded = true;
+            break;
+          }
+        }
+      } catch {}
+
+      if (tabExclusionWrap) {
+        tabExclusionWrap.classList.remove("hidden");
+        if (isExcluded) {
+          tabExcludedBadge?.classList.remove("hidden");
+          btnExcludeActiveTab?.classList.add("hidden");
+          if (activeTabTagText) activeTabTagText.textContent = "🚫 Excluded";
+        } else {
+          tabExcludedBadge?.classList.add("hidden");
+          btnExcludeActiveTab?.classList.remove("hidden");
+        }
+      }
+
+      // Update Domain focus time & switches from analytics
+      if (currentAnalytics && currentActiveDomain) {
+        const domStats = currentAnalytics.domains && currentAnalytics.domains[currentActiveDomain];
+        const domSeconds = (domStats && domStats.total_duration_secs) || 0;
+        if (activeDomainTime) activeDomainTime.textContent = formatDuration(domSeconds);
+        if (todaySwitchesPreview) todaySwitchesPreview.textContent = String(currentAnalytics.contextSwitches || 0);
+      }
+    } else {
+      activeTabTitle.textContent = tab.title || "Internal / System Page";
+      activeTabDomain.textContent = urlStr.split("/")[0] || "Excluded Protocol";
+      if (activeTabFavicon) activeTabFavicon.src = DEFAULT_FAVICON;
+      if (activeTabDesc) activeTabDesc.classList.add("hidden");
+      if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");
+      if (activeTabTagText) activeTabTagText.textContent = "Excluded";
+      currentActiveDomain = "";
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Active tab inspection warning:", err);
+  }
+}
+
+// 1-Click Revise on Active Tab
+if (activeTabTagBtn) {
+  activeTabTagBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!currentActiveDomain) return;
+    openRevisePopover(activeTabTagBtn, currentActiveDomain);
+  });
+}
+
+// 1-Click Exclude Domain from Active Tab
+if (btnExcludeActiveTab) {
+  btnExcludeActiveTab.addEventListener("click", () => {
+    if (!currentActiveDomain) return;
+    openPurgeModal(currentActiveDomain, true);
+  });
+}
+
+// 1-Click Unexclude Domain from Active Tab
+if (btnUnexcludeActiveTab) {
+  btnUnexcludeActiveTab.addEventListener("click", async () => {
+    if (!currentActiveDomain) return;
+    btnUnexcludeActiveTab.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({
+        action: "remove_excluded_domain",
+        domain: currentActiveDomain
+      });
+      await updateActiveTabPreview();
+      loadExcludedDomainsList();
+      loadData();
+    } catch (err) {
+      console.error("Failed to unexclude domain:", err);
+    } finally {
+      btnUnexcludeActiveTab.disabled = false;
+    }
+  });
+}
+
+// Real-time tab listeners: update active tab hero without lag
+chrome.tabs?.onActivated?.addListener(() => {
+  updateActiveTabPreview();
+});
+
+chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "complete" || changeInfo.title || changeInfo.url) {
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([currentTab]) => {
+      if (currentTab && currentTab.id === tabId) {
+        updateActiveTabPreview();
+      }
+    });
+  }
+});
+
+// ── About & Resources Drawer & Profile Setup ──────────────────────────────────
+async function loadProfileIdentity() {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: "get_profile_identity" });
+    if (res) {
+      if (profileBrowserBadge) profileBrowserBadge.textContent = res.browserName || "Browser";
+      if (profileLabelInput) profileLabelInput.value = res.profileLabel || "Default";
+      myProfileLabel = res.profileLabel || "Default";
+      if (scopeProfileLabel) {
+        scopeProfileLabel.textContent = `${myProfileLabel} (${res.browserName || "Chrome"})`;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to load profile identity:", err);
+  }
+}
+
+function toggleAboutDrawer() {
+  switchTab("tab-settings");
+}
+
+if (aboutToggleBtn) aboutToggleBtn.addEventListener("click", toggleAboutDrawer);
+if (closeAboutDrawerBtn) closeAboutDrawerBtn.addEventListener("click", () => switchTab("tab-reflect"));
+if (footerAboutBtn) footerAboutBtn.addEventListener("click", toggleAboutDrawer);
+
+if (profileSaveBtn && profileLabelInput) {
+  profileSaveBtn.addEventListener("click", async () => {
+    const newLabel = profileLabelInput.value.trim() || "Default";
+    profileSaveBtn.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ action: "update_profile_label", label: newLabel });
+      myProfileLabel = newLabel;
+      if (scopeProfileLabel) {
+        scopeProfileLabel.textContent = `${newLabel} (${myBrowserName})`;
+      }
+      profileSaveBtn.textContent = "✓ Saved";
+      setTimeout(() => {
+        profileSaveBtn.textContent = "Save";
+        profileSaveBtn.disabled = false;
+      }, 1500);
+    } catch {
+      profileSaveBtn.disabled = false;
+    }
+  });
+}
+
+// ── External Link Handling ────────────────────────────────────────────────────
+function initExternalLinks() {
+  document.querySelectorAll(".external-link").forEach((link) => {
+    link.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const url = link.getAttribute("href");
+      if (!url) return;
+      if (url.startsWith("https://") || url.startsWith("http://")) {
+        await chrome.tabs.create({ url });
+      } else if (url.startsWith("mailto:")) {
+        window.location.href = url;
+      }
+    });
+  });
+}
+
+// ── Initialize App ────────────────────────────────────────────────────────────
+initNavTabs();
+initTheme();
+initExternalLinks();
+initCategoryFiltersScroll();
+loadProfileIdentity();
+loadExcludedDomainsList();
+updateActiveTabPreview();
 
