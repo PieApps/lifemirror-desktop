@@ -19,6 +19,12 @@ pub struct TabPayload {
     #[serde(default)]
     pub tag: Option<String>,
     pub timestamp: u64,
+    #[serde(default)]
+    pub profileId: Option<String>,
+    #[serde(default)]
+    pub profileLabel: Option<String>,
+    #[serde(default)]
+    pub browserName: Option<String>,
 }
 
 pub fn format_native_error_response(error_code: &str, message: &str) -> Vec<u8> {
@@ -89,9 +95,12 @@ fn detect_parent_browser() -> String {
 // Check if the application was started in native host mode and process stdin events
 enum NativeHostMsg {
     Tab(TabPayload),
-    Delete { url: Option<String>, title: Option<String> },
+    Delete { url: Option<String>, title: Option<String>, profile_id: Option<String> },
     SyncExcludedDomains { entries: Vec<crate::db::ExclusionEntry> },
     GetExcludedDomains,
+    GetSubSessions { request_id: String, date: Option<String>, profile_id: Option<String>, cursor: Option<String>, limit: usize },
+    GetTopSites { request_id: String, date: Option<String>, profile_id: Option<String>, limit: usize },
+    GetAvailableProfiles { request_id: String, date: Option<String> },
 }
 
 pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
@@ -190,8 +199,86 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                         send_native_json(&resp);
                     }
                 }
-                NativeHostMsg::Delete { url, title } => {
-                    let _ = db_clone.delete_sub_session_event_by_uri_or_title(url.as_deref(), title.as_deref());
+                NativeHostMsg::Delete { url, title, profile_id } => {
+                    let _ = db_clone.delete_sub_session_event_by_uri_or_title_scoped(url.as_deref(), title.as_deref(), profile_id.as_deref());
+                }
+                NativeHostMsg::GetSubSessions { request_id, date, profile_id, cursor, limit } => {
+                    let date_ref = date.as_deref();
+                    let profile_ref = profile_id.as_deref();
+                    let cursor_ref = cursor.as_deref();
+                    match db_clone.get_sub_session_events_cursor(date_ref, profile_ref, cursor_ref, limit) {
+                        Ok((events, next_cursor)) => {
+                            let resp = serde_json::json!({
+                                "event": "sub_sessions_response",
+                                "requestId": request_id,
+                                "items": events,
+                                "nextCursor": next_cursor,
+                            });
+                            send_native_json(&resp);
+                        }
+                        Err(e) => {
+                            let resp = serde_json::json!({
+                                "event": "sub_sessions_response",
+                                "requestId": request_id,
+                                "error": e.to_string(),
+                                "items": [],
+                                "nextCursor": null,
+                            });
+                            send_native_json(&resp);
+                        }
+                    }
+                }
+                NativeHostMsg::GetTopSites { request_id, date, profile_id, limit } => {
+                    let date_ref = date.as_deref();
+                    let profile_ref = profile_id.as_deref();
+                    match db_clone.get_top_sites_summary(date_ref, profile_ref, limit) {
+                        Ok(entries) => {
+                            let resp = serde_json::json!({
+                                "event": "top_sites_response",
+                                "requestId": request_id,
+                                "entries": entries,
+                            });
+                            send_native_json(&resp);
+                        }
+                        Err(e) => {
+                            let resp = serde_json::json!({
+                                "event": "top_sites_response",
+                                "requestId": request_id,
+                                "error": e.to_string(),
+                                "entries": [],
+                            });
+                            send_native_json(&resp);
+                        }
+                    }
+                }
+                NativeHostMsg::GetAvailableProfiles { request_id, date } => {
+                    let date_ref = date.as_deref();
+                    match db_clone.get_active_profiles_for_day(date_ref) {
+                        Ok(profiles) => {
+                            let list: Vec<serde_json::Value> = profiles.into_iter().map(|(pid, label, browser)| {
+                                serde_json::json!({
+                                    "profileId": pid,
+                                    "profileLabel": label,
+                                    "browserName": browser,
+                                })
+                            }).collect();
+                            let resp = serde_json::json!({
+                                "event": "available_profiles_response",
+                                "requestId": request_id,
+                                "profiles": list,
+                            });
+                            send_native_json(&resp);
+                        }
+                        Err(e) => {
+                            let resp = serde_json::json!({
+                                "event": "available_profiles_response",
+                                "requestId": request_id,
+                                "error": e.to_string(),
+                                "profiles": [],
+                            });
+                            send_native_json(&resp);
+                        }
+                    }
                 }
                 NativeHostMsg::Tab(payload) => {
                     let domain = extract_domain(&payload.url);
@@ -224,7 +311,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     
                     let event = SubSessionEvent {
                         session_type: "Browser".to_string(),
-                        parent_app_name: Some(parent_browser_clone.clone()),
+                        parent_app_name: payload.browserName.clone().or_else(|| Some(parent_browser_clone.clone())),
                         title: sanitized_title,
                         primary_uri: Some(sanitized_url),
                         icon_url: payload.favIconUrl,
@@ -241,6 +328,9 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                         }),
                         timestamp: now.to_rfc3339(),
                         id: None,
+                        profile_id: payload.profileId.clone(),
+                        profile_label: payload.profileLabel.clone(),
+                        browser_name: payload.browserName.clone().or_else(|| Some(parent_browser_clone.clone())),
                     };
 
                     // Process previous event
@@ -295,7 +385,25 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                 } else if event_type == "delete_tab_activity" {
                     let url = payload.get("url").and_then(|v| v.as_str()).map(|s| s.to_string());
                     let title = payload.get("title").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let _ = tx.send(NativeHostMsg::Delete { url, title });
+                    let profile_id = payload.get("profileId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let _ = tx.send(NativeHostMsg::Delete { url, title, profile_id });
+                } else if event_type == "get_sub_sessions" {
+                    let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let date = payload.get("date").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let profile_id = payload.get("profileId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let cursor = payload.get("cursor").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let limit = payload.get("limit").and_then(|v| v.as_u64()).unwrap_or(25) as usize;
+                    let _ = tx.send(NativeHostMsg::GetSubSessions { request_id, date, profile_id, cursor, limit });
+                } else if event_type == "get_top_sites" {
+                    let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let date = payload.get("date").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let profile_id = payload.get("profileId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let limit = payload.get("limit").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+                    let _ = tx.send(NativeHostMsg::GetTopSites { request_id, date, profile_id, limit });
+                } else if event_type == "get_available_profiles" {
+                    let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let date = payload.get("date").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let _ = tx.send(NativeHostMsg::GetAvailableProfiles { request_id, date });
                 } else if event_type == "sync_excluded_domains" {
                     if let Some(entries_val) = payload.get("entries") {
                         if let Ok(entries) = serde_json::from_value::<Vec<crate::db::ExclusionEntry>>(entries_val.clone()) {

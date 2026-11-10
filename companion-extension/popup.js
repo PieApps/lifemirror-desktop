@@ -290,9 +290,44 @@ if (btnUnexcludeActiveTab) {
   });
 }
 
+// ── Profile Identity Handling ────────────────────────────────────────────────
+const profileBrowserBadge = document.getElementById("profile-browser-badge");
+const profileLabelInput = document.getElementById("profile-label-input");
+const profileSaveBtn = document.getElementById("profile-save-btn");
+
+async function loadProfileIdentity() {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: "get_profile_identity" });
+    if (res) {
+      if (profileBrowserBadge) profileBrowserBadge.textContent = res.browserName || "Browser";
+      if (profileLabelInput) profileLabelInput.value = res.profileLabel || "Default";
+    }
+  } catch (err) {
+    console.warn("Failed to load profile identity:", err);
+  }
+}
+
+if (profileSaveBtn && profileLabelInput) {
+  profileSaveBtn.addEventListener("click", async () => {
+    const newLabel = profileLabelInput.value.trim() || "Default";
+    profileSaveBtn.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ action: "update_profile_label", label: newLabel });
+      profileSaveBtn.textContent = "✓ Saved";
+      setTimeout(() => {
+        profileSaveBtn.textContent = "Save";
+        profileSaveBtn.disabled = false;
+      }, 1500);
+    } catch {
+      profileSaveBtn.disabled = false;
+    }
+  });
+}
+
 // ── Initialization ────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
   initExternalLinks();
   await updateActiveTabPreview();
   await checkNativeHostStatus();
+  await loadProfileIdentity();
 });

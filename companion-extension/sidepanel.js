@@ -25,10 +25,29 @@ const sessionsCountBadge = document.getElementById("sessions-count-badge");
 const copySummaryBtn = document.getElementById("copy-summary-btn");
 const dateLabel = document.getElementById("date-label");
 
+// Profile & Stream Elements
+const scopeProfileBtn = document.getElementById("scope-profile-btn");
+const scopeProfileLabel = document.getElementById("scope-profile-label");
+const scopeAllBtn = document.getElementById("scope-all-btn");
+const liveTabPill = document.getElementById("live-tab-pill");
+const streamSentinel = document.getElementById("stream-sentinel");
+const loadMoreBtn = document.getElementById("load-more-btn");
+const loadMoreText = document.getElementById("load-more-text");
+
 let activeFilter = "all";
 let searchQuery = "";
 let reviseTargetDomain = null;
 let currentAnalytics = null;
+
+// Multi-Profile & Keyset Stream State
+let activeProfileScope = "profile"; // "profile" | "all"
+let myProfileId = null;
+let myProfileLabel = "Current Profile";
+let myBrowserName = "Chrome";
+let nextCursor = null;
+let isFetchingMore = false;
+let loadedSessions = [];
+let isConnectedToDesktop = false;
 
 // ── Security: HTML Entity Escaping (Prevents Stored DOM XSS) ──────────────────
 function escapeHtml(str) {
@@ -90,8 +109,23 @@ function renderHeatStrip(hourlyArray = []) {
 }
 
 // ── Render Top Domains ────────────────────────────────────────────────────────
-function renderTopDomains(domainsObj = {}) {
-  const entries = Object.entries(domainsObj);
+function renderTopDomains(domainsInput = {}) {
+  let entries = [];
+  if (Array.isArray(domainsInput)) {
+    entries = domainsInput.map((e) => [
+      e.domain,
+      {
+        seconds: e.total_seconds || (e.visit_count * 60) || 60,
+        url: `https://${e.domain}`,
+        title: e.domain,
+        tag: e.tag || "🌐 Other",
+        favIconUrl: e.icon_url || ""
+      }
+    ]);
+  } else {
+    entries = Object.entries(domainsInput || {});
+  }
+
   if (entries.length === 0) {
     topDomainsList.innerHTML = `
       <div class="empty-state warm-empty-state">
@@ -229,21 +263,12 @@ function renderSessions(sessions = []) {
     }
   });
 
-  const totalSwitches = (currentAnalytics && currentAnalytics.contextSwitches) || 0;
-  const visibleCount = Math.min(consolidated.length, 25);
-
   if (sessionsCountBadge) {
-    if (totalSwitches > consolidated.length) {
-      sessionsCountBadge.textContent = `Showing ${visibleCount} recent • ${totalSwitches} hops today`;
-      sessionsCountBadge.title = `Your ${visibleCount} most recent active pages. All ${totalSwitches} tab hops and domain dwell times are tracked in Top Websites & Hourly Activity above.`;
-    } else {
-      sessionsCountBadge.textContent = `${consolidated.length} item${consolidated.length === 1 ? "" : "s"}`;
-      sessionsCountBadge.title = "";
-    }
+    sessionsCountBadge.textContent = `${consolidated.length} item${consolidated.length === 1 ? "" : "s"}${nextCursor ? " • scroll for more" : ""}`;
   }
 
   sessionsStream.innerHTML = "";
-  consolidated.slice(0, 25).forEach((session) => {
+  consolidated.forEach((session) => {
     const item = document.createElement("div");
     item.className = "session-item";
 
@@ -261,6 +286,9 @@ function renderSessions(sessions = []) {
       ? escapeHtml(encodeURI(rawUrl))
       : "#";
     const safeTime = formatTimestamp(session.timestamp);
+    const originBadgeHtml = (activeProfileScope === "all" && (session.profile_label || session.browser_name))
+      ? `<span class="origin-badge">${escapeHtml(session.browser_name || "Browser")} • ${escapeHtml(session.profile_label || "Default")}</span>`
+      : "";
 
     item.innerHTML = `
       <div class="session-header">
@@ -275,7 +303,8 @@ function renderSessions(sessions = []) {
               <a href="https://${safeDomain}" target="_blank" rel="noopener noreferrer" class="session-domain-link">${safeDomain}</a>
               ${safeTime ? `<span class="meta-dot">•</span><span class="session-time">${safeTime}</span>` : ""}
               <span class="meta-dot">•</span>
-              <span class="session-duration">${formatDuration(session.duration)}</span>
+              <span class="session-duration">${formatDuration(session.duration || 60)}</span>
+              ${originBadgeHtml}
             </div>
           </div>
         </div>
@@ -334,6 +363,23 @@ function renderSessions(sessions = []) {
 
     sessionsStream.appendChild(item);
   });
+
+  // Update Keyset Sentinel & Load More button visibility
+  if (nextCursor) {
+    if (consolidated.length < 75) {
+      if (streamSentinel) streamSentinel.style.display = "block";
+      if (loadMoreBtn) loadMoreBtn.classList.add("hidden");
+    } else {
+      if (streamSentinel) streamSentinel.style.display = "none";
+      if (loadMoreBtn) {
+        loadMoreBtn.classList.remove("hidden");
+        if (loadMoreText) loadMoreText.textContent = `↓ Load earlier activity • Showing ${consolidated.length} items`;
+      }
+    }
+  } else {
+    if (streamSentinel) streamSentinel.style.display = "none";
+    if (loadMoreBtn) loadMoreBtn.classList.add("hidden");
+  }
 
   // When high-frequency browsing occurred, convey why older tabs are rolled up
   if (totalSwitches > consolidated.length && !query && activeFilter === "all") {
@@ -522,9 +568,24 @@ async function loadData() {
       dateLabel.textContent = `${dateFormatted} • Today's In-Browser Stream`;
     }
 
-    // 1. Check desktop connection status
+    // 1. Fetch active profile identity
+    try {
+      const prof = await chrome.runtime.sendMessage({ action: "get_profile_identity" });
+      if (prof) {
+        myProfileId = prof.profileId;
+        myProfileLabel = prof.profileLabel || "Default";
+        myBrowserName = prof.browserName || "Chrome";
+        if (scopeProfileLabel) {
+          scopeProfileLabel.textContent = `${myProfileLabel} (${myBrowserName})`;
+        }
+      }
+    } catch {}
+
+    // 2. Check desktop connection status
     const status = await chrome.runtime.sendMessage({ action: "get_status" });
-    if (status && status.connected) {
+    isConnectedToDesktop = Boolean(status && status.connected);
+
+    if (isConnectedToDesktop) {
       modeBadge.className = "mode-badge mode-desktop";
       modeBadgeText.textContent = "Desktop Sync Active";
       if (desktopBridgeCard) desktopBridgeCard.style.display = "none";
@@ -534,7 +595,7 @@ async function loadData() {
       if (desktopBridgeCard) desktopBridgeCard.style.display = "flex";
     }
 
-    // 2. Fetch today's analytics
+    // 3. Fetch today's local analytics (for switches, total time, and hourly strip)
     const analytics = await chrome.runtime.sendMessage({ action: "get_today_analytics" });
     currentAnalytics = analytics || {
       totalActiveSeconds: 0,
@@ -547,13 +608,176 @@ async function loadData() {
     totalTimeVal.textContent = formatDuration(currentAnalytics.totalActiveSeconds);
     switchesVal.textContent = String(currentAnalytics.contextSwitches || 0);
     domainsCountVal.textContent = String(Object.keys(currentAnalytics.domains || {}).length);
-
     renderHeatStrip(currentAnalytics.hourly);
-    renderTopDomains(currentAnalytics.domains);
-    renderSessions(currentAnalytics.recentSessions);
+
+    // 4. Hydrate Top Sites and Stream
+    const targetProfileId = activeProfileScope === "profile" ? myProfileId : null;
+
+    if (isConnectedToDesktop) {
+      // 4a. Top Sites from desktop SQLite
+      try {
+        const topRes = await chrome.runtime.sendMessage({
+          action: "get_desktop_top_sites",
+          profileId: targetProfileId,
+          limit: 5
+        });
+        if (topRes && Array.isArray(topRes.entries) && topRes.entries.length > 0) {
+          renderTopDomains(topRes.entries);
+        } else {
+          renderTopDomains(currentAnalytics.domains);
+        }
+      } catch {
+        renderTopDomains(currentAnalytics.domains);
+      }
+
+      // 4b. Sub-sessions stream from desktop SQLite via Keyset Cursor
+      try {
+        const sessRes = await chrome.runtime.sendMessage({
+          action: "get_desktop_sub_sessions",
+          profileId: targetProfileId,
+          cursor: null,
+          limit: 25
+        });
+        if (sessRes && Array.isArray(sessRes.items) && sessRes.items.length > 0) {
+          loadedSessions = sessRes.items.map((ev) => {
+            let domain = ev.context_tag;
+            if (!domain && ev.primary_uri) {
+              try { domain = new URL(ev.primary_uri).hostname.replace(/^www\./, ""); } catch {}
+            }
+            return {
+              domain: domain || "other",
+              url: ev.primary_uri,
+              title: ev.title,
+              description: ev.metadata,
+              tag: ev.context_tag,
+              favIconUrl: ev.icon_url,
+              timestamp: ev.timestamp,
+              duration: 60,
+              profile_label: ev.profile_label,
+              browser_name: ev.browser_name
+            };
+          });
+          nextCursor = sessRes.nextCursor;
+          renderSessions(loadedSessions);
+        } else {
+          loadedSessions = currentAnalytics.recentSessions;
+          nextCursor = null;
+          renderSessions(loadedSessions);
+        }
+      } catch {
+        loadedSessions = currentAnalytics.recentSessions;
+        nextCursor = null;
+        renderSessions(loadedSessions);
+      }
+    } else {
+      // Offline / Standalone mode fallback
+      renderTopDomains(currentAnalytics.domains);
+      loadedSessions = currentAnalytics.recentSessions;
+      nextCursor = null;
+      renderSessions(loadedSessions);
+    }
   } catch (err) {
     console.warn("[LifeMirror SidePanel] Refresh warning:", err);
   }
+}
+
+async function fetchMoreSessions() {
+  if (isFetchingMore || !nextCursor || !isConnectedToDesktop) return;
+  isFetchingMore = true;
+  if (loadMoreText) loadMoreText.textContent = "Loading earlier activity...";
+
+  try {
+    const targetProfileId = activeProfileScope === "profile" ? myProfileId : null;
+    const sessRes = await chrome.runtime.sendMessage({
+      action: "get_desktop_sub_sessions",
+      profileId: targetProfileId,
+      cursor: nextCursor,
+      limit: 25
+    });
+
+    if (sessRes && Array.isArray(sessRes.items) && sessRes.items.length > 0) {
+      const more = sessRes.items.map((ev) => {
+        let domain = ev.context_tag;
+        if (!domain && ev.primary_uri) {
+          try { domain = new URL(ev.primary_uri).hostname.replace(/^www\./, ""); } catch {}
+        }
+        return {
+          domain: domain || "other",
+          url: ev.primary_uri,
+          title: ev.title,
+          description: ev.metadata,
+          tag: ev.context_tag,
+          favIconUrl: ev.icon_url,
+          timestamp: ev.timestamp,
+          duration: 60,
+          profile_label: ev.profile_label,
+          browser_name: ev.browser_name
+        };
+      });
+      loadedSessions = loadedSessions.concat(more);
+      nextCursor = sessRes.nextCursor;
+      renderSessions(loadedSessions);
+    } else {
+      nextCursor = null;
+      if (loadMoreBtn) loadMoreBtn.classList.add("hidden");
+    }
+  } catch (err) {
+    console.warn("Failed to fetch more sessions:", err);
+  } finally {
+    isFetchingMore = false;
+    if (loadMoreText) loadMoreText.textContent = "↓ Load earlier activity";
+  }
+}
+
+// ── Scope & Stream Controls ───────────────────────────────────────────────────
+if (scopeProfileBtn && scopeAllBtn) {
+  scopeProfileBtn.addEventListener("click", () => {
+    if (activeProfileScope === "profile") return;
+    activeProfileScope = "profile";
+    scopeProfileBtn.classList.add("active");
+    scopeAllBtn.classList.remove("active");
+    nextCursor = null;
+    loadData();
+  });
+
+  scopeAllBtn.addEventListener("click", () => {
+    if (activeProfileScope === "all") return;
+    activeProfileScope = "all";
+    scopeAllBtn.classList.add("active");
+    scopeProfileBtn.classList.remove("active");
+    nextCursor = null;
+    loadData();
+  });
+}
+
+if (loadMoreBtn) {
+  loadMoreBtn.addEventListener("click", () => {
+    fetchMoreSessions();
+  });
+}
+
+let streamObserver = null;
+function initStreamObserver() {
+  if (!streamSentinel) return;
+  if (streamObserver) streamObserver.disconnect();
+
+  streamObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry.isIntersecting && nextCursor && !isFetchingMore && loadedSessions.length < 75) {
+      fetchMoreSessions();
+    }
+  }, { rootMargin: "150px" });
+
+  streamObserver.observe(streamSentinel);
+}
+initStreamObserver();
+
+if (liveTabPill) {
+  liveTabPill.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    liveTabPill.classList.add("hidden");
+    loadData();
+  });
 }
 
 // Event-driven real-time refresh (0 polling overhead)
@@ -562,7 +786,13 @@ loadData();
 // Auto-refresh when local storage updates (tab switches, sessions logged)
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local") {
-    loadData();
+    const isAtTop = (window.scrollY || document.documentElement.scrollTop || 0) < 30;
+    if (isAtTop) {
+      loadData();
+    } else {
+      // User is scrolled down reading past history: zero layout shift!
+      if (liveTabPill) liveTabPill.classList.remove("hidden");
+    }
   }
 });
 

@@ -322,6 +322,9 @@ pub fn start_window_tracker(
                     context_tag: if context_tag.is_empty() { None } else { Some(context_tag) },
                     metadata: None,
                     timestamp: start_time.to_rfc3339(),
+                    profile_id: None,
+                    profile_label: None,
+                    browser_name: None,
                 });
             }
         };

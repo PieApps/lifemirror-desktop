@@ -34,6 +34,81 @@ async function loadExcludedEntries() {
   }
 }
 
+// In-memory profile identity (isolated per browser profile storage)
+let profileId = null;
+let profileLabel = "Default";
+let browserName = "Chrome";
+
+async function initProfileIdentity() {
+  try {
+    const data = await chrome.storage.local.get(["profile_id", "profile_label"]);
+    if (data.profile_id) {
+      profileId = data.profile_id;
+    } else {
+      profileId = `prof_${crypto.randomUUID().slice(0, 8)}`;
+      await chrome.storage.local.set({ profile_id: profileId });
+    }
+    if (data.profile_label) {
+      profileLabel = data.profile_label;
+    } else {
+      profileLabel = "Default";
+    }
+
+    if (navigator.userAgentData && navigator.userAgentData.brands) {
+      const brands = navigator.userAgentData.brands.map((b) => b.brand.toLowerCase());
+      if (brands.some((b) => b.includes("brave"))) {
+        browserName = "Brave";
+      } else if (brands.some((b) => b.includes("edge"))) {
+        browserName = "Edge";
+      } else if (brands.some((b) => b.includes("chrome"))) {
+        browserName = "Chrome";
+      }
+    } else {
+      const ua = (navigator.userAgent || "").toLowerCase();
+      if (ua.includes("edg/")) {
+        browserName = "Edge";
+      } else if (ua.includes("brave")) {
+        browserName = "Brave";
+      } else {
+        browserName = "Chrome";
+      }
+    }
+  } catch (err) {
+    console.error("[LifeMirror] Profile identity init error:", err);
+  }
+}
+initProfileIdentity();
+
+// Pending RPC manager for request-response over Native Messaging
+const pendingNativeRpc = new Map();
+
+function callNativeRpc(eventPayload, timeoutMs = 4000) {
+  const nativePort = getNativePort();
+  if (!nativePort) {
+    return Promise.reject(new Error("Native host not connected"));
+  }
+
+  const requestId = crypto.randomUUID();
+  eventPayload.requestId = requestId;
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingNativeRpc.delete(requestId);
+      reject(new Error("Native RPC timeout"));
+    }, timeoutMs);
+
+    pendingNativeRpc.set(requestId, { resolve, reject, timer });
+
+    try {
+      nativePort.postMessage(eventPayload);
+    } catch (err) {
+      clearTimeout(timer);
+      pendingNativeRpc.delete(requestId);
+      reject(err);
+    }
+  });
+}
+
 // Initial eager load
 loadExcludedEntries();
 
@@ -352,6 +427,14 @@ function getNativePort() {
     isNativeConnected = true;
 
     port.onMessage.addListener((msg) => {
+      if (msg && msg.requestId && pendingNativeRpc.has(msg.requestId)) {
+        const { resolve, timer } = pendingNativeRpc.get(msg.requestId);
+        clearTimeout(timer);
+        pendingNativeRpc.delete(msg.requestId);
+        resolve(msg);
+        return;
+      }
+
       if (msg && msg.event === "sync_excluded_domains" && Array.isArray(msg.entries)) {
         const prevExcluded = new Set(
           excludedEntries.filter(e => !e.removed).map(e => e.domain)
@@ -581,6 +664,9 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     favIconUrl: tab.favIconUrl || "",
     description: description,
     tag: category,
+    profileId,
+    profileLabel,
+    browserName,
     startTime: Date.now()
   };
 
@@ -594,7 +680,10 @@ async function reportTabActivity(tabId, changeInfo, tab) {
       favIconUrl: tab.favIconUrl || "",
       description: description,
       tag: category,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      profileId: profileId,
+      profileLabel: profileLabel,
+      browserName: browserName
     };
     try {
       nativePort.postMessage(payload);
@@ -811,7 +900,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           nativePort.postMessage({
             event: "delete_tab_activity",
             url: url || null,
-            title: title || null
+            title: title || null,
+            profileId: profileId
           });
         } catch {
           // ignore if native port unreachable
@@ -820,6 +910,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       sendResponse({ success: true });
     });
+    return true;
+  }
+
+  // Profile Identity: Get active profile metadata
+  if (request.action === "get_profile_identity") {
+    sendResponse({
+      profileId,
+      profileLabel,
+      browserName
+    });
+    return true;
+  }
+
+  // Profile Identity: Update friendly label (e.g. "Work", "Personal")
+  if (request.action === "update_profile_label") {
+    const newLabel = (request.label || "Default").trim();
+    profileLabel = newLabel;
+    chrome.storage.local.set({ profile_label: newLabel }).then(() => {
+      sendResponse({ success: true, profileLabel });
+    });
+    return true;
+  }
+
+  // Desktop RPC: Fetch keyset cursor sub-sessions
+  if (request.action === "get_desktop_sub_sessions") {
+    callNativeRpc({
+      event: "get_sub_sessions",
+      profileId: request.profileId,
+      cursor: request.cursor || null,
+      limit: request.limit || 25,
+      date: request.date || null
+    })
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ error: err.message, items: [], nextCursor: null }));
+    return true;
+  }
+
+  // Desktop RPC: Fetch pre-aggregated top sites
+  if (request.action === "get_desktop_top_sites") {
+    callNativeRpc({
+      event: "get_top_sites",
+      profileId: request.profileId,
+      limit: request.limit || 5,
+      date: request.date || null
+    })
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ error: err.message, entries: [] }));
+    return true;
+  }
+
+  // Desktop RPC: Fetch all active profiles
+  if (request.action === "get_available_profiles") {
+    callNativeRpc({
+      event: "get_available_profiles",
+      date: request.date || null
+    })
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({ error: err.message, profiles: [] }));
     return true;
   }
 

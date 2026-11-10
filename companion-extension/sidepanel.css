@@ -307,6 +307,115 @@ body {
 }
 
 /* Category Filter Chips */
+.scope-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.scope-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.scope-chip {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.scope-chip:hover {
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.scope-chip.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+/* Floating Live Tab Pill */
+.live-tab-pill {
+  position: sticky;
+  top: 4px;
+  z-index: 10;
+  margin: 0 auto 8px auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  animation: slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.live-tab-pill:hover {
+  background: rgba(56, 189, 248, 0.2);
+  transform: translateY(-1px);
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Keyset Sentinel & Load More */
+.stream-sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+.btn-load-more {
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 6px;
+  background: var(--card-sub-bg);
+  border: 1px dashed var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-load-more:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Origin Badge on Session Card */
+.origin-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
 .filter-section {
   display: flex;
   flex-direction: column;
@@ -394,7 +503,7 @@ body {
   height: 100%;
   background: linear-gradient(90deg, var(--accent-teal), var(--accent-emerald));
   border-radius: 3px;
-  transition: width 0.3s ease;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Instant Search Bar */

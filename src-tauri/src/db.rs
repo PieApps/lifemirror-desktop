@@ -102,6 +102,21 @@ pub struct SubSessionEvent {
     pub context_tag: Option<String>,
     pub metadata: Option<String>,
     pub timestamp: String,
+    #[serde(default)]
+    pub profile_id: Option<String>,
+    #[serde(default)]
+    pub profile_label: Option<String>,
+    #[serde(default)]
+    pub browser_name: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TopSiteEntry {
+    pub domain: String,
+    pub icon_url: Option<String>,
+    pub tag: Option<String>,
+    pub total_seconds: i64,
+    pub visit_count: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -993,12 +1008,23 @@ impl DbState {
                 context_tag TEXT,
                 metadata TEXT,
                 timestamp TEXT NOT NULL,
-                processed BOOLEAN NOT NULL DEFAULT 0
+                processed BOOLEAN NOT NULL DEFAULT 0,
+                profile_id TEXT,
+                profile_label TEXT,
+                browser_name TEXT
             );",
             [],
         )?;
+        let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN profile_id TEXT;", []);
+        let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN profile_label TEXT;", []);
+        let _ = conn.execute("ALTER TABLE sub_session_events ADD COLUMN browser_name TEXT;", []);
+
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sub_session_events_timestamp ON sub_session_events (timestamp);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sub_session_events_profile_time ON sub_session_events (profile_id, timestamp);",
             [],
         )?;
 
@@ -1777,7 +1803,7 @@ impl DbState {
         // Batch fetch all sub_events for all nodes on this day in 1 query
         let mut sub_map: std::collections::HashMap<i64, Vec<SubSessionEvent>> = std::collections::HashMap::new();
         let sub_sql = format!(
-            "SELECT sa.node_id, s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp
+            "SELECT sa.node_id, s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp, s.profile_id, s.profile_label, s.browser_name
              FROM sub_session_events s
              JOIN session_activities sa ON s.id = sa.raw_id
              WHERE sa.node_id IN ({}) AND sa.source = 'browser'
@@ -1798,6 +1824,9 @@ impl DbState {
                 context_tag: row.get(7)?,
                 metadata: row.get(8)?,
                 timestamp: row.get(9)?,
+                profile_id: row.get(10).ok(),
+                profile_label: row.get(11).ok(),
+                browser_name: row.get(12).ok(),
             };
             Ok((node_id, event))
         })?;
@@ -1852,7 +1881,7 @@ impl DbState {
     pub fn get_sub_events_for_node(&self, node_id: i64) -> Result<Vec<crate::db::SubSessionEvent>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp
+            "SELECT s.id, s.session_type, s.parent_app_name, s.title, s.primary_uri, s.icon_url, s.context_tag, s.metadata, s.timestamp, s.profile_id, s.profile_label, s.browser_name
              FROM sub_session_events s
              JOIN session_activities sa ON s.id = sa.raw_id
              WHERE sa.node_id = ?1 AND sa.source = 'browser'
@@ -1870,6 +1899,9 @@ impl DbState {
                 context_tag: row.get(6)?,
                 metadata: row.get(7)?,
                 timestamp: row.get(8)?,
+                profile_id: row.get(9).ok(),
+                profile_label: row.get(10).ok(),
+                browser_name: row.get(11).ok(),
             })
         })?;
 
@@ -2020,8 +2052,11 @@ impl DbState {
 
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO sub_session_events (session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO sub_session_events (
+                session_type, parent_app_name, title, primary_uri, icon_url,
+                context_tag, metadata, timestamp, profile_id, profile_label, browser_name
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 event.session_type,
                 event.parent_app_name,
@@ -2031,6 +2066,9 @@ impl DbState {
                 event.context_tag,
                 event.metadata,
                 event.timestamp,
+                event.profile_id,
+                event.profile_label,
+                event.browser_name,
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -2042,17 +2080,51 @@ impl DbState {
         Ok(())
     }
 
+    pub fn delete_sub_session_event_scoped(&self, id: i64, profile_id: Option<&str>) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        if let Some(pid) = profile_id {
+            if !pid.is_empty() {
+                return Ok(conn.execute(
+                    "DELETE FROM sub_session_events WHERE id = ?1 AND profile_id = ?2",
+                    rusqlite::params![id, pid],
+                )?);
+            }
+        }
+        Ok(conn.execute("DELETE FROM sub_session_events WHERE id = ?1", rusqlite::params![id])?)
+    }
+
     pub fn delete_sub_session_event_by_uri_or_title(&self, uri: Option<&str>, title: Option<&str>) -> Result<usize> {
+        self.delete_sub_session_event_by_uri_or_title_scoped(uri, title, None)
+    }
+
+    pub fn delete_sub_session_event_by_uri_or_title_scoped(
+        &self,
+        uri: Option<&str>,
+        title: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> Result<usize> {
         let conn = self.conn.lock().unwrap();
         if let Some(u) = uri {
             if !u.is_empty() {
-                // Delete only the most recent sub_session_event matching this primary_uri to avoid wiping history
-                let count = conn.execute(
-                    "DELETE FROM sub_session_events WHERE id = (
-                        SELECT id FROM sub_session_events WHERE primary_uri = ?1 ORDER BY timestamp DESC LIMIT 1
-                    )",
-                    [u],
-                )?;
+                let count = if let Some(pid) = profile_id {
+                    conn.execute(
+                        "DELETE FROM sub_session_events WHERE id = (
+                            SELECT id FROM sub_session_events 
+                            WHERE primary_uri = ?1 AND profile_id = ?2 
+                            ORDER BY timestamp DESC LIMIT 1
+                        )",
+                        rusqlite::params![u, pid],
+                    )?
+                } else {
+                    conn.execute(
+                        "DELETE FROM sub_session_events WHERE id = (
+                            SELECT id FROM sub_session_events 
+                            WHERE primary_uri = ?1 
+                            ORDER BY timestamp DESC LIMIT 1
+                        )",
+                        rusqlite::params![u],
+                    )?
+                };
                 if count > 0 {
                     return Ok(count);
                 }
@@ -2060,14 +2132,28 @@ impl DbState {
         }
         if let Some(t) = title {
             if !t.is_empty() {
-                // Delete only the most recent sub_session_event matching this title to avoid wiping history
-                let count = conn.execute(
-                    "DELETE FROM sub_session_events WHERE id = (
-                        SELECT id FROM sub_session_events WHERE title = ?1 ORDER BY timestamp DESC LIMIT 1
-                    )",
-                    [t],
-                )?;
-                return Ok(count);
+                let count = if let Some(pid) = profile_id {
+                    conn.execute(
+                        "DELETE FROM sub_session_events WHERE id = (
+                            SELECT id FROM sub_session_events 
+                            WHERE title = ?1 AND profile_id = ?2 
+                            ORDER BY timestamp DESC LIMIT 1
+                        )",
+                        rusqlite::params![t, pid],
+                    )?
+                } else {
+                    conn.execute(
+                        "DELETE FROM sub_session_events WHERE id = (
+                            SELECT id FROM sub_session_events 
+                            WHERE title = ?1 
+                            ORDER BY timestamp DESC LIMIT 1
+                        )",
+                        rusqlite::params![t],
+                    )?
+                };
+                if count > 0 {
+                    return Ok(count);
+                }
             }
         }
         Ok(0)
@@ -2076,7 +2162,7 @@ impl DbState {
     pub fn get_sub_session_events_for_day(&self, date: &str) -> Result<Vec<SubSessionEvent>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp
+            "SELECT id, session_type, parent_app_name, title, primary_uri, icon_url, context_tag, metadata, timestamp, profile_id, profile_label, browser_name
              FROM sub_session_events
              WHERE datetime(timestamp, 'localtime') >= datetime(?1 || ' 00:00:00')
                AND datetime(timestamp, 'localtime') <= datetime(?1 || ' 23:59:59', '+10 minutes')
@@ -2094,6 +2180,9 @@ impl DbState {
                 context_tag: row.get(6)?,
                 metadata: row.get(7)?,
                 timestamp: row.get(8)?,
+                profile_id: row.get(9).ok(),
+                profile_label: row.get(10).ok(),
+                browser_name: row.get(11).ok(),
             })
         })?;
 
@@ -2102,6 +2191,168 @@ impl DbState {
             events.push(event?);
         }
         Ok(events)
+    }
+
+    pub fn get_sub_session_events_cursor(
+        &self,
+        date: Option<&str>,
+        profile_id: Option<&str>,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<(Vec<SubSessionEvent>, Option<String>)> {
+        let conn = self.conn.lock().unwrap();
+        let limit = limit.clamp(1, 100);
+
+        let mut sql = String::from(
+            "SELECT id, session_type, parent_app_name, title, primary_uri, icon_url, \
+                    context_tag, metadata, timestamp, profile_id, profile_label, browser_name \
+             FROM sub_session_events \
+             WHERE 1=1"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(d) = date {
+            if !d.is_empty() {
+                sql.push_str(" AND datetime(timestamp, 'localtime') >= datetime(? || ' 00:00:00')");
+                params.push(Box::new(d.to_string()));
+                sql.push_str(" AND datetime(timestamp, 'localtime') <= datetime(? || ' 23:59:59', '+10 minutes')");
+                params.push(Box::new(d.to_string()));
+            }
+        }
+
+        if let Some(pid) = profile_id {
+            if !pid.is_empty() {
+                sql.push_str(" AND profile_id = ?");
+                params.push(Box::new(pid.to_string()));
+            }
+        }
+
+        if let Some(cur) = cursor {
+            if !cur.is_empty() {
+                sql.push_str(" AND timestamp < ?");
+                params.push(Box::new(cur.to_string()));
+            }
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC LIMIT ?");
+        params.push(Box::new((limit + 1) as i64));
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(param_refs.as_slice())?;
+
+        let mut events = Vec::new();
+        while let Some(row) = rows.next()? {
+            events.push(SubSessionEvent {
+                id: Some(row.get(0)?),
+                session_type: row.get(1)?,
+                parent_app_name: row.get(2)?,
+                title: row.get(3)?,
+                primary_uri: row.get(4)?,
+                icon_url: row.get(5)?,
+                context_tag: row.get(6)?,
+                metadata: row.get(7)?,
+                timestamp: row.get(8)?,
+                profile_id: row.get(9).ok(),
+                profile_label: row.get(10).ok(),
+                browser_name: row.get(11).ok(),
+            });
+        }
+
+        let mut next_cursor = None;
+        if events.len() > limit {
+            events.truncate(limit);
+            if let Some(last) = events.last() {
+                next_cursor = Some(last.timestamp.clone());
+            }
+        }
+
+        Ok((events, next_cursor))
+    }
+
+    pub fn get_top_sites_summary(
+        &self,
+        date: Option<&str>,
+        profile_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<TopSiteEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let limit = limit.clamp(1, 50);
+
+        let mut sql = String::from(
+            "SELECT COALESCE(context_tag, 'other') AS domain, \
+                    icon_url, \
+                    COUNT(*) AS visit_count \
+             FROM sub_session_events \
+             WHERE primary_uri IS NOT NULL AND primary_uri != ''"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(d) = date {
+            if !d.is_empty() {
+                sql.push_str(" AND datetime(timestamp, 'localtime') >= datetime(? || ' 00:00:00')");
+                params.push(Box::new(d.to_string()));
+                sql.push_str(" AND datetime(timestamp, 'localtime') <= datetime(? || ' 23:59:59', '+10 minutes')");
+                params.push(Box::new(d.to_string()));
+            }
+        }
+
+        if let Some(pid) = profile_id {
+            if !pid.is_empty() {
+                sql.push_str(" AND profile_id = ?");
+                params.push(Box::new(pid.to_string()));
+            }
+        }
+
+        sql.push_str(" GROUP BY domain ORDER BY visit_count DESC LIMIT ?");
+        params.push(Box::new(limit as i64));
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(param_refs.as_slice())?;
+
+        let mut entries = Vec::new();
+        while let Some(row) = rows.next()? {
+            let domain: String = row.get(0)?;
+            let icon_url: Option<String> = row.get(1)?;
+            let count: i64 = row.get(2)?;
+            let total_seconds = count * 60;
+            entries.push(TopSiteEntry {
+                domain,
+                icon_url,
+                tag: None,
+                total_seconds,
+                visit_count: count,
+            });
+        }
+
+        Ok(entries)
+    }
+
+    pub fn get_active_profiles_for_day(&self, date: Option<&str>) -> Result<Vec<(String, String, String)>> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT DISTINCT COALESCE(profile_id, 'default'), \
+                             COALESCE(profile_label, 'Default Profile'), \
+                             COALESCE(browser_name, parent_app_name, 'Browser') \
+             FROM sub_session_events \
+             WHERE profile_id IS NOT NULL"
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(d) = date {
+            if !d.is_empty() {
+                sql.push_str(" AND datetime(timestamp, 'localtime') >= datetime(? || ' 00:00:00')");
+                params.push(Box::new(d.to_string()));
+            }
+        }
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let mut rows = stmt.query(param_refs.as_slice())?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            out.push((row.get(0)?, row.get(1)?, row.get(2)?));
+        }
+        Ok(out)
     }
 
     pub fn get_distraction_rules(&self) -> Result<Vec<String>> {
@@ -3127,6 +3378,9 @@ mod tests {
             context_tag: Some("chase.com".to_string()),
             metadata: None,
             timestamp: "2026-11-09T10:01:00Z".to_string(),
+            profile_id: None,
+            profile_label: None,
+            browser_name: None,
         };
         db.insert_sub_session_event(&sub1).unwrap();
 
@@ -3179,6 +3433,91 @@ mod tests {
         assert!(db.is_domain_excluded("paypal.com"));
         // Verify paypal.com with include_subdomains = false doesn't match subdomains
         assert!(!db.is_domain_excluded("sandbox.paypal.com"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_sub_session_events_profile_isolation_and_cursor() {
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_profile_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("test.db");
+
+        let key_store = MockKeyStore::new();
+        let db = DbState::init_or_migrate(&db_path, &key_store).unwrap();
+
+        // 1. Insert 3 events for Work profile and 2 for Personal profile
+        for i in 1..=3 {
+            db.insert_sub_session_event(&SubSessionEvent {
+                id: None,
+                session_type: "Browser".to_string(),
+                parent_app_name: Some("Google Chrome".to_string()),
+                title: format!("Work Task {}", i),
+                primary_uri: Some(format!("https://work.internal/task/{}", i)),
+                icon_url: None,
+                context_tag: Some("work.internal".to_string()),
+                metadata: None,
+                timestamp: format!("2026-11-10T10:0{}:00Z", i),
+                profile_id: Some("prof_work".to_string()),
+                profile_label: Some("Work".to_string()),
+                browser_name: Some("Chrome".to_string()),
+            }).unwrap();
+        }
+
+        for i in 1..=2 {
+            db.insert_sub_session_event(&SubSessionEvent {
+                id: None,
+                session_type: "Browser".to_string(),
+                parent_app_name: Some("Brave".to_string()),
+                title: format!("Personal Video {}", i),
+                primary_uri: Some(format!("https://youtube.com/watch?v={}", i)),
+                icon_url: None,
+                context_tag: Some("youtube.com".to_string()),
+                metadata: None,
+                timestamp: format!("2026-11-10T11:0{}:00Z", i),
+                profile_id: Some("prof_personal".to_string()),
+                profile_label: Some("Personal".to_string()),
+                browser_name: Some("Brave".to_string()),
+            }).unwrap();
+        }
+
+        // Test 1: Query Work profile only
+        let (work_events, _) = db.get_sub_session_events_cursor(None, Some("prof_work"), None, 10).unwrap();
+        assert_eq!(work_events.len(), 3);
+        assert!(work_events.iter().all(|e| e.profile_id.as_deref() == Some("prof_work")));
+
+        // Test 2: Query Personal profile only
+        let (pers_events, _) = db.get_sub_session_events_cursor(None, Some("prof_personal"), None, 10).unwrap();
+        assert_eq!(pers_events.len(), 2);
+        assert!(pers_events.iter().all(|e| e.profile_id.as_deref() == Some("prof_personal")));
+
+        // Test 3: Query All Profiles (profile_id = None)
+        let (all_events, _) = db.get_sub_session_events_cursor(None, None, None, 10).unwrap();
+        assert_eq!(all_events.len(), 5);
+
+        // Test 4: Keyset pagination with cursor
+        let (page1, cursor1) = db.get_sub_session_events_cursor(None, None, None, 2).unwrap();
+        assert_eq!(page1.len(), 2);
+        assert!(cursor1.is_some());
+
+        let (page2, cursor2) = db.get_sub_session_events_cursor(None, None, cursor1.as_deref(), 2).unwrap();
+        assert_eq!(page2.len(), 2);
+        assert!(cursor2.is_some());
+        // Verify no overlap between page 1 and page 2
+        assert_ne!(page1[0].id, page2[0].id);
+        assert_ne!(page1[1].id, page2[1].id);
+
+        // Test 5: Top sites summary
+        let top_sites = db.get_top_sites_summary(None, Some("prof_work"), 5).unwrap();
+        assert_eq!(top_sites.len(), 1);
+        assert_eq!(top_sites[0].domain, "work.internal");
+        assert_eq!(top_sites[0].visit_count, 3);
+
+        // Test 6: Scoped deletion
+        let count = db.delete_sub_session_event_scoped(work_events[0].id.unwrap(), Some("prof_work")).unwrap();
+        assert_eq!(count, 1);
+        let (work_remaining, _) = db.get_sub_session_events_cursor(None, Some("prof_work"), None, 10).unwrap();
+        assert_eq!(work_remaining.len(), 2);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

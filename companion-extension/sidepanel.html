@@ -102,6 +102,23 @@
       </div>
     </section>
 
+    <!-- Profile & Scope Filter Bar -->
+    <section class="filter-section scope-filter-section">
+      <div class="scope-row">
+        <span class="section-title">PROFILE SCOPE</span>
+        <div class="scope-chips">
+          <button id="scope-profile-btn" class="scope-chip active" data-scope="profile">
+            <span class="scope-icon">📍</span>
+            <span id="scope-profile-label">Current Profile</span>
+          </button>
+          <button id="scope-all-btn" class="scope-chip" data-scope="all">
+            <span class="scope-icon">🌐</span>
+            <span>All Profiles</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
     <!-- Category Filter Chips (Don't Make Me Think: 1-click filter) -->
     <section class="filter-section">
       <span class="section-title">FILTER BY TOPIC</span>
@@ -143,6 +160,11 @@
         <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear search" aria-label="Clear search">✕</button>
       </div>
 
+      <!-- Floating Live Tab Pill (Zero layout shift on new visits) -->
+      <button id="live-tab-pill" class="live-tab-pill hidden" title="Scroll to newest activity">
+        <span>↑ New tab activity available</span>
+      </button>
+
       <div id="sessions-stream" class="sessions-stream">
         <div class="empty-state warm-empty-state">
           <div class="empty-emoji">✨</div>
@@ -150,6 +172,12 @@
           <p class="empty-text">Browse normally—your focus rhythm, top sites, and mindful page summaries will automatically reflect here 100% on-device.</p>
         </div>
       </div>
+
+      <!-- Keyset Pagination Sentinel & Soft-Cap Load More -->
+      <div id="stream-sentinel" class="stream-sentinel"></div>
+      <button id="load-more-btn" class="btn-load-more hidden">
+        <span id="load-more-text">↓ Load earlier activity</span>
+      </button>
     </section>
 
     <!-- Desktop Bridge Card (Krug: obvious next step, zero pressure) -->
