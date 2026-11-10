@@ -20,10 +20,8 @@ struct PullProgress {
 
 impl OllamaProvider {
     fn get_config(&self, purpose: ModelPurpose) -> Result<(String, String), InferenceError> {
-        let mut ai_url = self.db.get_setting("ollama_url").unwrap_or_default();
-        if ai_url == "false" || ai_url.is_empty() {
-            ai_url = "http://localhost:11434".to_string();
-        }
+        let ai_url = self.db.get_setting("ollama_url").unwrap_or_default();
+        let validated_url = super::validate_local_ai_url(&ai_url)?;
             
         let ai_model = match purpose {
             ModelPurpose::TextGeneration => {
@@ -33,14 +31,20 @@ impl OllamaProvider {
                 }
                 m
             },
-            ModelPurpose::Embedding => "nomic-embed-text".to_string(), // Can be made dynamic later
+            ModelPurpose::Embedding => {
+                let mut m = self.db.get_setting("ollama_embedding_model").unwrap_or_default();
+                if m == "false" || m.is_empty() {
+                    m = "nomic-embed-text".to_string();
+                }
+                m
+            },
         };
 
-        if ai_url == "disabled" || ai_model == "disabled" {
+        if ai_model == "disabled" {
             return Err(InferenceError::Config("Local AI is disabled or configuration is incomplete.".into()));
         }
 
-        Ok((ai_url, ai_model))
+        Ok((validated_url, ai_model))
     }
 }
 

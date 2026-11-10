@@ -24,10 +24,9 @@ pub struct ResumeBuilder {
 /// Calls Ollama's /api/generate with `"format": "json"` to guarantee a valid JSON response.
 /// Reads the configured URL and model directly from the database settings.
 async fn call_ollama_json(db: &DbState, prompt: &str) -> Result<String, String> {
-    let mut url = db.get_setting("ollama_url").unwrap_or_default();
-    if url.is_empty() || url == "false" || url == "disabled" {
-        url = "http://localhost:11434".to_string();
-    }
+    let raw_url = db.get_setting("ollama_url").unwrap_or_default();
+    let url = crate::inference::validate_local_ai_url(&raw_url)
+        .map_err(|e| format!("Security validation error: {e}"))?;
 
     let mut model = db.get_setting("ollama_model").unwrap_or_default();
     if model.is_empty() || model == "false" || model == "disabled" {

@@ -283,7 +283,11 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                 NativeHostMsg::Tab(payload) => {
                     let domain = extract_domain(&payload.url);
                     if is_incognito || db_clone.is_domain_excluded(&domain) {
-                        if let Some(prev) = prev_event.take() {
+                        if is_incognito {
+                            // In incognito mode, wipe previous event immediately without DB write
+                            prev_event = None;
+                            prev_time = None;
+                        } else if let Some(prev) = prev_event.take() {
                             let duration = (now - prev_time.unwrap()).num_seconds();
                             if duration >= min_sub_session_duration {
                                 let _ = db_clone.insert_sub_session_event(&prev);
@@ -349,15 +353,21 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
             }
         }
 
-        // Output the final event without duration check, as connection is closing
-        if let Some(prev) = prev_event.take() {
-            if let Err(e) = db_clone.insert_sub_session_event(&prev) {
-                eprintln!("Failed to insert final sub session event: {:?}", e);
+        // Output the final event without duration check, as connection is closing (unless incognito or excluded)
+        let is_incog_shutdown = db_clone.get_setting("incognito").unwrap_or_else(|_| "false".to_string()) == "true";
+        if !is_incog_shutdown {
+            if let Some(prev) = prev_event.take() {
+                let domain = extract_domain(prev.primary_uri.as_deref().unwrap_or(""));
+                if !db_clone.is_domain_excluded(&domain) {
+                    if let Err(e) = db_clone.insert_sub_session_event(&prev) {
+                        eprintln!("Failed to insert final sub session event: {:?}", e);
+                    }
+                }
             }
         }
     });
 
-    const MAX_NATIVE_MSG_SIZE: usize = 10 * 1024 * 1024; // 10 MB limit
+    const MAX_NATIVE_MSG_SIZE: usize = 1024 * 1024; // 1 MB limit matching browser spec
     let mut length_buffer = [0u8; 4];
     let mut stdin = io::stdin();
 

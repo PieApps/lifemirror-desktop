@@ -24,6 +24,14 @@ pub struct TrayMenuState {
     pub tracking_item: MenuItem<tauri::Wry>,
 }
 
+#[derive(Clone)]
+pub struct IncognitoState(pub Arc<std::sync::atomic::AtomicBool>);
+
+pub const ALLOWED_NATIVE_ORIGINS: &[&str] = &[
+    "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/",
+    "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/",
+];
+
 fn update_tray_icon_by_state(app: &tauri::AppHandle) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         let db = app.state::<Arc<DbState>>();
@@ -90,13 +98,13 @@ fn confirm_archive_and_start_fresh(_db_path: &std::path::Path) -> bool {
 
     #[cfg(target_os = "windows")]
     {
-        let script = format!(
-            r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
-$res = [System.Windows.Forms.MessageBox]::Show("{}", "Confirm Archive & Start Fresh", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question);
-if ($res -eq "Yes") {{ exit 0 }} else {{ exit 1 }}"#,
-            msg.replace('"', "`\"")
-        );
-        if let Ok(s) = std::process::Command::new("powershell").args(["-Command", &script]).status() {
+        let script = r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
+$res = [System.Windows.Forms.MessageBox]::Show($args[0], "Confirm Archive & Start Fresh", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question);
+if ($res -eq "Yes") { exit 0 } else { exit 1 }"#;
+        if let Ok(s) = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script, msg])
+            .status()
+        {
             return s.success();
         }
     }
@@ -153,13 +161,13 @@ fn show_vault_locked_dialog(db_path: &std::path::Path, err: &db::VaultError) -> 
 
     #[cfg(target_os = "windows")]
     {
-        let script = format!(
-            r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
-$res = [System.Windows.Forms.MessageBox]::Show("{}", "LifeMirror Vault Locked", [System.Windows.Forms.MessageBoxButtons]::AbortRetryIgnore, [System.Windows.Forms.MessageBoxIcon]::Warning);
-if ($res -eq "Retry") {{ Write-Output "Retry" }} elseif ($res -eq "Ignore") {{ Write-Output "OpenFolder" }} else {{ Write-Output "Exit" }}"#,
-            msg.replace('"', "`\"")
-        );
-        if let Ok(out) = std::process::Command::new("powershell").args(["-Command", &script]).output() {
+        let script = r#"[System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null;
+$res = [System.Windows.Forms.MessageBox]::Show($args[0], "LifeMirror Vault Locked", [System.Windows.Forms.MessageBoxButtons]::AbortRetryIgnore, [System.Windows.Forms.MessageBoxIcon]::Warning);
+if ($res -eq "Retry") { Write-Output "Retry" } elseif ($res -eq "Ignore") { Write-Output "OpenFolder" } else { Write-Output "Exit" }"#;
+        if let Ok(out) = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script, &msg])
+            .output()
+        {
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if stdout == "Retry" {
                 return VaultLockAction::Retry;
@@ -199,10 +207,7 @@ fn install_native_host_manifest() {
         "description": "LifeMirror Desktop Native Messaging Bridge",
         "path": exe_path.to_string_lossy(),
         "type": "stdio",
-        "allowed_origins": [
-            "chrome-extension://pblffjiaheggbamkjaojabdaemkflhmm/",
-            "chrome-extension://hcpagmeofngagbmahpccoajilpndckab/"
-        ]
+        "allowed_origins": ALLOWED_NATIVE_ORIGINS
     });
 
     let manifest = match serde_json::to_string_pretty(&manifest_value) {
@@ -376,16 +381,19 @@ fn get_db_path() -> PathBuf {
 
 #[tauri::command]
 fn get_activities(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<ActivityLog>, String> {
+    let limit = limit.clamp(1, 1000);
     state.get_activity_logs(limit).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn search_activities(state: State<'_, Arc<DbState>>, query: String, limit: i64) -> Result<Vec<ActivityLog>, String> {
+    let limit = limit.clamp(1, 1000);
     state.search_activities(&query, limit).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn get_journals(state: State<'_, Arc<DbState>>, limit: i64) -> Result<Vec<JournalEntry>, String> {
+    let limit = limit.clamp(1, 1000);
     state.get_journal_entries(limit).map_err(|e| e.to_string())
 }
 
@@ -410,6 +418,9 @@ fn add_journal(
     notes: String,
     activity_id: Option<i64>,
 ) -> Result<i64, String> {
+    if notes.len() > 65536 {
+        return Err("Journal note exceeds maximum length (64KB)".to_string());
+    }
     let timestamp = chrono::Utc::now().to_rfc3339();
     if let Some(id) = activity_id {
         let _ = state.update_activity_notes(id, &notes);
@@ -423,15 +434,14 @@ fn add_journal(
 fn toggle_incognito(
     app: tauri::AppHandle,
     state: State<'_, Arc<DbState>>,
+    incognito: State<'_, IncognitoState>,
     tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
     tray_state: State<'_, TrayMenuState>,
 ) -> Result<bool, String> {
-    let current = state
-        .get_setting("incognito")
-        .unwrap_or_else(|_| "false".to_string())
-        == "true";
+    let current = incognito.0.load(std::sync::atomic::Ordering::SeqCst);
     let new_incognito = !current;
     
+    incognito.0.store(new_incognito, std::sync::atomic::Ordering::SeqCst);
     state
         .set_setting("incognito", if new_incognito { "true" } else { "false" })
         .map_err(|e| e.to_string())?;
@@ -460,12 +470,8 @@ fn toggle_incognito(
 }
 
 #[tauri::command]
-fn is_incognito(state: State<'_, Arc<DbState>>) -> Result<bool, String> {
-    let current = state
-        .get_setting("incognito")
-        .unwrap_or_else(|_| "false".to_string())
-        == "true";
-    Ok(current)
+fn is_incognito(incognito: State<'_, IncognitoState>) -> Result<bool, String> {
+    Ok(incognito.0.load(std::sync::atomic::Ordering::SeqCst))
 }
 
 #[tauri::command]
@@ -479,6 +485,16 @@ fn set_db_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    if key == "ollama_url" {
+        crate::inference::validate_local_ai_url(&value)
+            .map_err(|e| format!("Invalid AI URL: {e}"))?;
+    }
+    if key.len() > 128 {
+        return Err("Setting key exceeds maximum length (128 characters)".to_string());
+    }
+    if value.len() > 65536 {
+        return Err("Setting value exceeds maximum length (64KB)".to_string());
+    }
     state.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
@@ -486,6 +502,7 @@ fn set_db_setting(
 fn toggle_tracking(
     app: tauri::AppHandle,
     state: State<'_, Arc<DbState>>,
+    incognito: State<'_, IncognitoState>,
     tracking_active: State<'_, Arc<std::sync::atomic::AtomicBool>>,
     tray_state: State<'_, TrayMenuState>,
 ) -> Result<bool, String> {
@@ -504,6 +521,7 @@ fn toggle_tracking(
 
     // RADIO BEHAVIOR: If Tracking Active is turned ON, Incognito Mode must turn OFF
     if new_tracking {
+        incognito.0.store(false, std::sync::atomic::Ordering::SeqCst);
         state
             .set_setting("incognito", "false")
             .map_err(|e| e.to_string())?;
@@ -597,6 +615,7 @@ async fn search_memory_nodes(
     query: String,
     limit: i64,
 ) -> Result<Vec<FrontendMemoryNode>, String> {
+    let limit = limit.clamp(1, 100);
     use crate::inference::get_inference_provider;
     use memory_engine::retriever::Retriever;
     let provider = get_inference_provider(state.inner().clone());
@@ -660,7 +679,11 @@ fn get_distraction_rules_list(db: State<'_, Arc<DbState>>) -> Result<Vec<db::Dis
 
 #[tauri::command]
 fn add_distraction_rule(db: State<'_, Arc<DbState>>, rule_type: String, value: String) -> Result<(), String> {
-    db.add_distraction_rule(&rule_type, &value).map_err(|e| e.to_string())
+    let val_trimmed = value.trim();
+    if val_trimmed.is_empty() || val_trimmed.len() > 255 {
+        return Err("Distraction rule value must be between 1 and 255 characters".to_string());
+    }
+    db.add_distraction_rule(&rule_type, val_trimmed).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -766,6 +789,12 @@ fn add_chat_message(
     role: String,
     content: String,
 ) -> Result<i64, String> {
+    if role != "user" && role != "assistant" && role != "system" {
+        return Err("Invalid chat message role".to_string());
+    }
+    if content.len() > 65536 {
+        return Err("Chat message exceeds 64KB limit".to_string());
+    }
     state
         .insert_chat_message(&date, &role, &content)
         .map_err(|e| e.to_string())
@@ -921,6 +950,8 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
 
                 // If resuming tracking, turn off incognito mode
                 if new_tracking {
+                    let incognito = app.state::<IncognitoState>();
+                    incognito.0.store(false, std::sync::atomic::Ordering::SeqCst);
                     let _ = db.set_setting("incognito", "false");
                     let _ = app.emit("incognito-changed", false);
                 }
@@ -976,7 +1007,16 @@ pub fn run() {
     let db_path = get_db_path();
 
     // Route 1: Headless browser native messaging host execution mode
-    if args.iter().any(|arg| arg.starts_with("chrome-extension://") || arg == "--native-host") {
+    if let Some(ext_arg) = args.iter().find(|arg| arg.starts_with("chrome-extension://")) {
+        if !ALLOWED_NATIVE_ORIGINS.contains(&ext_arg.as_str()) {
+            eprintln!("[FATAL] Unauthorized native messaging extension origin: {ext_arg}");
+            return;
+        }
+        if let Err(e) = native_msg::run_native_host_loop(db_path) {
+            eprintln!("Native messaging loop exited with error: {:?}", e);
+        }
+        return;
+    } else if args.iter().any(|arg| arg == "--native-host") {
         if let Err(e) = native_msg::run_native_host_loop(db_path) {
             eprintln!("Native messaging loop exited with error: {:?}", e);
         }
@@ -1103,6 +1143,7 @@ pub fn run() {
             == "true"
     };
     
+    let incognito_state = IncognitoState(Arc::new(std::sync::atomic::AtomicBool::new(is_incognito_init)));
     let tracking_active = Arc::new(std::sync::atomic::AtomicBool::new(initial_tracking));
     let active_activity = Arc::new(std::sync::Mutex::new(None));
 
@@ -1115,6 +1156,7 @@ pub fn run() {
     crate::memory_engine::queue::MemoryQueue::new(db_arc.clone()).start();
 
     let db_arc_setup = db_arc.clone();
+    let incognito_state_tracker = incognito_state.clone();
 
     // Build and run the Tauri app
     tauri::Builder::default()
@@ -1127,6 +1169,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(db_arc.clone())
+        .manage(incognito_state.clone())
         .manage(tracking_active.clone())
         .manage(active_activity.clone())
         .setup(move |app| {
@@ -1157,6 +1200,7 @@ pub fn run() {
             // Spawn OS window focus tracker background loop
             tracker::start_window_tracker(
                 db_arc.clone(),
+                incognito_state_tracker.0.clone(),
                 tracking_active.clone(),
                 active_activity.clone(),
                 app_handle,

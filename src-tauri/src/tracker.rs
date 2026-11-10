@@ -230,6 +230,15 @@ fn resolve_current_activity(
             return (app, "Browser".to_string(), None, None, "Browser".to_string());
         }
 
+        if domain.is_empty() {
+            let read_guard = db.excluded_cache.read().unwrap();
+            for (rule, _) in &read_guard.1 {
+                if !rule.is_empty() && title.to_lowercase().contains(&rule.to_lowercase()) {
+                    return (app, "Browser".to_string(), None, None, "Browser".to_string());
+                }
+            }
+        }
+
         let title_lower = title.to_lowercase();
         let active_title_lower = active_title.to_lowercase();
         let domain_lower = domain.to_lowercase();
@@ -274,6 +283,7 @@ fn resolve_current_activity(
 
 pub fn start_window_tracker(
     db: Arc<DbState>,
+    incognito: Arc<std::sync::atomic::AtomicBool>,
     tracking_active: Arc<std::sync::atomic::AtomicBool>,
     active_activity: Arc<Mutex<Option<ActivityLog>>>,
     app_handle: tauri::AppHandle,
@@ -349,6 +359,34 @@ pub fn start_window_tracker(
                 .parse::<i64>()
                 .unwrap_or(60);
 
+            // Check if incognito mode is active; if so, clear active trace and strictly skip DB writes
+            let is_incognito = incognito.load(std::sync::atomic::Ordering::SeqCst);
+            if is_incognito {
+                parent_duration = 0;
+                parent_app.clear();
+                parent_title.clear();
+                parent_url = None;
+                parent_icon_url = None;
+                temp_duration = 0;
+                temp_app.clear();
+                temp_title.clear();
+                temp_url = None;
+                temp_icon_url = None;
+                editor_sub_duration = 0;
+                editor_sub_title.clear();
+                current_distraction_duration = 0;
+                current_distraction_app.clear();
+                current_distraction_title.clear();
+                current_distraction_id = None;
+
+                // Clear the shared active activity state immediately (incognito security control)
+                {
+                    let mut active_lock = active_activity.lock().unwrap();
+                    *active_lock = None;
+                }
+                continue;
+            }
+
             // Check if background tracking was toggled off (Atomic Cancellation)
             if !tracking_active.load(std::sync::atomic::Ordering::SeqCst) {
                 if parent_duration > 0 {
@@ -389,58 +427,6 @@ pub fn start_window_tracker(
                 temp_icon_url = None;
 
                 // Clear the shared active activity state
-                {
-                    let mut active_lock = active_activity.lock().unwrap();
-                    *active_lock = None;
-                }
-                continue;
-            }
-
-            // Check if incognito mode is active; if so, clear active trace and skip DB writes
-            let is_incognito = db
-                .get_setting("incognito")
-                .unwrap_or_else(|_| "false".to_string())
-                == "true";
-            if is_incognito {
-                if parent_duration > 0 {
-                    // Save active parent session if it was significant before incognito toggle
-                    if parent_duration >= min_log_duration && !parent_app.is_empty() {
-                        let log = ActivityLog {
-                            id: None,
-                            app_name: parent_app.clone(),
-                            window_title: parent_title.clone(),
-                            start_time: parent_start_time.to_rfc3339(),
-                            duration: parent_duration,
-                            source: parent_source.clone(),
-                            url: parent_url.clone(),
-                            icon_url: parent_icon_url.clone(),
-                            domain_tag: if parent_source == "Browser" {
-                                parent_url.as_deref().map(extract_domain).filter(|d| !d.is_empty())
-                            } else {
-                                None
-                            },
-                            notes: None,
-                        };
-                        let _ = db.insert_activity_log(&log);
-                    }
-                    if parent_source == "Editor" {
-                        flush_editor_event(editor_sub_duration, &editor_sub_title, editor_sub_start_time, &parent_app, parent_icon_url.clone(), min_sub_session_duration);
-                        editor_sub_duration = 0;
-                        editor_sub_title.clear();
-                    }
-                    parent_duration = 0;
-                    parent_app.clear();
-                    parent_title.clear();
-                    parent_url = None;
-                    parent_icon_url = None;
-                }
-                temp_duration = 0;
-                temp_app.clear();
-                temp_title.clear();
-                temp_url = None;
-                temp_icon_url = None;
-
-                // Clear the shared active activity state immediately (incognito security control)
                 {
                     let mut active_lock = active_activity.lock().unwrap();
                     *active_lock = None;

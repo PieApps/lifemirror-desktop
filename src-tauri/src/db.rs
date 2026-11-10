@@ -378,11 +378,10 @@ impl Drop for VaultLock {
 }
 
 fn generate_secure_key() -> String {
-    format!(
-        "{}{}",
-        uuid::Uuid::new_v4().simple(),
-        uuid::Uuid::new_v4().simple()
-    )
+    use rand::RngCore;
+    let mut key_bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut key_bytes);
+    key_bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 fn write_protected_key_file(path: &Path, key: &str) -> std::io::Result<()> {
@@ -725,7 +724,13 @@ impl DbState {
             }
 
             let _ = key_store.set_key(&new_key);
-            Self::open_and_verify(db_path, &new_key)?
+            let conn = Self::open_and_verify(db_path, &new_key)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(db_path, std::fs::Permissions::from_mode(0o600));
+            }
+            conn
         } else {
             let candidates = collect_candidate_keys(db_dir, key_store);
             let winning_key = probe_candidate_keys(db_path, &candidates)?;
@@ -2846,7 +2851,7 @@ impl DbState {
 
     pub fn get_recent_active_project(&self) -> Result<Option<Project>> {
         let conn = self.conn.lock().unwrap();
-        println!("[DbState] get_recent_active_project query starting");
+        eprintln!("[DbState] get_recent_active_project query starting");
         let mut stmt = conn.prepare(
             "SELECT p.id, p.name, p.description, p.created_at 
              FROM projects p 
@@ -2867,10 +2872,10 @@ impl DbState {
 
         if let Some(res) = iter.next() {
             let p = res?;
-            println!("[DbState] get_recent_active_project returning project: {:?}", p);
+            eprintln!("[DbState] get_recent_active_project returning project: {:?}", p);
             Ok(Some(p))
         } else {
-            println!("[DbState] get_recent_active_project returned None");
+            eprintln!("[DbState] get_recent_active_project returned None");
             Ok(None)
         }
     }

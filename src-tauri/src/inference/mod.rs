@@ -49,3 +49,78 @@ pub fn get_inference_provider(db: Arc<DbState>) -> Box<dyn InferenceProvider> {
     // to dynamically return a LlamaCppProvider or other implementations.
     Box::new(OllamaProvider { db })
 }
+
+/// Validates that an AI URL strictly targets a local loopback interface (localhost, 127.0.0.1, ::1).
+/// This prevents SSRF and WAN data exfiltration of sensitive desktop productivity logs.
+pub fn validate_local_ai_url(raw_url: &str) -> Result<String, InferenceError> {
+    let mut url_str = raw_url.trim().to_string();
+    if url_str.is_empty() || url_str == "false" {
+        url_str = "http://localhost:11434".to_string();
+    }
+    if url_str == "disabled" {
+        return Err(InferenceError::Config("Local AI is disabled in settings.".into()));
+    }
+
+    let parsed = url::Url::parse(&url_str)
+        .map_err(|e| InferenceError::Config(format!("Invalid AI URL format: {e}")))?;
+
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err(InferenceError::Config(format!(
+            "Unsupported AI URL scheme '{scheme}'. Only http/https is permitted for local AI."
+        )));
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(InferenceError::Config(
+            "AI URL must not contain embedded user credentials.".into(),
+        ));
+    }
+
+    let host = parsed.host().ok_or_else(|| {
+        InferenceError::Config("Missing host in AI URL.".into())
+    })?;
+
+    let is_local = match host {
+        url::Host::Domain(d) => d.eq_ignore_ascii_case("localhost") || d.ends_with(".localhost"),
+        url::Host::Ipv4(ip) => ip.is_loopback(),
+        url::Host::Ipv6(ip) => ip.is_loopback(),
+    };
+
+    if !is_local {
+        return Err(InferenceError::Config(format!(
+            "Security violation: AI URL host '{host}' is not a local loopback address. \
+             To protect user privacy, LifeMirror Desktop restricts AI inference to local loopback endpoints (localhost / 127.0.0.1 / ::1)."
+        )));
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(11434);
+    Ok(format!("{scheme}://{host}:{port}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_local_ai_url() {
+        // Valid local URLs
+        assert_eq!(validate_local_ai_url("").unwrap(), "http://localhost:11434");
+        assert_eq!(validate_local_ai_url("false").unwrap(), "http://localhost:11434");
+        assert_eq!(validate_local_ai_url("http://localhost:11434").unwrap(), "http://localhost:11434");
+        assert_eq!(validate_local_ai_url("http://127.0.0.1:11434").unwrap(), "http://127.0.0.1:11434");
+        assert_eq!(validate_local_ai_url("http://[::1]:11434").unwrap(), "http://[::1]:11434");
+        assert_eq!(validate_local_ai_url("http://127.0.0.2:8000").unwrap(), "http://127.0.0.2:8000");
+
+        // Disabled
+        assert!(validate_local_ai_url("disabled").is_err());
+
+        // Dangerous / external WAN URLs must be rejected
+        assert!(validate_local_ai_url("http://evil-server.com:11434").is_err());
+        assert!(validate_local_ai_url("https://api.openai.com").is_err());
+        assert!(validate_local_ai_url("http://169.254.169.254/latest/meta-data").is_err());
+        assert!(validate_local_ai_url("http://192.168.1.50:11434").is_err());
+        assert!(validate_local_ai_url("ftp://localhost:11434").is_err());
+        assert!(validate_local_ai_url("http://admin:secret@localhost:11434").is_err());
+    }
+}
