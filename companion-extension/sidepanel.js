@@ -702,19 +702,24 @@ function generateStandupSummary(analytics) {
 }
 
 if (copySummaryBtn) {
+  let isCopying = false;
   copySummaryBtn.addEventListener("click", async () => {
+    if (isCopying) return;
     const summary = generateStandupSummary(currentAnalytics);
     try {
+      isCopying = true;
       await navigator.clipboard.writeText(summary);
-      const originalHtml = copySummaryBtn.innerHTML;
-      copySummaryBtn.innerHTML = `<span>✔ Copied!</span>`;
+      const textEl = copySummaryBtn.querySelector("#copy-summary-text");
+      if (textEl) textEl.textContent = "✔ Copied!";
       copySummaryBtn.classList.add("copied");
       setTimeout(() => {
-        copySummaryBtn.innerHTML = originalHtml;
+        if (textEl) textEl.textContent = "Copy Standup Summary";
         copySummaryBtn.classList.remove("copied");
+        isCopying = false;
       }, 2000);
     } catch (err) {
       console.warn("[LifeMirror] Copy summary error:", err);
+      isCopying = false;
     }
   });
 }
@@ -1378,6 +1383,7 @@ async function updateActiveTabPreview() {
     if (tab.incognito) {
       activeTabTitle.textContent = "Incognito Tab (Private)";
       activeTabDomain.textContent = "Tracking Paused";
+      if (activeTabLink) activeTabLink.removeAttribute("href");
       if (activeTabFavicon) activeTabFavicon.src = DEFAULT_FAVICON;
       if (activeTabDesc) activeTabDesc.classList.add("hidden");
       if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");
@@ -1457,6 +1463,7 @@ async function updateActiveTabPreview() {
     } else {
       activeTabTitle.textContent = tab.title || "Internal / System Page";
       activeTabDomain.textContent = urlStr.split("/")[0] || "Excluded Protocol";
+      if (activeTabLink) activeTabLink.removeAttribute("href");
       if (activeTabFavicon) activeTabFavicon.src = DEFAULT_FAVICON;
       if (activeTabDesc) activeTabDesc.classList.add("hidden");
       if (tabExclusionWrap) tabExclusionWrap.classList.add("hidden");

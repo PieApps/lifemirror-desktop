@@ -96,6 +96,7 @@ async function updateActiveTabPreview() {
     if (tab.incognito) {
       activeTabTitle.textContent = "Incognito Tab (Private)";
       activeTabDomain.textContent = "Tracking Paused";
+      if (activeTabLink) activeTabLink.removeAttribute("href");
       activeTabFavicon.src = DEFAULT_FAVICON;
       currentActiveDomain = "";
       if (activeTabDesc) activeTabDesc.classList.add("hidden");
@@ -168,6 +169,7 @@ async function updateActiveTabPreview() {
     } else {
       activeTabTitle.textContent = tab.title || "Internal / System Page";
       activeTabDomain.textContent = urlStr.split("/")[0] || "Excluded Protocol";
+      if (activeTabLink) activeTabLink.removeAttribute("href");
       activeTabFavicon.src = DEFAULT_FAVICON;
       currentActiveDomain = "";
       if (activeTabDesc) activeTabDesc.classList.add("hidden");

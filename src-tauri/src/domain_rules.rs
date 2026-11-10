@@ -124,6 +124,8 @@ pub fn sanitize_url(raw_url: &str) -> String {
     if let Ok(mut parsed) = Url::parse(raw_url) {
         parsed.set_query(None);
         parsed.set_fragment(None);
+        let _ = parsed.set_username("");
+        let _ = parsed.set_password(None);
         parsed.to_string()
     } else {
         // Fallback: strip after '?' and '#' manually if not a valid full URL
@@ -163,6 +165,18 @@ pub fn sanitize_page_title(host: &str, raw_title: &str) -> String {
     }
     if h == "yandex.com" || h == "yandex.ru" {
         return "Yandex Search".to_string();
+    }
+    if h == "search.brave.com" || h == "brave.com" {
+        return "Brave Search".to_string();
+    }
+    if h == "startpage.com" || h.ends_with(".startpage.com") {
+        return "Startpage Search".to_string();
+    }
+    if h == "kagi.com" {
+        return "Kagi Search".to_string();
+    }
+    if h == "qwant.com" || h.ends_with(".qwant.com") {
+        return "Qwant Search".to_string();
     }
 
     raw_title.to_string()

@@ -15,10 +15,40 @@ let isNativeConnected = false;
 let lastReportedPayload = null;
 let lastVaultError = null;
 
-// In-memory active session state
+// In-memory active session state (with session storage backing for MV3 service worker lifecycle)
 let currentSession = null;
 let isUserIdle = false;
 const metaCache = new Map(); // url -> description
+
+async function persistActiveSession(session) {
+  try {
+    if (chrome.storage?.session) {
+      if (session) {
+        await chrome.storage.session.set({ active_session: session });
+      } else {
+        await chrome.storage.session.remove("active_session");
+      }
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Failed to persist active session to session storage:", err);
+  }
+}
+
+async function restoreActiveSession() {
+  try {
+    if (chrome.storage?.session) {
+      const res = await chrome.storage.session.get("active_session");
+      if (res && res.active_session && !currentSession) {
+        currentSession = res.active_session;
+      }
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Failed to restore active session from session storage:", err);
+  }
+}
+
+// Restore active session if service worker was restarted while user was reading a page
+restoreActiveSession();
 
 // In-memory cache of domain exclusion rules
 let excludedEntries = []; // array of { domain, include_subdomains, updated_at, removed }
@@ -196,6 +226,7 @@ async function purgeLocalDomainData(domain, includeSubdomains = true) {
 
     if (currentSession && LifeMirrorDomainRules.hostMatches(currentSession.domain, domain, includeSubdomains)) {
       currentSession = null;
+      await persistActiveSession(null);
     }
 
     return purgedSessionsCount;
@@ -327,12 +358,7 @@ function extractHostname(urlStr) {
 }
 
 function stripQueryParams(urlStr) {
-  try {
-    const u = new URL(urlStr);
-    return `${u.protocol}//${u.host}${u.pathname}`;
-  } catch {
-    return urlStr;
-  }
+  return LifeMirrorDomainRules.sanitizeUrl(urlStr);
 }
 
 /**
@@ -597,12 +623,17 @@ async function recordCompletedSession(session, durationSeconds) {
 
 // ── Tab Activity Handler ───────────────────────────────────────────────────────
 async function reportTabActivity(tabId, changeInfo, tab) {
+  if (!currentSession) {
+    await restoreActiveSession();
+  }
+
   // If tab is invalid or incognito, immediately pause & commit any active normal session and exit
   if (!tab || tab.incognito) {
     if (currentSession && !isUserIdle) {
       const dur = Math.round((Date.now() - currentSession.startTime) / 1000);
-      recordCompletedSession(currentSession, dur);
+      await recordCompletedSession(currentSession, dur);
       currentSession = null;
+      await persistActiveSession(null);
     }
     return;
   }
@@ -615,8 +646,9 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     // End active session on excluded/internal pages
     if (currentSession && !isUserIdle) {
       const dur = Math.round((Date.now() - currentSession.startTime) / 1000);
-      recordCompletedSession(currentSession, dur);
+      await recordCompletedSession(currentSession, dur);
       currentSession = null;
+      await persistActiveSession(null);
     }
     return;
   }
@@ -626,20 +658,27 @@ async function reportTabActivity(tabId, changeInfo, tab) {
   // Check Domain Exclusion: Immediately discard in-flight session and halt tracking
   if (isDomainExcluded(hostname)) {
     currentSession = null;
+    await persistActiveSession(null);
     return;
   }
 
   const cleanUrl = LifeMirrorDomainRules.sanitizeUrl(url);
-  const rawTitle = tab.title || hostname || "Web Page";
+  const rawTitle = (tab.title || hostname || "Web Page")
+    .replace(/[\x00-\x1F\x7F\u202A-\u202E\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 150);
   const sanitizedTitle = LifeMirrorDomainRules.sanitizePageTitle(hostname, rawTitle);
   const category = await classifyTab(url, sanitizedTitle, hostname);
   const description = metaCache.get(url) || metaCache.get(cleanUrl) || null;
 
   // 1. Guard against duplicate sessions on the SAME tab and SAME URL
   if (currentSession && currentSession.tabId === tabId && currentSession.url === cleanUrl) {
+    let updated = false;
     // Update title, favicon, or description if they became available without resetting duration
-    if (tab.title && tab.title !== hostname) {
+    if (tab.title && tab.title !== hostname && currentSession.title !== sanitizedTitle) {
       currentSession.title = sanitizedTitle;
+      updated = true;
       // If current tag was "Other", re-evaluate now that the real page title has loaded
       if (currentSession.tag === "🌐 Other") {
         const upgradedCategory = await classifyTab(url, sanitizedTitle, hostname);
@@ -648,11 +687,16 @@ async function reportTabActivity(tabId, changeInfo, tab) {
         }
       }
     }
-    if (tab.favIconUrl) {
+    if (tab.favIconUrl && currentSession.favIconUrl !== tab.favIconUrl) {
       currentSession.favIconUrl = tab.favIconUrl;
+      updated = true;
     }
     if (description && !currentSession.description) {
       currentSession.description = description;
+      updated = true;
+    }
+    if (updated) {
+      await persistActiveSession(currentSession);
     }
     return;
   }
@@ -660,7 +704,7 @@ async function reportTabActivity(tabId, changeInfo, tab) {
   // 2. Commit previous session duration if switching to a DIFFERENT tab/page
   if (currentSession && !isUserIdle) {
     const elapsed = Math.round((Date.now() - currentSession.startTime) / 1000);
-    recordCompletedSession(currentSession, elapsed);
+    await recordCompletedSession(currentSession, elapsed);
   }
 
   // 3. Start new session
@@ -677,6 +721,7 @@ async function reportTabActivity(tabId, changeInfo, tab) {
     browserName,
     startTime: Date.now()
   };
+  await persistActiveSession(currentSession);
 
   // 3. Forward enriched payload to Desktop App if connected
   const nativePort = getNativePort();
@@ -706,28 +751,32 @@ async function reportTabActivity(tabId, changeInfo, tab) {
 
 // ── Idle Detection (>60s) ──────────────────────────────────────────────────────
 chrome.idle.setDetectionInterval(IDLE_THRESHOLD_SECONDS);
-chrome.idle.onStateChanged.addListener((state) => {
+chrome.idle.onStateChanged.addListener(async (state) => {
   if (state === "idle" || state === "locked") {
+    if (!currentSession) await restoreActiveSession();
     if (currentSession && !isUserIdle) {
       const elapsed = Math.round((Date.now() - currentSession.startTime) / 1000);
-      recordCompletedSession(currentSession, elapsed);
+      await recordCompletedSession(currentSession, elapsed);
     }
     isUserIdle = true;
   } else if (state === "active") {
     isUserIdle = false;
+    if (!currentSession) await restoreActiveSession();
     if (currentSession) {
       currentSession.startTime = Date.now();
+      await persistActiveSession(currentSession);
     }
   }
 });
 
 // ── Chrome Event Listeners ────────────────────────────────────────────────────
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  chrome.tabs.get(activeInfo.tabId, (tab) => {
-    if (!chrome.runtime.lastError && tab) {
-      reportTabActivity(activeInfo.tabId, null, tab);
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    if (tab) {
+      await reportTabActivity(activeInfo.tabId, null, tab);
     }
-  });
+  } catch {}
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -736,21 +785,24 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-chrome.windows.onFocusChanged.addListener((windowId) => {
+chrome.windows.onFocusChanged.addListener(async (windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
     // Window lost focus: pause active session
+    if (!currentSession) await restoreActiveSession();
     if (currentSession && !isUserIdle) {
       const dur = Math.round((Date.now() - currentSession.startTime) / 1000);
-      recordCompletedSession(currentSession, dur);
+      await recordCompletedSession(currentSession, dur);
       currentSession = null;
+      await persistActiveSession(null);
     }
     return;
   }
-  chrome.tabs.query({ active: true, windowId }, (tabs) => {
-    if (tabs && tabs[0]) {
-      reportTabActivity(tabs[0].id, null, tabs[0]);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    if (tab) {
+      await reportTabActivity(tab.id, null, tab);
     }
-  });
+  } catch {}
 });
 
 // ── Extension IPC & Side Panel Setup ──────────────────────────────────────────
@@ -773,6 +825,8 @@ if (chrome.action && chrome.action.onClicked) {
 }
 
 chrome.runtime.onStartup?.addListener(() => {
+  pruneOldData();
+  restoreActiveSession();
   try {
     getNativePort();
   } catch {}
@@ -822,24 +876,59 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
   }
 
+  const extensionOrigin = chrome.runtime.getURL("");
+  const isInternalExtension = Boolean(
+    sender.id === chrome.runtime.id &&
+    sender.url &&
+    sender.url.startsWith(extensionOrigin)
+  );
+
+  // Cross-Boundary IPC Isolation: Only internal extension UI pages may trigger administrative/query RPCs
+  if (!isInternalExtension && request.action !== "page_meta") {
+    console.warn("[LifeMirror Security] Rejected unauthorized cross-boundary message:", request.action, "from", sender.url);
+    sendResponse({ error: "Unauthorized" });
+    return false;
+  }
+
   // Receive meta description from content.js
   if (request.action === "page_meta") {
-    if (request.url && request.description && typeof request.description === "string") {
-      // Strip control chars and markdown markers to guard against prompt injection
+    // Must originate from a valid top-level web tab (not an iframe or detached context)
+    if (!sender.tab || !sender.tab.url || sender.frameId !== 0) {
+      return false;
+    }
+
+    const tabUrl = sender.tab.url;
+    if (!tabUrl.startsWith("http://") && !tabUrl.startsWith("https://")) {
+      return false;
+    }
+
+    const cleanTabUrl = LifeMirrorDomainRules.sanitizeUrl(tabUrl);
+    const tabHostname = extractHostname(tabUrl);
+
+    // Reject if domain is excluded
+    if (isDomainExcluded(tabHostname)) {
+      return false;
+    }
+
+    if (request.description && typeof request.description === "string") {
+      // Strip control chars, markdown markers, and directional override characters
       const sanitized = request.description
-        .replace(/[\x00-\x1F\x7F]/g, " ")
+        .replace(/[\x00-\x1F\x7F\u202A-\u202E\u2066-\u2069]/g, " ")
         .replace(/[\[\]{}#*_`]/g, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 200);
-      metaCache.set(request.url, sanitized);
-      metaCache.set(stripQueryParams(request.url), sanitized);
-      if (metaCache.size > MAX_META_CACHE) {
-        const firstKey = metaCache.keys().next().value;
-        metaCache.delete(firstKey);
-      }
-      if (currentSession && currentSession.url === stripQueryParams(request.url)) {
-        currentSession.description = sanitized;
+
+      if (sanitized.length > 0) {
+        metaCache.set(cleanTabUrl, sanitized);
+        if (metaCache.size > MAX_META_CACHE) {
+          const firstKey = metaCache.keys().next().value;
+          metaCache.delete(firstKey);
+        }
+        if (currentSession && currentSession.url === cleanTabUrl) {
+          currentSession.description = sanitized;
+          persistActiveSession(currentSession);
+        }
       }
     }
     return false;
@@ -897,6 +986,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         if (currentSession && currentSession.domain === domain) {
           currentSession.tag = newCategory;
+          await persistActiveSession(currentSession);
         }
 
         sendResponse({ success: true });
@@ -1011,8 +1101,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // User requests clearing local browser data
   if (request.action === "clear_local_data") {
-    chrome.storage.local.clear().then(() => {
+    chrome.storage.local.clear().then(async () => {
       metaCache.clear();
+      currentSession = null;
+      await persistActiveSession(null);
       sendResponse({ success: true });
     });
     return true;
@@ -1085,6 +1177,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } else {
         if (currentSession && LifeMirrorDomainRules.hostMatches(currentSession.domain, cleanDomain, includeSubdomains)) {
           currentSession = null;
+          await persistActiveSession(null);
         }
       }
 

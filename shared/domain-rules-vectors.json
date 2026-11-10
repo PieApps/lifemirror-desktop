@@ -154,6 +154,10 @@
     {
       "raw_url": "http://127.0.0.1:8080/dashboard?auth=bearer#top",
       "expected_url": "http://127.0.0.1:8080/dashboard"
+    },
+    {
+      "raw_url": "https://admin:supersecret@internal.corp:8443/console?token=abc#view",
+      "expected_url": "https://internal.corp:8443/console"
     }
   ],
   "search_engine_vectors": [

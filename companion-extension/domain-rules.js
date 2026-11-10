@@ -114,6 +114,10 @@ function hostMatches(candidateHost, ruleDomain, includeSubdomains = true) {
   while (rule.endsWith(".")) rule = rule.slice(0, -1);
   if (rule.startsWith("www.")) rule = rule.slice(4);
 
+  if (!cand || !rule) {
+    return false;
+  }
+
   if (cand === rule) {
     return true;
   }
@@ -131,7 +135,7 @@ function hostMatches(candidateHost, ruleDomain, includeSubdomains = true) {
 }
 
 /**
- * Strips query parameters and hash fragments from a URL.
+ * Strips query parameters, hash fragments, and embedded authentication credentials from a URL.
  * @param {string} rawUrl 
  * @returns {string}
  */
@@ -141,10 +145,17 @@ function sanitizeUrl(rawUrl) {
     const parsed = new URL(rawUrl);
     parsed.search = "";
     parsed.hash = "";
+    parsed.username = "";
+    parsed.password = "";
     return parsed.toString();
   } catch {
     // Fallback: manual truncation
     let clean = rawUrl;
+    const slashIdx = clean.indexOf("://");
+    const atIdx = clean.indexOf("@");
+    if (slashIdx !== -1 && atIdx !== -1 && atIdx > slashIdx) {
+      clean = clean.slice(0, slashIdx + 3) + clean.slice(atIdx + 1);
+    }
     const qIdx = clean.indexOf("?");
     if (qIdx !== -1) clean = clean.slice(0, qIdx);
     const hIdx = clean.indexOf("#");
@@ -184,6 +195,18 @@ function sanitizePageTitle(host, rawTitle) {
   }
   if (h === "yandex.com" || h === "yandex.ru") {
     return "Yandex Search";
+  }
+  if (h === "search.brave.com" || h === "brave.com") {
+    return "Brave Search";
+  }
+  if (h === "startpage.com" || h.endsWith(".startpage.com")) {
+    return "Startpage Search";
+  }
+  if (h === "kagi.com") {
+    return "Kagi Search";
+  }
+  if (h === "qwant.com" || h.endsWith(".qwant.com")) {
+    return "Qwant Search";
   }
 
   return rawTitle || "";
