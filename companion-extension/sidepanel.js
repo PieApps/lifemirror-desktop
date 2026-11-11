@@ -259,9 +259,14 @@ function renderTopDomains(domainsInput = {}) {
         </div>
       </div>
       <div class="domain-bar-bg">
-        <div class="domain-bar-fill" style="width: ${pct}%"></div>
+        <div class="domain-bar-fill"></div>
       </div>
     `;
+
+    const barFill = item.querySelector(".domain-bar-fill");
+    if (barFill) {
+      barFill.style.width = `${pct}%`;
+    }
 
     const faviconImg = item.querySelector(".domain-favicon");
     if (faviconImg) {
@@ -374,7 +379,7 @@ function renderSessions(sessions = []) {
       <div class="session-header">
         <div class="session-title-wrap">
           <img class="session-favicon" src="${safeFavicon}" alt="">
-          <div style="min-width: 0;">
+          <div class="session-body">
             <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="session-title-link" title="Open: ${safeTitle}">
               <span>${safeTitle}</span>
               <span class="link-arrow">↗</span>
@@ -391,7 +396,7 @@ function renderSessions(sessions = []) {
         <div class="session-card-actions">
           <button class="tag-chip-btn" data-domain="${safeDomain}" title="Click to revise category">
             <span>${safeTag}</span>
-            <span style="opacity: 0.6; font-size: 8px;">▾</span>
+            <span class="tag-chip-arrow">▾</span>
           </button>
           <button class="btn-exclude-card" data-domain="${safeDomain}" title="Exclude domain from tracking" aria-label="Exclude domain">🚫</button>
           <button class="btn-delete-card" data-domain="${safeDomain}" data-title="${safeTitle}" data-url="${safeUrl}" title="Remove this reflection" aria-label="Remove reflection">✕</button>
@@ -1070,7 +1075,7 @@ async function loadExcludedDomainsList() {
     const res = await chrome.runtime.sendMessage({ action: "get_excluded_domains" });
     const list = (res && res.excludedDomains) || [];
     if (list.length === 0) {
-      drawerExcludedList.innerHTML = `<span style="font-size:11px; color:var(--text-muted); font-style:italic;">No domains excluded yet.</span>`;
+      drawerExcludedList.innerHTML = `<span class="drawer-empty-hint">No domains excluded yet.</span>`;
       return;
     }
     drawerExcludedList.innerHTML = "";

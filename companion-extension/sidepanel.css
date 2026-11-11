@@ -922,6 +922,10 @@ body {
   min-width: 0;
 }
 
+.session-body {
+  min-width: 0;
+}
+
 .session-favicon {
   width: 16px;
   height: 16px;
@@ -1045,6 +1049,11 @@ body {
   background: rgba(16, 185, 129, 0.22);
   border-color: rgba(16, 185, 129, 0.5);
   transform: translateY(-1px);
+}
+
+.tag-chip-arrow {
+  opacity: 0.6;
+  font-size: 8px;
 }
 
 .btn-delete-card {
@@ -1486,6 +1495,12 @@ body {
   font-size: 9px;
   color: var(--text-muted);
   margin-left: 6px;
+}
+
+.drawer-empty-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .btn-remove-drawer-item {
@@ -2011,6 +2026,7 @@ body {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  margin-top: 8px;
 }
 
 .social-btn {
@@ -2051,6 +2067,7 @@ body {
   justify-content: space-between;
   font-size: 10px;
   color: var(--text-dim);
+  margin-top: 10px;
   padding-top: 6px;
   border-top: 1px solid var(--border-color);
 }
