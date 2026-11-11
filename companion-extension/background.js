@@ -85,6 +85,9 @@ async function initProfileIdentity() {
     }
 
     if (navigator.userAgentData && navigator.userAgentData.brands) {
+      // userAgentData.brands order matters: check Brave and Edge before Chrome
+      // because Edge reports both "Microsoft Edge" and "Chromium" (not "Google Chrome"),
+      // and Brave only reports "Brave". The order Brave → Edge → Chrome is correct.
       const brands = navigator.userAgentData.brands.map((b) => b.brand.toLowerCase());
       if (brands.some((b) => b.includes("brave"))) {
         browserName = "Brave";
@@ -183,7 +186,10 @@ function mergeEntries(localList, incomingList) {
 
 async function purgeLocalDomainData(domain, includeSubdomains = true) {
   try {
-    const all = await chrome.storage.local.get(null);
+    const allDailyKeys = await getDailyKeys();
+    const all = allDailyKeys.length > 0
+      ? await chrome.storage.local.get(allDailyKeys)
+      : {};
     const updates = {};
     let purgedSessionsCount = 0;
 
@@ -514,6 +520,50 @@ function getNativePort() {
 }
 
 // ── Local Storage Daily Analytics Engine (48h Rolling Window) ──────────────────
+
+/**
+ * Lightweight index of "daily_*" storage keys so we never need a full get(null) scan
+ * in hot paths like purgeLocalDomainData or pruneOldData.
+ */
+const DAILY_KEYS_STORE = "daily_keys_index";
+
+async function getDailyKeys() {
+  try {
+    const res = await chrome.storage.local.get(DAILY_KEYS_STORE);
+    if (Array.isArray(res[DAILY_KEYS_STORE]) && res[DAILY_KEYS_STORE].length > 0) {
+      return res[DAILY_KEYS_STORE];
+    }
+  } catch {}
+  // One-time migration: build index from a full scan on first upgrade
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all).filter(k => k.startsWith("daily_"));
+  if (keys.length > 0) {
+    chrome.storage.local.set({ [DAILY_KEYS_STORE]: keys }).catch(() => {});
+  }
+  return keys;
+}
+
+async function registerDailyKey(key) {
+  try {
+    const res = await chrome.storage.local.get(DAILY_KEYS_STORE);
+    const keys = Array.isArray(res[DAILY_KEYS_STORE]) ? res[DAILY_KEYS_STORE] : [];
+    if (!keys.includes(key)) {
+      keys.push(key);
+      await chrome.storage.local.set({ [DAILY_KEYS_STORE]: keys });
+    }
+  } catch {}
+}
+
+async function removeDailyKeysFromIndex(keysToRemove) {
+  if (keysToRemove.length === 0) return;
+  try {
+    const res = await chrome.storage.local.get(DAILY_KEYS_STORE);
+    const keys = Array.isArray(res[DAILY_KEYS_STORE]) ? res[DAILY_KEYS_STORE] : [];
+    const updated = keys.filter(k => !keysToRemove.includes(k));
+    await chrome.storage.local.set({ [DAILY_KEYS_STORE]: updated });
+  } catch {}
+}
+
 function getTodayKey(d = new Date()) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -523,15 +573,16 @@ function getTodayKey(d = new Date()) {
 
 async function pruneOldData() {
   try {
-    const all = await chrome.storage.local.get(null);
+    const allDailyKeys = await getDailyKeys();
     const now = Date.now();
     const TWO_DAYS_MS = 48 * 60 * 60 * 1000;
     const keysToRemove = [];
 
-    for (const key of Object.keys(all)) {
+    for (const key of allDailyKeys) {
       if (key.startsWith("daily_")) {
         const dateStr = key.replace("daily_", "");
-        const d = new Date(dateStr);
+        // Parse as local midnight (not UTC) to avoid timezone-shifted early pruning
+        const d = new Date(`${dateStr}T00:00:00`);
         if (!isNaN(d.getTime()) && now - d.getTime() > TWO_DAYS_MS) {
           keysToRemove.push(key);
         }
@@ -540,6 +591,7 @@ async function pruneOldData() {
 
     if (keysToRemove.length > 0) {
       await chrome.storage.local.remove(keysToRemove);
+      await removeDailyKeysFromIndex(keysToRemove);
     }
   } catch (err) {
     console.error("[LifeMirror] Storage prune error:", err);
@@ -555,6 +607,7 @@ async function recordCompletedSession(session, durationSeconds) {
 
   try {
     const data = await chrome.storage.local.get([todayKey]);
+    const isNewDayRecord = !data[todayKey];
     const dayRecord = data[todayKey] || {
       totalActiveSeconds: 0,
       contextSwitches: 0,
@@ -616,6 +669,10 @@ async function recordCompletedSession(session, durationSeconds) {
     }
 
     await chrome.storage.local.set({ [todayKey]: dayRecord });
+    // Register this daily key in the index if it's a new day record
+    if (isNewDayRecord) {
+      await registerDailyKey(todayKey);
+    }
   } catch (err) {
     console.error("[LifeMirror] Error committing session to local storage:", err);
   }
@@ -770,18 +827,32 @@ chrome.idle.onStateChanged.addListener(async (state) => {
 });
 
 // ── Chrome Event Listeners ────────────────────────────────────────────────────
+
+/**
+ * Session activity serializer.
+ * onUpdated and onActivated can fire concurrently for rapid tab switches, which
+ * causes race conditions on currentSession reads/writes. Queue all calls through
+ * a single Promise chain to guarantee serial execution.
+ */
+let _sessionLock = Promise.resolve();
+function queueSessionActivity(tabId, changeInfo, tab) {
+  _sessionLock = _sessionLock
+    .then(() => reportTabActivity(tabId, changeInfo, tab))
+    .catch(() => {});
+}
+
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   try {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     if (tab) {
-      await reportTabActivity(activeInfo.tabId, null, tab);
+      queueSessionActivity(activeInfo.tabId, null, tab);
     }
   } catch {}
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab) {
-    reportTabActivity(tabId, changeInfo, tab);
+    queueSessionActivity(tabId, changeInfo, tab);
   }
 });
 
@@ -800,7 +871,7 @@ chrome.windows.onFocusChanged.addListener(async (windowId) => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, windowId });
     if (tab) {
-      await reportTabActivity(tab.id, null, tab);
+      queueSessionActivity(tab.id, null, tab);
     }
   } catch {}
 });
@@ -922,6 +993,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (sanitized.length > 0) {
         metaCache.set(cleanTabUrl, sanitized);
         if (metaCache.size > MAX_META_CACHE) {
+          // Evict oldest entry – Map guarantees insertion-order iteration (ES6+)
           const firstKey = metaCache.keys().next().value;
           metaCache.delete(firstKey);
         }
@@ -934,7 +1006,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
   }
 
-  // Query status for popup/side panel
+  // Query status for side panel
   if (request.action === "get_status") {
     const nativePort = getNativePort();
     const connected = Boolean(isNativeConnected && nativePort !== null && !lastVaultError);
@@ -1003,7 +1075,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const dayRecord = res[todayKey];
       if (dayRecord && dayRecord.recentSessions) {
         const index = dayRecord.recentSessions.findIndex(
-          (s) => s.domain === domain && s.title === title
+          // Match by domain + title + URL when available to avoid deleting the wrong duplicate
+          (s) => s.domain === domain && s.title === title && (!url || !s.url || s.url === url)
         );
         if (index !== -1) {
           const removed = dayRecord.recentSessions[index];
@@ -1104,6 +1177,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.clear().then(async () => {
       metaCache.clear();
       currentSession = null;
+      // Re-seed the daily keys index as an empty array after a full storage clear
+      await chrome.storage.local.set({ [DAILY_KEYS_STORE]: [] }).catch(() => {});
       await persistActiveSession(null);
       sendResponse({ success: true });
     });

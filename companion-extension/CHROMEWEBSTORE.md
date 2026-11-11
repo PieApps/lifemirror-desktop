@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — LifeMirror Desktop Companion
 
-> Last Updated: 2026-11-10
+> Last Updated: 2026-11-11
 
 ---
 
@@ -29,7 +29,7 @@ KEY FEATURES
 • Optional Desktop Sync: Connect LifeMirror Desktop anytime to unify your browser tabs with your IDE, terminal, and desktop applications into an encrypted offline timeline powered by local Ollama AI.
 
 DUAL OPERATION MODES
-1. Standalone Mode: Fully functional in-browser experience. View hourly focus rhythms, top domain progress bars, and recent sessions directly in the Chrome Side Panel or popup.
+1. Standalone Mode: Fully functional in-browser experience. View hourly focus rhythms, top domain progress bars, and recent sessions directly in the Chrome Side Panel.
 2. Desktop Companion Mode: When LifeMirror Desktop is running, streams enriched tab metadata directly to your encrypted on-device LifeMirror Desktop vault over a secure local channel.
 
 SUPPORTED TABS & BROWSING SCOPE
@@ -40,7 +40,7 @@ SUPPORTED TABS & BROWSING SCOPE
 
 HOW TO USE
 1. Install this extension from the Chrome Web Store.
-2. Click the LifeMirror icon to view your active tab reflection and click "Open Side Panel Reflection" to view your daily stream.
+2. Click the LifeMirror toolbar icon to open the dedicated Chrome Side Panel reflection dashboard.
 3. Use the "Excluded Sites" drawer or the 🚫 icon on any reflection card to permanently blacklist sensitive websites.
 4. (Optional) Download LifeMirror Desktop from https://pieapps.github.io/lifemirror-desktop.web/ for full-system offline reflection.
 
@@ -82,7 +82,7 @@ English
 | Medium Icon | 48×48 PNG | ✅ Ready | `icons/icon48.png` |
 | Screenshot 1 [REQUIRED] | 1280×800 or 640×400 | ⬜ Recommended | Persistent Chrome Side Panel showing 24h Hourly Focus Rhythm strip, Top Domains, and page reflections |
 | Screenshot 2 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Recommended | Side Panel "Excluded Sites" slide-out drawer showing blacklist management and 1-click purge confirmation |
-| Screenshot 3 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Recommended | Extension popup showing active tab reflection, smart tag revise popover, and quick-exclusion toggle |
+| Screenshot 3 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Recommended | Chrome Side Panel active tab hero card with live duration, category tag revision, and 1-click domain exclusion |
 | Screenshot 4 [RECOMMENDED] | 1280×800 or 640×400 | ⬜ Recommended | LifeMirror Desktop timeline displaying synced web tab cards alongside desktop app sessions |
 | Small Promo Tile [OPTIONAL] | 440×280 | ⬜ Optional | Promo graphic with LifeMirror branding |
 | Marquee Tile [OPTIONAL] | 1400×560 | ⬜ Optional | Wide banner graphic |
@@ -101,10 +101,24 @@ LifeMirror Desktop Companion operates with a single, dedicated purpose: privatel
 | `tabs` | permissions | Required to read the URL, window title, and favicon of the actively focused web tab when navigating or switching tabs, allowing the user's local LifeMirror timeline and side panel to accurately reflect browsing sessions. |
 | `nativeMessaging` | permissions | Required to establish a secure, local-only communication channel with the locally installed LifeMirror Desktop native messaging host (`com.lifemirror.desktop`) without transmitting data over the network. |
 | `contextMenus` | permissions | Required to provide a quick right-click shortcut on the extension toolbar icon allowing users to launch the desktop app or web dashboard directly. |
-| `storage` | permissions | Required to store rolling 48-hour local browsing sessions, user-configured domain exclusion lists (blacklist), custom category tag revisions, and daily focus statistics locally on-device (`chrome.storage.local`). Never synced to the cloud. |
+| `storage` | permissions | Required to store rolling 48-hour local browsing sessions, user-configured domain exclusion lists (blacklist), custom category tag revisions, and daily focus statistics locally on-device (`chrome.storage.local` and `chrome.storage.session`). Never synced to the cloud. |
 | `sidePanel` | permissions | Required to render the persistent LifeMirror Companion Side Panel dashboard (`sidepanel.html`), displaying the user's 24-hour hourly focus rhythm, top domains breakdown, search filters, and real-time reflection feed alongside active browsing. |
 | `idle` | permissions | Required to detect user inactivity (with a 60-second idle threshold via `chrome.idle`), automatically pausing active tab duration accumulation when the user steps away from their computer to eliminate inflated focus metrics. |
 | `http://*/*` and `https://*/*` | content_scripts (host match) | Injected at `document_idle` (`content.js`) exclusively to extract standard high-level page summary metadata (`<meta name="description">` or Open Graph description tags up to 160 characters) on active pages. This gives users immediate, human-readable context for their browsing sessions without manual logging. It never inspects form inputs, passwords, or personal text, and strictly does not run in incognito tabs. |
+
+### Deliberately Omitted / Unrequested Permissions (Least-Privilege Verification)
+
+To uphold strict privacy and minimize user permission warnings, the following sensitive permissions are **deliberately NOT requested**:
+
+| Unrequested Permission | Reason Omitted |
+|------------------------|----------------|
+| `host_permissions` | **NOT REQUESTED.** The extension never makes cross-origin `fetch()` or `XMLHttpRequest` calls from the background worker or UI. Content script injection is handled declaratively via `content_scripts.matches`, completely avoiding the broad "read and change your data on all websites" warning. |
+| `history` | **NOT REQUESTED.** The extension never inspects or imports past browser history. It only records dwell time on the actively focused tab from the moment of navigation forward into a local rolling 48-hour vault. |
+| `webRequest` / `webRequestBlocking` | **NOT REQUESTED.** Zero traffic interception, redirection, or network modification. |
+| `scripting` | **NOT REQUESTED.** Zero dynamic script injection (`chrome.scripting.executeScript`). Content scripts are strictly static and declared in `manifest.json`. |
+| `cookies` | **NOT REQUESTED.** Zero access to browser cookies or session authentication credentials. |
+| `bookmarks` | **NOT REQUESTED.** Zero access to personal bookmarks or browsing structure. |
+| `webNavigation` | **NOT REQUESTED.** Standard `chrome.tabs.onActivated` and `chrome.tabs.onUpdated` are sufficient. |
 
 ### Data Usage Disclosures
 
@@ -156,9 +170,10 @@ https://pieapps.github.io/lifemirror-desktop.web/
 ### Reviewer Instructions
 1. **Dual Mode & Standalone Testing**: The extension can be tested immediately in standalone mode without installing any external desktop application. Clicking the toolbar icon allows viewing the active tab reflection or opening the dedicated Chrome Side Panel (`sidepanel.html`), which visualizes hourly focus rhythms, top domains, and recent reflection cards stored entirely on-device in `chrome.storage.local`.
 2. **Local Desktop Companion Mode**: If the user has installed the LifeMirror Desktop application, the extension connects locally to the native messaging host `com.lifemirror.desktop`. If the host is not found, the extension gracefully continues operating in standalone mode.
-3. **Zero Remote Network Transmission**: The extension makes zero outbound HTTP/HTTPS network requests. All tab events and analytics remain strictly on-device.
+3. **Zero Remote Network Transmission & Zero Host Permissions**: The extension makes zero outbound HTTP/HTTPS network requests and intentionally requests zero broad `host_permissions`. All tab events and analytics remain strictly on-device.
 4. **Tab Scope & Privacy Filtering**: In `background.js`, internal browser pages (`chrome://`, `chrome-extension://`, etc.), incognito tabs, and user-blacklisted domains are strictly filtered out and never recorded.
 5. **Content Script Scope**: `content.js` runs at `document_idle` on public pages (`http://*/*` and `https://*/*`) exclusively to read `<meta name="description">` or Open Graph tags (up to 160 characters) to show human-readable context in the side panel. It does not inspect form fields, passwords, or private data, and is disabled in incognito windows.
+6. **MV3 Compatibility**: Targets `minimum_chrome_version: 102` for reliable `chrome.storage.session` backing across service worker lifecycles, and employs explicit Content Security Policy (`script-src 'self'`).
 
 ---
 
@@ -166,7 +181,8 @@ https://pieapps.github.io/lifemirror-desktop.web/
 
 | Version | Date | Changes | Status |
 |---|---|---|---|
-| **1.4.0** | 2026-11-09 | Added full domain exclusion engine with subdomain matching, URL query/hash sanitization, search engine title masking, Side Panel Excluded Sites drawer with 1-click purge, popup exclusion toggle, and bidirectional native sync with tombstone LWW resolution. | Ready for Submission |
+| **1.4.1** | 2026-11-11 | Architecture & security hardening: Removed legacy popup files (`popup.html`, `popup.js`, `popup.css`) in favor of unified Chrome Side Panel experience; added URL protocol validation on tab links (`sidepanel.js`), safe DOM building in purge preview, native host template dev ID removal, daily keys index avoiding full storage scans, debounced storage listener, session activity serializer queue, local timezone date pruning, explicit CSP meta tag, and `minimum_chrome_version: 102`. Broad `host_permissions` omitted to uphold minimal permission architecture. | Ready for Submission |
+| **1.4.0** | 2026-11-09 | Added full domain exclusion engine with subdomain matching, URL query/hash sanitization, search engine title masking, Side Panel Excluded Sites drawer with 1-click purge, popup exclusion toggle, and bidirectional native sync with tombstone LWW resolution. | Archival |
 | **1.3.0** | 2026-11-09 | Added Chrome Side Panel dashboard with 24-hour Hourly Focus Rhythm heat-strip, Top Domains progress bars, multi-signal semantic URL/title classifier, 1-click standup summary export, micro-hop noise filter, and standalone on-device 48-hour rolling storage. | Archival |
 | **1.2.1** | 2026-11-07 | Streamlined popup interface by removing redundant launch action bar in favor of context menu shortcuts and automatic background native sync. | Archival |
 | **1.2.0** | 2026-11-06 | Added real-time native messaging vault state detection, toolbar badge alerts (`LOCK` / `BUSY`), and popup diagnostic statuses for locked or busy SQLite vault. | Archival |

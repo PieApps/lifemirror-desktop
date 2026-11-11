@@ -116,13 +116,6 @@ console.log("🔒 Running Extension Security Verification Suite...");
   };
   assert.strictEqual(isAuthorizedInternalCaller(sidePanelSender), true, "Side panel must be recognized as internal caller");
 
-  // Legitimate internal caller: Popup
-  const popupSender = {
-    id: EXTENSION_ID,
-    url: `${extensionOrigin}popup.html`
-  };
-  assert.strictEqual(isAuthorizedInternalCaller(popupSender), true, "Popup must be recognized as internal caller");
-
   console.log("  ✅ Cross-boundary IPC isolation verified (content scripts blocked from admin RPCs)");
 }
 

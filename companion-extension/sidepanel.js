@@ -132,6 +132,14 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+/**
+ * Idempotent URL encoder: decodes first to avoid double-encoding already-encoded URLs
+ * (chrome.tabs may return pre-encoded favicon/page URLs).
+ */
+function safeEncodeUrl(url) {
+  try { return encodeURI(decodeURI(url)); } catch { return encodeURI(url); }
+}
+
 function formatDuration(seconds) {
   if (!seconds || seconds < 60) return `${seconds || 0}s`;
   const m = Math.floor(seconds / 60);
@@ -233,10 +241,10 @@ function renderTopDomains(domainsInput = {}) {
     item.className = "domain-item";
     const safeDom = escapeHtml(dom);
     const safeFavicon = data.favIconUrl && /^https?:\/\//i.test(data.favIconUrl)
-      ? escapeHtml(encodeURI(data.favIconUrl))
+      ? escapeHtml(safeEncodeUrl(data.favIconUrl))
       : DEFAULT_FAVICON;
     const safeUrl = data.url && /^https?:\/\//i.test(data.url)
-      ? escapeHtml(encodeURI(data.url))
+      ? escapeHtml(safeEncodeUrl(data.url))
       : `https://${safeDom}`;
     item.innerHTML = `
       <div class="domain-info">
@@ -351,11 +359,11 @@ function renderSessions(sessions = []) {
     const safeDesc = escapeHtml(session.description || "");
     const safeTag = escapeHtml(tagLabel);
     const safeFavicon = session.favIconUrl && /^https?:\/\//i.test(session.favIconUrl)
-      ? escapeHtml(encodeURI(session.favIconUrl))
+      ? escapeHtml(safeEncodeUrl(session.favIconUrl))
       : DEFAULT_FAVICON;
     const rawUrl = session.url || (session.domain ? `https://${session.domain}` : "");
     const safeUrl = /^https?:\/\//i.test(rawUrl)
-      ? escapeHtml(encodeURI(rawUrl))
+      ? escapeHtml(safeEncodeUrl(rawUrl))
       : "#";
     const safeTime = formatTimestamp(session.timestamp);
     const originBadgeHtml = (activeProfileScope === "all" && (session.profile_label || session.browser_name))
@@ -725,10 +733,27 @@ if (copySummaryBtn) {
 }
 
 // ── Clear Local Browser Data ──────────────────────────────────────────────────
+// Two-step confirm: avoids window.confirm() which is blocked in MV3 side panels on some builds.
+let _clearDataConfirmTimer = null;
 clearDataBtn.addEventListener("click", async () => {
-  if (confirm("Clear local 48-hour browsing reflection history?")) {
+  if (clearDataBtn.dataset.confirming === "true") {
+    // Second click within 3s → execute clear
+    clearTimeout(_clearDataConfirmTimer);
+    clearDataBtn.dataset.confirming = "false";
+    const span = clearDataBtn.querySelector("span");
+    if (span) span.textContent = "Clear 48h Browser History";
     await chrome.runtime.sendMessage({ action: "clear_local_data" });
     loadData();
+  } else {
+    // First click → arm confirmation state
+    clearDataBtn.dataset.confirming = "true";
+    const span = clearDataBtn.querySelector("span");
+    if (span) span.textContent = "⚠ Click Again to Confirm Clear";
+    _clearDataConfirmTimer = setTimeout(() => {
+      clearDataBtn.dataset.confirming = "false";
+      const s = clearDataBtn.querySelector("span");
+      if (s) s.textContent = "Clear 48h Browser History";
+    }, 3000);
   }
 });
 
@@ -992,8 +1017,12 @@ if (liveTabPill) {
 loadData();
 
 // Auto-refresh when local storage updates (tab switches, sessions logged)
+// Debounced to prevent feedback loop: every tab switch writes storage → triggers onChanged → loadData
+let _storageRefreshTimer = null;
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local") {
+  if (areaName !== "local") return;
+  clearTimeout(_storageRefreshTimer);
+  _storageRefreshTimer = setTimeout(() => {
     const isAtTop = (window.scrollY || document.documentElement.scrollTop || 0) < 30;
     if (isAtTop) {
       loadData();
@@ -1001,7 +1030,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       // User is scrolled down reading past history: zero layout shift!
       if (liveTabPill) liveTabPill.classList.remove("hidden");
     }
-  }
+  }, 300);
 });
 
 // Refresh when user returns to window/tab
@@ -1125,13 +1154,28 @@ async function openPurgeModal(domain, includeSubdomains = true) {
       includeSubdomains
     });
     if (purgeModalPreview) {
-      const count = (preview && preview.matchingSessions) || 0;
-      const hosts = (preview && preview.matchingHosts) || [];
-      purgeModalPreview.innerHTML = `
-        <strong>Existing History Found:</strong><br>
-        • ${count} visit(s) in local browser stream.<br>
-        ${hosts.length > 0 ? `• Matching hosts: <code style="font-size:10px;">${escapeHtml(hosts.join(", "))}</code>` : ""}
-      `;
+      const count = Math.max(0, parseInt((preview && preview.matchingSessions) || 0, 10));
+      const hosts = Array.isArray(preview && preview.matchingHosts) ? preview.matchingHosts : [];
+
+      // Build preview DOM safely (no innerHTML interpolation with dynamic data)
+      purgeModalPreview.innerHTML = "";
+      const heading = document.createElement("strong");
+      heading.textContent = "Existing History Found:";
+      purgeModalPreview.appendChild(heading);
+      purgeModalPreview.appendChild(document.createElement("br"));
+      purgeModalPreview.appendChild(
+        document.createTextNode(`• ${count} visit(s) in local browser stream.`)
+      );
+      if (hosts.length > 0) {
+        purgeModalPreview.appendChild(document.createElement("br"));
+        const hostsSpan = document.createElement("span");
+        hostsSpan.appendChild(document.createTextNode("• Matching hosts: "));
+        const code = document.createElement("code");
+        code.style.fontSize = "10px";
+        code.textContent = hosts.join(", ");
+        hostsSpan.appendChild(code);
+        purgeModalPreview.appendChild(hostsSpan);
+      }
     }
   } catch (err) {
     if (purgeModalPreview) {
@@ -1398,7 +1442,12 @@ async function updateActiveTabPreview() {
     if (isWebPage) {
       activeTabTitle.textContent = tab.title || "Untitled Tab";
       if (activeTabLink) {
-        activeTabLink.href = urlStr;
+        // SEC: Validate protocol before assigning to href to block javascript: URIs
+        if (/^https?:\/\//i.test(urlStr)) {
+          activeTabLink.href = urlStr;
+        } else {
+          activeTabLink.removeAttribute("href");
+        }
       }
       try {
         const parsed = new URL(urlStr);

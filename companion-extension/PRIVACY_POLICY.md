@@ -1,8 +1,8 @@
 # Privacy Policy for LifeMirror Companion Tracker
 
-Last updated: November 9, 2026
+Last updated: November 11, 2026
 
-The LifeMirror Companion Tracker extension is designed to work securely with your local LifeMirror Desktop application. We prioritize your privacy and ensure that your data remains strictly on your device.
+The LifeMirror Companion Tracker extension is designed to work securely with your local LifeMirror Desktop application. We prioritize your privacy and ensure that your data remains strictly on your device. Zero external network requests or broad host permissions (`host_permissions`) are ever used.
 
 ## What Data We Collect
 

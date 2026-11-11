@@ -5,6 +5,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.4.1] — 2026-11-11
+
+### Security & Hardening
+* **[SEC] href protocol injection guard (`sidepanel.js`)**: `activeTabLink.href` is now validated against a strict `/^https?:\/\//` regex before assignment. Any non-HTTP/S tab URL (e.g. a theoretical `javascript:` URI) results in `removeAttribute("href")` instead of a live assignment.
+* **[SEC] Purge modal DOM XSS hardening (`sidepanel.js`)**: Replaced `innerHTML` interpolation in the domain purge preview with safe DOM construction (`createElement` + `textContent`). The session count is now `parseInt`-clamped to block any prototype-chain manipulation.
+* **[SEC] Native host manifest template hardened (`com.lifemirror.desktop.json.template`)**: Removed the hardcoded dev/sideloaded extension ID from `allowed_origins` in the template. Production builds now carry only the single `{{EXTENSION_ID}}` placeholder, eliminating the risk of a superseded dev build retaining permanent native vault access.
+* **[SEC] Explicit Content-Security-Policy meta tag added (`sidepanel.html`)**: `default-src 'self'; img-src 'self' https: data:; script-src 'self'; style-src 'self'` policy now explicit in the side panel document as defence-in-depth alongside MV3's built-in CSP.
+
+### Performance
+* **[PERF] Daily keys index (`background.js`)**: Replaced all `chrome.storage.local.get(null)` full-namespace scans in `purgeLocalDomainData` and `pruneOldData` with a lightweight `daily_keys_index` stored entry. All hot paths now fetch only the relevant `daily_*` keys by name. A one-time migration scan builds the index on first upgrade.
+* **[PERF] `chrome.storage.onChanged` debounced (`sidepanel.js`)**: The storage change listener that triggers `loadData()` is now debounced with a 300 ms window, eliminating a tab-switch → storage write → `loadData()` feedback loop on high-frequency browsing sessions.
+
+### Bug Fixes
+* **[FIX] `delete_single_session` now matches URL as tiebreaker (`background.js`)**: Session deletion previously matched only on `domain + title`, causing the wrong duplicate to be deleted when the same page had been visited more than once today. The URL field is now included as a tiebreaker when both sides carry it.
+* **[FIX] Date pruning uses local midnight, not UTC (`background.js`)**: `new Date("YYYY-MM-DD")` was parsed as UTC midnight, causing data to be pruned up to 5.5 hours too early for UTC+5:30 (IST) users and other positive-offset timezones. Changed to `new Date("YYYY-MM-DDT00:00:00")` (local time interpretation).
+* **[FIX] `window.confirm()` replaced in side panel (`sidepanel.js`)**: `confirm()` is blocked in MV3 side panels on some Chrome / Chromium builds. "Clear 48h History" now uses a two-step click pattern: first click arms a 3-second countdown; second click executes the clear. Auto-resets if not confirmed within 3 seconds.
+* **[FIX] `encodeURI` double-encoding on pre-encoded URLs (`sidepanel.js`)**: Favicon and page URLs from `chrome.tabs` can already be percent-encoded. Applying a bare `encodeURI()` double-encoded existing `%XX` sequences, producing broken image and link URLs. Replaced with a `safeEncodeUrl()` helper that calls `encodeURI(decodeURI(url))` for idempotent encoding.
+
+### Session Reliability
+* **[RELIABILITY] Session activity serializer (`background.js`)**: `chrome.tabs.onActivated`, `chrome.tabs.onUpdated`, and `chrome.windows.onFocusChanged` all previously called `reportTabActivity` concurrently. On rapid tab switching this created a race condition that could double-count session seconds. All three listeners now enqueue calls through a `Promise`-chain lock (`queueSessionActivity`) guaranteeing serial execution.
+
+### Maintenance
+* **[CLEANUP] Removed legacy popup files (`popup.html`, `popup.css`, `popup.js`)**: All active tab reflection, 1-click tag revision, domain exclusion, profile identity, and analytics were already merged into `sidepanel.html` / `sidepanel.js` (opening via `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`). Deleting the dead popup files reduces package size by ~40 KB and eliminates duplicated maintenance paths.
+* **[MAINT] `minimum_chrome_version: 102` added to manifest**: `chrome.storage.session` (used for service worker restart resilience) was introduced in Chrome 102. Explicitly declaring the minimum version prevents silent failures on older Chromium-based forks.
+* **[MAINT] Least-privilege permission audit**: Verified that broad `host_permissions` is intentionally omitted because the extension makes zero external network requests. Active tab metadata is read strictly via `tabs`, and `content.js` description extraction is scoped declaratively via `content_scripts.matches`, avoiding intrusive browser permission prompts.
+* **[MAINT] Deprecated `chrome.extension.inIncognitoContext` removed (`content.js`)**: The check was redundant — `"incognito": "not_allowed"` in the manifest is the authoritative guard. The deprecated API was flagged for removal in Chrome 130+.
+* **[MAINT] `default_title` added to `action` in manifest**: Provides a clear, accessible tooltip on the toolbar icon ("LifeMirror Desktop — Open Side Panel").
+
+---
+
 ## [1.4.0] — 2026-11-09
 
 ### Added

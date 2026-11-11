@@ -5,14 +5,8 @@
  */
 
 (function () {
-  // Strict Incognito Isolation: Never execute or extract in private browsing contexts
-  try {
-    if (chrome.extension && chrome.extension.inIncognitoContext) {
-      return;
-    }
-  } catch {
-    // Background service worker strictly rejects sender.tab.incognito
-  }
+  // Incognito isolation is enforced by "incognito": "not_allowed" in manifest.json.
+  // No code-level guard needed here — the content script is never injected in private windows.
 
   function getMetaDescription() {
     try {
