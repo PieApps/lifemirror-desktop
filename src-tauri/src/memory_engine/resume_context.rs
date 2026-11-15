@@ -21,46 +21,6 @@ pub struct ResumeBuilder {
     db: Arc<DbState>,
 }
 
-/// Calls Ollama's /api/generate with `"format": "json"` to guarantee a valid JSON response.
-/// Reads the configured URL and model directly from the database settings.
-async fn call_ollama_json(db: &DbState, prompt: &str) -> Result<String, String> {
-    let raw_url = db.get_setting("ollama_url").unwrap_or_default();
-    let url = crate::inference::validate_local_ai_url(&raw_url)
-        .map_err(|e| format!("Security validation error: {e}"))?;
-
-    let mut model = db.get_setting("ollama_model").unwrap_or_default();
-    if model.is_empty() || model == "false" || model == "disabled" {
-        model = "llama3.2".to_string();
-    }
-
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "model": model,
-        "prompt": prompt,
-        "format": "json",
-        "stream": false
-    });
-
-    let res = client
-        .post(format!("{}/api/generate", url))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Ollama request failed: {}", e))?;
-
-    if !res.status().is_success() {
-        let status = res.status();
-        let text = res.text().await.unwrap_or_default();
-        return Err(format!("Ollama returned HTTP {}: {}", status, text));
-    }
-
-    let json: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
-    json["response"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Missing 'response' field in Ollama output".to_string())
-}
-
 impl ResumeBuilder {
     pub fn new(db: Arc<DbState>) -> Self {
         Self { db }
@@ -132,9 +92,19 @@ Your output MUST be a single valid JSON object with no comments, no markdown, an
             journal_notes
         );
 
-        match call_ollama_json(&self.db, &prompt).await {
+        let provider = crate::inference::get_inference_provider(self.db.clone());
+        match provider.prompt(&prompt).await {
             Ok(response_text) => {
-                match serde_json::from_str::<ResumeContextResponse>(&response_text) {
+                let clean_json = if let Some(start) = response_text.find('{') {
+                    if let Some(end) = response_text.rfind('}') {
+                        &response_text[start..=end]
+                    } else {
+                        &response_text
+                    }
+                } else {
+                    &response_text
+                };
+                match serde_json::from_str::<ResumeContextResponse>(clean_json) {
                     Ok(parsed) => return Ok(parsed),
                     Err(e) => eprintln!("[ResumeContext] JSON parse failed: {}\nRaw response: {}", e, response_text),
                 }

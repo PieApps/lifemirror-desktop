@@ -138,20 +138,39 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 <span className="text-xs text-[var(--text-muted)]">Querying local AI...</span>
               </div>
             ) : aiReflection ? (
-              <p className="italic font-medium">"{aiReflection}"</p>
+              <div className="w-full text-left space-y-2">
+                {aiReflection.startsWith("[Local:") || aiReflection.startsWith("[Cloud:") ? (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                        aiReflection.startsWith("[Local:")
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-violet-500/10 text-violet-400 border-violet-500/20"
+                      }`}>
+                        {aiReflection.split("\n\n")[0].replace("[", "").replace("]", "")}
+                      </span>
+                    </div>
+                    <div className="text-xs leading-relaxed text-[var(--text-color)] whitespace-pre-line font-medium">
+                      {aiReflection.split("\n\n").slice(1).join("\n\n")}
+                    </div>
+                  </>
+                ) : (
+                  <p className="italic font-medium text-xs leading-relaxed">"{aiReflection}"</p>
+                )}
+              </div>
             ) : !isAiAvailable ? (
               <div className="flex flex-col items-center text-center p-2 gap-2">
                 <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center">
                   <Lock className="w-4 h-4 text-amber-500" />
                 </div>
-                <span className="text-xs font-semibold text-[var(--text-color)]">Local AI is Offline</span>
+                <span className="text-xs font-semibold text-[var(--text-color)]">AI Engine Not Active</span>
                 <span className="text-[11px] text-[var(--text-muted)] max-w-[240px] leading-relaxed">
-                  Reflections require Ollama running locally to analyze your daily focus.
+                  Reflections require On-Device AI (Ollama) or an Online Service API key.
                 </span>
               </div>
             ) : (
               <p className="text-[var(--text-muted)] text-center text-xs">
-                Click reflect to compile your active log focus nodes into a local AI reflection.
+                Click reflect to compile your active log focus nodes into an AI productivity reflection.
               </p>
             )}
           </div>
@@ -165,14 +184,14 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 ? "bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 shadow-none group"
                 : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-violet-500/10 disabled:opacity-50"
             }`}
-            title={!isAiAvailable ? "Reflect with AI (Locked - Requires Local AI)" : "Reflect with AI"}
+            title={!isAiAvailable ? "Set Up AI for Reflections" : "Reflect with AI"}
           >
             {!isAiAvailable ? (
               <Lock className="w-4 h-4 text-zinc-500 dark:text-zinc-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" />
             ) : (
               <Sparkles className="w-4 h-4" />
             )}
-            <span>{!isAiAvailable ? "Reflect with AI (Locked)" : "Reflect with AI"}</span>
+            <span>{!isAiAvailable ? "Set Up AI for Reflections" : "Reflect with AI"}</span>
           </button>
         </div>
       ) : (

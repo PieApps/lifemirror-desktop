@@ -27,6 +27,15 @@ export function useSettings() {
   // Settings panel visibility
   const [showSettings, setShowSettings] = useState(false);
 
+  // Unified AI mode: "local" | "cloud" | "off"
+  const [aiMode, setAiModeState] = useState<"local" | "cloud" | "off">("local");
+  const [cloudProvider, setCloudProvider] = useState<"groq" | "openai" | "openrouter" | "custom">("groq");
+  const [cloudApiKey, setCloudApiKey] = useState("");
+  const [cloudBaseUrl, setCloudBaseUrl] = useState("https://api.groq.com/openai/v1");
+  const [cloudModel, setCloudModel] = useState("llama-3.3-70b-versatile");
+  const [cloudDisclosureAccepted, setCloudDisclosureAccepted] = useState(false);
+  const [hasCompletedAiSetup, setHasCompletedAiSetup] = useState(false);
+
   // Ollama configuration & AI availability
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
@@ -35,6 +44,15 @@ export function useSettings() {
   const [hasSeenOnDemandNotice, setHasSeenOnDemandNotice] = useState<boolean>(true);
 
   const checkAiAvailability = useCallback(async (urlToCheck?: string): Promise<boolean> => {
+    if (aiMode === "off") {
+      setIsAiAvailable(false);
+      return false;
+    }
+    if (aiMode === "cloud") {
+      const available = Boolean(cloudApiKey && cloudApiKey.trim().length > 0 && cloudDisclosureAccepted);
+      setIsAiAvailable(available);
+      return available;
+    }
     const targetUrl = urlToCheck !== undefined ? urlToCheck : ollamaUrl;
     if (!targetUrl || targetUrl === "disabled" || targetUrl === "false") {
       setIsAiAvailable(false);
@@ -57,7 +75,7 @@ export function useSettings() {
         clearTimeout(timeoutId);
       }
     }
-  }, [ollamaUrl]);
+  }, [aiMode, cloudApiKey, cloudDisclosureAccepted, ollamaUrl]);
 
   // DB Log Threshold & Windows configurations
   const [minLogDuration, setMinLogDurationState] = useState(60);
@@ -112,6 +130,39 @@ export function useSettings() {
         await loadExcludedDomains();
         await loadUnattachedNotes();
 
+        const rawAiProvider = await invoke<string>("get_db_setting", { key: "ai_provider" });
+        if (rawAiProvider === "cloud") {
+          setAiModeState("cloud");
+        } else if (rawAiProvider === "off" || rawAiProvider === "disabled") {
+          setAiModeState("off");
+        } else {
+          setAiModeState("local");
+        }
+
+        const rawCloudProvider = await invoke<string>("get_db_setting", { key: "cloud_provider" });
+        if (rawCloudProvider === "openai" || rawCloudProvider === "openrouter" || rawCloudProvider === "custom" || rawCloudProvider === "groq") {
+          setCloudProvider(rawCloudProvider);
+        }
+
+        const rawCloudKey = await invoke<string>("get_db_setting", { key: "cloud_api_key" });
+        setCloudApiKey(rawCloudKey || "");
+
+        const rawCloudUrl = await invoke<string>("get_db_setting", { key: "cloud_base_url" });
+        if (rawCloudUrl && rawCloudUrl !== "false" && rawCloudUrl.trim() !== "") {
+          setCloudBaseUrl(rawCloudUrl);
+        }
+
+        const rawCloudModel = await invoke<string>("get_db_setting", { key: "cloud_model" });
+        if (rawCloudModel && rawCloudModel !== "false" && rawCloudModel.trim() !== "") {
+          setCloudModel(rawCloudModel);
+        }
+
+        const rawDisclosure = await invoke<string>("get_db_setting", { key: "cloud_disclosure_accepted" });
+        setCloudDisclosureAccepted(rawDisclosure === "true");
+
+        const rawSetup = await invoke<string>("get_db_setting", { key: "ai_setup_completed" });
+        setHasCompletedAiSetup(rawSetup === "true");
+
         const rawUrl = await invoke<string>("get_db_setting", { key: "ollama_url" });
         let effectiveUrl = "http://localhost:11434";
         if (rawUrl === "disabled") {
@@ -127,7 +178,13 @@ export function useSettings() {
         } else {
           setOllamaUrl("http://localhost:11434");
         }
-        checkAiAvailability(effectiveUrl);
+        if (rawAiProvider === "cloud") {
+          setIsAiAvailable(Boolean(rawCloudKey && rawCloudKey.trim().length > 0 && rawDisclosure === "true"));
+        } else if (rawAiProvider === "off" || rawAiProvider === "disabled") {
+          setIsAiAvailable(false);
+        } else {
+          checkAiAvailability(effectiveUrl);
+        }
 
         const model = await invoke<string>("get_db_setting", { key: "ollama_model" });
         if (model === "disabled") {
@@ -309,6 +366,55 @@ export function useSettings() {
     }
   };
 
+  const updateAiMode = async (mode: "local" | "cloud" | "off") => {
+    setAiModeState(mode);
+    try {
+      await invoke("set_db_setting", { key: "ai_provider", value: mode });
+      await invoke("set_db_setting", { key: "ai_setup_completed", value: "true" });
+      setHasCompletedAiSetup(true);
+    } catch (e) {
+      console.error("Failed to update ai_provider:", e);
+    }
+  };
+
+  const saveCloudConfig = async (
+    provider: "groq" | "openai" | "openrouter" | "custom",
+    apiKey: string,
+    baseUrl: string,
+    model: string
+  ) => {
+    setCloudProvider(provider);
+    setCloudApiKey(apiKey);
+    setCloudBaseUrl(baseUrl);
+    setCloudModel(model);
+    setCloudDisclosureAccepted(true);
+    setAiModeState("cloud");
+    setHasCompletedAiSetup(true);
+
+    try {
+      await invoke("set_db_setting", { key: "ai_provider", value: "cloud" });
+      await invoke("set_db_setting", { key: "cloud_provider", value: provider });
+      await invoke("set_db_setting", { key: "cloud_api_key", value: apiKey });
+      await invoke("set_db_setting", { key: "cloud_base_url", value: baseUrl });
+      await invoke("set_db_setting", { key: "cloud_model", value: model });
+      await invoke("set_db_setting", { key: "cloud_disclosure_accepted", value: "true" });
+      await invoke("set_db_setting", { key: "ai_setup_completed", value: "true" });
+    } catch (e) {
+      console.error("Failed to save cloud config:", e);
+    }
+  };
+
+  const revokeCloudAccess = async () => {
+    setCloudApiKey("");
+    setCloudDisclosureAccepted(false);
+    setAiModeState("off");
+    try {
+      await invoke("clear_cloud_ai_key");
+    } catch (e) {
+      console.error("Failed to clear cloud AI key:", e);
+    }
+  };
+
   const dismissOnDemandNotice = async () => {
     setHasSeenOnDemandNotice(true);
     try {
@@ -327,6 +433,20 @@ export function useSettings() {
     setTrackingActive,
     showSettings,
     setShowSettings,
+    aiMode,
+    updateAiMode,
+    cloudProvider,
+    setCloudProvider,
+    cloudApiKey,
+    setCloudApiKey,
+    cloudBaseUrl,
+    setCloudBaseUrl,
+    cloudModel,
+    setCloudModel,
+    cloudDisclosureAccepted,
+    hasCompletedAiSetup,
+    saveCloudConfig,
+    revokeCloudAccess,
     ollamaUrl,
     ollamaModel,
     isAiAvailable,

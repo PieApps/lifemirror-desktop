@@ -16,6 +16,13 @@ pub fn start_idle_ai_summarizer(db: Arc<DbState>) {
                 continue;
             }
 
+            // If AI is off or configured for Cloud, skip background idle pre-computation
+            // to eliminate unexpected billing/quota exhaustion while away from computer.
+            let ai_provider = db.get_setting("ai_provider").unwrap_or_else(|_| "local".to_string());
+            if ai_provider == "off" || ai_provider == "cloud" {
+                continue;
+            }
+
             // In On-Demand mode (default), background idle reflection generation is completely suspended to preserve battery and quiet fans.
             let processing_mode = db.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
             if processing_mode == "on_demand" {
@@ -72,7 +79,7 @@ fn trigger_background_reflection(db: Arc<DbState>) {
         println!("[Background AI] System idle threshold exceeded. Generating daily reflection card at low priority...");
 
         // Retrieve latest 10 activities for context
-        let logs = match db.get_activity_logs(10) {
+        let logs = match db.get_activity_logs(20) {
             Ok(l) => l,
             Err(_) => return,
         };
@@ -81,7 +88,29 @@ fn trigger_background_reflection(db: Arc<DbState>) {
             return;
         }
 
-        let summary_text = logs.iter().map(|node| {
+        let excluded = db.get_excluded_domains().unwrap_or_default();
+        let safe_logs: Vec<_> = logs
+            .into_iter()
+            .filter(|node| {
+                if node.app_name == "Incognito" {
+                    return false;
+                }
+                let is_excluded = excluded.iter().any(|ex| {
+                    let ex_low = ex.domain.to_lowercase();
+                    node.domain_tag.as_ref().map(|d| d.to_lowercase().contains(&ex_low)).unwrap_or(false)
+                        || node.window_title.to_lowercase().contains(&ex_low)
+                        || node.app_name.to_lowercase().contains(&ex_low)
+                });
+                !is_excluded
+            })
+            .take(10)
+            .collect();
+
+        if safe_logs.is_empty() {
+            return;
+        }
+
+        let summary_text = safe_logs.iter().map(|node| {
             format!("- App: {}, Window: {}, Duration: {}s", node.app_name, node.window_title, node.duration)
         }).collect::<Vec<String>>().join("\n");
 
@@ -110,7 +139,25 @@ fn trigger_background_reflection(db: Arc<DbState>) {
 
 #[tauri::command]
 pub async fn generate_chat_suggestions(state: tauri::State<'_, Arc<DbState>>) -> Result<Vec<String>, String> {
-    let logs = state.get_activity_logs(200).unwrap_or_default();
+    let raw_logs = state.get_activity_logs(200).unwrap_or_default();
+    let excluded = state.get_excluded_domains().unwrap_or_default();
+
+    let logs: Vec<_> = raw_logs
+        .into_iter()
+        .filter(|node| {
+            if node.app_name == "Incognito" {
+                return false;
+            }
+            let is_excluded = excluded.iter().any(|ex| {
+                let ex_low = ex.domain.to_lowercase();
+                node.domain_tag.as_ref().map(|d| d.to_lowercase().contains(&ex_low)).unwrap_or(false)
+                    || node.window_title.to_lowercase().contains(&ex_low)
+                    || node.app_name.to_lowercase().contains(&ex_low)
+            });
+            !is_excluded
+        })
+        .collect();
+
     if logs.is_empty() {
         return Ok(vec![
             "What can you help me with?".to_string(),

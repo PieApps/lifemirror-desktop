@@ -489,6 +489,10 @@ fn set_db_setting(
         crate::inference::validate_local_ai_url(&value)
             .map_err(|e| format!("Invalid AI URL: {e}"))?;
     }
+    if key == "cloud_base_url" && !value.trim().is_empty() {
+        crate::inference::validate_cloud_url(&value)
+            .map_err(|e| format!("Invalid Cloud URL: {e}"))?;
+    }
     if key.len() > 128 {
         return Err("Setting key exceeds maximum length (128 characters)".to_string());
     }
@@ -1009,6 +1013,141 @@ async fn pull_ai_model(
     provider.pull_model(model_purpose, app).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn test_cloud_connection(
+    base_url: String,
+    api_key: String,
+    model: String,
+) -> Result<bool, String> {
+    let clean_url = base_url.trim().trim_end_matches('/');
+    if clean_url.is_empty() {
+        return Err("Cloud base URL is empty.".to_string());
+    }
+    if api_key.trim().is_empty() {
+        return Err("API key is empty.".to_string());
+    }
+
+    let endpoint = if clean_url.ends_with("/chat/completions") {
+        clean_url.to_string()
+    } else {
+        format!("{clean_url}/chat/completions")
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let payload = serde_json::json!({
+        "model": if model.trim().is_empty() { "gpt-4o-mini" } else { model.trim() },
+        "messages": [
+            { "role": "user", "content": "ping" }
+        ],
+        "max_tokens": 1
+    });
+
+    let res = client
+        .post(&endpoint)
+        .header("Authorization", format!("Bearer {}", api_key.trim()))
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Network connection failed: {e}"))?;
+
+    let status = res.status();
+    if status.is_success() {
+        Ok(true)
+    } else {
+        let err_text = res.text().await.unwrap_or_default();
+        if status.as_u16() == 401 {
+            Err("Authentication failed: Invalid API key.".to_string())
+        } else if status.as_u16() == 429 {
+            Err("Rate limit reached or quota exceeded on your cloud provider account.".to_string())
+        } else {
+            Err(format!("Provider returned HTTP {status}: {err_text}"))
+        }
+    }
+}
+
+#[tauri::command]
+fn get_recent_preview_payload(
+    state: tauri::State<'_, Arc<DbState>>,
+) -> Result<serde_json::Value, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT app_name, window_title, duration FROM activity_logs 
+             WHERE app_name != 'Incognito' AND app_name != '' 
+             ORDER BY id DESC LIMIT 3",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let app: String = row.get(0)?;
+            let window: String = row.get(1)?;
+            let dur: i64 = row.get(2)?;
+            let dur_formatted = if dur < 60 {
+                format!("{dur}s")
+            } else {
+                format!("{}m", dur / 60)
+            };
+            Ok(serde_json::json!({
+                "app": app,
+                "window": window,
+                "duration": dur_formatted
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut sessions = Vec::new();
+    for r in rows {
+        if let Ok(item) = r {
+            sessions.push(item);
+        }
+    }
+
+    if sessions.is_empty() {
+        sessions.push(serde_json::json!({
+            "app": "Visual Studio Code",
+            "window": "main.rs - lifemirror-desktop",
+            "duration": "24m"
+        }));
+        sessions.push(serde_json::json!({
+            "app": "Google Chrome",
+            "window": "React Documentation - Hooks",
+            "duration": "14m"
+        }));
+    }
+
+    Ok(serde_json::json!({
+        "sessions": sessions
+    }))
+}
+
+#[tauri::command]
+fn clear_cloud_ai_key(
+    state: tauri::State<'_, Arc<DbState>>,
+) -> Result<(), String> {
+    state.set_setting("cloud_api_key", "").map_err(|e| e.to_string())?;
+    state.set_setting("cloud_disclosure_accepted", "false").map_err(|e| e.to_string())?;
+    state.set_setting("ai_provider", "off").map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn run_cloud_ai_completion(
+    state: tauri::State<'_, Arc<DbState>>,
+    prompt: String,
+) -> Result<String, String> {
+    use crate::inference::InferenceProvider;
+    let provider = crate::inference::cloud::CloudProvider {
+        db: state.inner().clone(),
+    };
+    provider.prompt(&prompt).await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -1299,7 +1438,11 @@ pub fn run() {
             preview_domain_purge,
             add_excluded_domain,
             remove_excluded_domain,
-            get_unattached_journal_notes
+            get_unattached_journal_notes,
+            test_cloud_connection,
+            get_recent_preview_payload,
+            clear_cloud_ai_key,
+            run_cloud_ai_completion
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

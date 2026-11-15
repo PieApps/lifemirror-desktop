@@ -14,6 +14,7 @@ import { JournalModal } from "./components/JournalModal";
 import { SupportModal } from "./components/SupportModal";
 import { DonateModal } from "./components/DonateModal";
 import { AILockedModal } from "./components/AILockedModal";
+import { AISetupModal } from "./components/AISetupModal";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
@@ -40,6 +41,7 @@ function App() {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [isDonateOpen, setIsDonateOpen] = useState(false);
   const [lockedFeatureName, setLockedFeatureName] = useState<string | null>(null);
+  const [isAISetupOpen, setIsAISetupOpen] = useState(false);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"general" | "focus" | "ai" | "about">("general");
 
   const handleAILockedClick = (featureName: string) => {
@@ -55,6 +57,9 @@ function App() {
   const localAI = useLocalAI({
     aiUrl: settings.ollamaUrl,
     aiModel: settings.ollamaModel,
+    aiMode: settings.aiMode,
+    cloudModel: settings.cloudModel,
+    excludedDomains: settings.excludedDomains,
     isIncognito: settings.isIncognito,
     selectedDate: data.selectedDate,
     viewMode: data.viewMode,
@@ -301,6 +306,15 @@ function App() {
               onRemoveExcludedDomain={settings.removeExcludedDomain}
               onPreviewPurge={settings.previewDomainPurge}
               onRefreshUnattachedNotes={settings.loadUnattachedNotes}
+              aiMode={settings.aiMode}
+              onUpdateAiMode={settings.updateAiMode}
+              cloudProvider={settings.cloudProvider}
+              cloudApiKey={settings.cloudApiKey}
+              cloudBaseUrl={settings.cloudBaseUrl}
+              cloudModel={settings.cloudModel}
+              cloudDisclosureAccepted={settings.cloudDisclosureAccepted}
+              onSaveCloudConfig={settings.saveCloudConfig}
+              onRevokeCloudAccess={settings.revokeCloudAccess}
             />
           ) : (
             <AISidebar
@@ -460,9 +474,31 @@ function App() {
         isOpen={lockedFeatureName !== null}
         onClose={() => setLockedFeatureName(null)}
         onOpenSettings={handleOpenAISettings}
+        onOpenSetupModal={() => {
+          setLockedFeatureName(null);
+          setIsAISetupOpen(true);
+        }}
         featureName={lockedFeatureName || "This feature"}
         ollamaUrl={settings.ollamaUrl}
         ollamaModel={settings.ollamaModel}
+      />
+
+      <AISetupModal
+        isOpen={isAISetupOpen}
+        onClose={() => setIsAISetupOpen(false)}
+        onSelectLocal={async (model, url) => {
+          await settings.updateOllamaModel(model);
+          await settings.updateOllamaUrl(url);
+          await settings.updateAiMode("local");
+        }}
+        onSelectCloud={async (provider, apiKey, baseUrl, model) => {
+          await settings.saveCloudConfig(provider, apiKey, baseUrl, model);
+        }}
+        onSkip={async () => {
+          await settings.updateAiMode("off");
+        }}
+        currentOllamaUrl={settings.ollamaUrl}
+        currentOllamaModel={settings.ollamaModel}
       />
 
       <FirstLogCelebration activityCount={data.activities.length} />

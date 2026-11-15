@@ -2,7 +2,8 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff } from "lucide-react";
+import { CloudPrivacyDisclosureModal } from "./CloudPrivacyDisclosureModal";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 import { ExclusionEntry, PurgePreview, PurgeReport, JournalEntry } from "../types";
 import { normalizeDomain } from "../utils/domainRules";
@@ -36,6 +37,15 @@ interface SettingsPanelProps {
   onRemoveExcludedDomain?: (domain: string) => Promise<void>;
   onPreviewPurge?: (domain: string, includeSubdomains: boolean) => Promise<PurgePreview>;
   onRefreshUnattachedNotes?: () => Promise<void>;
+  aiMode?: "local" | "cloud" | "off";
+  onUpdateAiMode?: (mode: "local" | "cloud" | "off") => Promise<void>;
+  cloudProvider?: "groq" | "openai" | "openrouter" | "custom";
+  cloudApiKey?: string;
+  cloudBaseUrl?: string;
+  cloudModel?: string;
+  cloudDisclosureAccepted?: boolean;
+  onSaveCloudConfig?: (provider: "groq" | "openai" | "openrouter" | "custom", apiKey: string, baseUrl: string, model: string) => Promise<void>;
+  onRevokeCloudAccess?: () => Promise<void>;
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -65,6 +75,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onRemoveExcludedDomain,
   onPreviewPurge,
   onRefreshUnattachedNotes,
+  aiMode = "local",
+  onUpdateAiMode,
+  cloudProvider = "groq",
+  cloudApiKey = "",
+  cloudBaseUrl = "https://api.groq.com/openai/v1",
+  cloudModel = "llama-3.3-70b-versatile",
+  onSaveCloudConfig,
+  onRevokeCloudAccess,
 }) => {
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(initialTab);
 
@@ -96,6 +114,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [purgeReportToast, setPurgeReportToast] = React.useState<PurgeReport | null>(null);
   const [notesModalOpen, setNotesModalOpen] = React.useState(false);
   const [copiedNoteId, setCopiedNoteId] = React.useState<number | null>(null);
+
+  // Cloud AI & Mode states
+  const [selectedAiMode, setSelectedAiMode] = React.useState<"local" | "cloud" | "off">(aiMode);
+  const [localCloudProvider, setLocalCloudProvider] = React.useState<"groq" | "openai" | "openrouter" | "custom">(cloudProvider);
+  const [localCloudKey, setLocalCloudKey] = React.useState(cloudApiKey);
+  const [showCloudKey, setShowCloudKey] = React.useState(false);
+  const [localCloudUrl, setLocalCloudUrl] = React.useState(cloudBaseUrl);
+  const [localCloudModel, setLocalCloudModel] = React.useState(cloudModel);
+  const [showDisclosureModal, setShowDisclosureModal] = React.useState(false);
+  const [showTradeoffsModal, setShowTradeoffsModal] = React.useState(false);
+  const [cloudTesting, setCloudTesting] = React.useState(false);
+  const [cloudTestStatus, setCloudTestStatus] = React.useState<"idle" | "success" | "error">("idle");
+  const [cloudTestMessage, setCloudTestMessage] = React.useState("");
+
+  React.useEffect(() => {
+    setSelectedAiMode(aiMode);
+  }, [aiMode]);
+
+  React.useEffect(() => {
+    setLocalCloudProvider(cloudProvider);
+  }, [cloudProvider]);
+
+  React.useEffect(() => {
+    setLocalCloudKey(cloudApiKey);
+  }, [cloudApiKey]);
+
+  React.useEffect(() => {
+    setLocalCloudUrl(cloudBaseUrl);
+  }, [cloudBaseUrl]);
+
+  React.useEffect(() => {
+    setLocalCloudModel(cloudModel);
+  }, [cloudModel]);
 
   React.useEffect(() => {
     if (excludedDomains) {
@@ -426,11 +477,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
-  // Auto-test connection when settings panel is opened
+  // Auto-test local connection only when in local AI mode
   React.useEffect(() => {
-    handleTestConnection(false);
+    if (aiMode === "local") {
+      handleTestConnection(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [aiMode]);
 
   return (
     <div className="glass rounded-2xl p-4 sm:p-6 border border-[var(--border-color)] w-full text-left flex flex-col flex-1 h-full min-h-0 overflow-y-auto custom-scrollbar">
@@ -1056,7 +1109,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: LOCAL AI */}
+      {/* TAB 3: AI CONFIGURATION */}
       {activeTab === "ai" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           {isIncognito && (
@@ -1069,149 +1122,535 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {!trackingActive && (
             <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 text-[var(--text-muted)] text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>Activity tracking is paused. You can still test your local AI endpoint below.</span>
+              <span>Activity tracking is paused. You can still test your AI endpoint below.</span>
             </div>
           )}
 
+          {/* Mode Switcher Banner */}
           <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] space-y-4">
-            <div className="flex items-center space-x-2 text-[var(--accent-color)] font-semibold mb-2">
-              <Sparkles className="w-5 h-5 text-violet-400" />
-              <h3 className="text-sm font-semibold text-[var(--text-color)]">Local AI (Ollama)</h3>
-            </div>
-            
-            <div>
-              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Ollama Server URL</label>
-              <input 
-                type="text" 
-                value={aiUrl === "false" ? "" : aiUrl}
-                onChange={(e) => {
-                  setAiUrl(e.target.value);
-                  setConnectionStatus('idle');
-                  setConnectionMessage('');
-                }}
-                placeholder="http://localhost:11434"
-                className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30"
-              />
-              {connectionStatus !== 'idle' && (
-                <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
-                  connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {connectionStatus === 'connected' ? (
-                    <CheckCircle className="w-3.5 h-3.5" />
-                  ) : (
-                    <XCircle className="w-3.5 h-3.5" />
-                  )}
-                  <span>{connectionMessage}</span>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Model Name</label>
-              <input 
-                type="text" 
-                value={aiModel === "false" ? "" : aiModel}
-                onChange={(e) => setAiModel(e.target.value)}
-                placeholder="e.g. llama3.2" 
-                className="w-full px-3 py-2 text-sm bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg text-[var(--text-color)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-color)] focus:border-transparent transition-all"
-              />
-              <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
-                Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {aiModel === "false" || !aiModel ? 'llama3.2' : aiModel}</code> in your terminal.
-              </p>
-            </div>
-
-            {/* AI Processing Mode Choice Cards */}
-            <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
-              <label className="block text-xs text-[var(--text-color)] font-semibold">
-                AI Processing Mode
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="AI Processing Mode">
-                {/* On-Demand Card */}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={aiProcessingMode === "on_demand"}
-                  aria-label="On-Demand (Recommended) - Only processes data when requested"
-                  onClick={() => setAiProcessingMode?.("on_demand")}
-                  className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
-                    aiProcessingMode === "on_demand"
-                      ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10"
-                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>On-Demand</span>
-                      </span>
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        Recommended
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                      Only processes data when requested (Reflect with AI, Chat, Catch-up). Zero background CPU or fan noise, maximizing laptop battery life.
-                    </p>
-                  </div>
-                  <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
-                    <Check className={`w-3 h-3 ${aiProcessingMode === "on_demand" ? "opacity-100" : "opacity-0"}`} />
-                    <span>{aiProcessingMode === "on_demand" ? "Active Mode" : "Click to select"}</span>
-                  </div>
-                </button>
-
-                {/* Continuous Background Card */}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={aiProcessingMode === "continuous"}
-                  aria-label="Continuous Background - Automatically indexes sessions in background"
-                  onClick={() => setAiProcessingMode?.("continuous")}
-                  className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
-                    aiProcessingMode === "continuous"
-                      ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10"
-                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                        <Cpu className="w-3.5 h-3.5 text-violet-400" />
-                        <span>Continuous Background</span>
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                      Automatically indexes sessions, generates entity tags, and builds idle reflections in the background (consumes more CPU/battery).
-                    </p>
-                  </div>
-                  <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-violet-400 font-medium">
-                    <Check className={`w-3 h-3 ${aiProcessingMode === "continuous" ? "opacity-100" : "opacity-0"}`} />
-                    <span>{aiProcessingMode === "continuous" ? "Active Mode" : "Click to select"}</span>
-                  </div>
-                </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text-color)] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-400" />
+                  <span>AI Reflection Engine</span>
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Private by default. Choose how you want productivity insights computed.
+                </p>
               </div>
-            </div>
-
-            <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">
-              <button 
-                onClick={() => {
-                  if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
-                  if (!aiModel || aiModel === "false") setAiModel("llama3.2");
-                  handleTestConnection(true);
-                }}
-                disabled={connectionStatus === 'testing'}
-                className="group bg-violet-600 hover:bg-violet-500 disabled:bg-violet-600/50 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl text-xs font-medium transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-md shadow-violet-900/20 hover:shadow-lg hover:shadow-violet-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+              <button
+                type="button"
+                onClick={() => setShowTradeoffsModal(!showTradeoffsModal)}
+                className="text-xs text-violet-400 hover:text-violet-300 font-medium underline inline-flex items-center gap-1 self-start sm:self-auto cursor-pointer"
               >
-                {connectionStatus === 'testing' ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <svg className="w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-                {connectionStatus === 'testing' ? 'Testing Connection...' : 'Test Connection'}
+                <span>{showTradeoffsModal ? "Hide Comparison" : "Compare Trade-offs"}</span>
               </button>
             </div>
+
+            {/* Segmented Mode Control */}
+            <div className="grid grid-cols-3 gap-2 p-1 bg-[var(--bg-color)]/70 rounded-xl border border-[var(--border-color)]">
+              <button
+                type="button"
+                onClick={async () => {
+                  setSelectedAiMode("local");
+                  await onUpdateAiMode?.("local");
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedAiMode === "local"
+                    ? "bg-[var(--surface-color)] text-emerald-400 shadow-sm border border-emerald-500/30"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span>On-Device</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setSelectedAiMode("cloud");
+                  await onUpdateAiMode?.("cloud");
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedAiMode === "cloud"
+                    ? "bg-[var(--surface-color)] text-violet-400 shadow-sm border border-violet-500/30"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Online Service</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setSelectedAiMode("off");
+                  await onUpdateAiMode?.("off");
+                }}
+                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedAiMode === "off"
+                    ? "bg-[var(--surface-color)] text-zinc-300 shadow-sm border border-zinc-500/30"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+              >
+                <Ban className="w-3.5 h-3.5" />
+                <span>AI Off</span>
+              </button>
+            </div>
+
+            {/* Expandable Trade-offs Matrix */}
+            {showTradeoffsModal && (
+              <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 text-xs space-y-2 animate-in fade-in duration-150">
+                <span className="font-bold text-[var(--text-color)] block text-xs">
+                  Trade-offs & Limitations Comparison
+                </span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)]">
+                        <th className="py-1.5 pr-2 font-medium">Feature</th>
+                        <th className="py-1.5 pr-2 font-medium text-emerald-400">💻 On-Device (Ollama)</th>
+                        <th className="py-1.5 font-medium text-violet-400">☁️ Online Service (API Key)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--border-color)]/40 text-[var(--text-muted)]">
+                      <tr>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">Privacy</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">100% Offline, Zero data sent</td>
+                        <td className="py-1.5">Encrypted HTTPS to provider</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">Disk Space</td>
+                        <td className="py-1.5">Requires ~2.0 GB - 4.5 GB</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">0 MB (Zero download)</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">Computer Specs</td>
+                        <td className="py-1.5">16GB+ RAM recommended</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">Works fast on any laptop</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">Battery & Fans</td>
+                        <td className="py-1.5">Uses laptop CPU/GPU power</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">Zero fan noise or laptop strain</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">Cost</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">Free forever</td>
+                        <td className="py-1.5">Free tiers or pennies per token</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 1: ON-DEVICE AI CONFIG */}
+            {selectedAiMode === "local" && (
+              <div className="space-y-4 pt-2 border-t border-[var(--border-color)]">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs text-[var(--text-muted)] font-medium">Ollama Server URL</label>
+                    <span className="text-[10px] text-emerald-400 font-medium">100% Private Loopback</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={aiUrl === "false" ? "" : aiUrl}
+                    onChange={(e) => {
+                      setAiUrl(e.target.value);
+                      setConnectionStatus('idle');
+                      setConnectionMessage('');
+                    }}
+                    placeholder="http://localhost:11434"
+                    className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-emerald-500/50"
+                  />
+                  {connectionStatus !== 'idle' && (
+                    <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
+                      connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
+                    }`}>
+                      {connectionStatus === 'connected' ? (
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5" />
+                      )}
+                      <span>{connectionMessage}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Model Name</label>
+                  <input 
+                    type="text" 
+                    value={aiModel === "false" ? "" : aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    placeholder="e.g. llama3.2" 
+                    className="w-full px-3 py-2 text-sm bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg text-[var(--text-color)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                  <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
+                    Recommended: <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-emerald-400 font-mono">llama3.2</code> (fast, lightweight 3B parameter model).
+                  </p>
+                </div>
+
+                {/* AI Processing Mode Choice Cards */}
+                <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
+                  <label className="block text-xs text-[var(--text-color)] font-semibold">
+                    AI Processing Mode
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="AI Processing Mode">
+                    {/* On-Demand Card */}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={aiProcessingMode === "on_demand"}
+                      onClick={() => setAiProcessingMode?.("on_demand")}
+                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                        aiProcessingMode === "on_demand"
+                          ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>On-Demand</span>
+                          </span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            Recommended
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                          Only processes data when requested. Zero background CPU or fan noise, preserving laptop battery life.
+                        </p>
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                        <Check className={`w-3 h-3 ${aiProcessingMode === "on_demand" ? "opacity-100" : "opacity-0"}`} />
+                        <span>{aiProcessingMode === "on_demand" ? "Active Mode" : "Click to select"}</span>
+                      </div>
+                    </button>
+
+                    {/* Continuous Background Card */}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={aiProcessingMode === "continuous"}
+                      onClick={() => setAiProcessingMode?.("continuous")}
+                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                        aiProcessingMode === "continuous"
+                          ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                            <Cpu className="w-3.5 h-3.5 text-violet-400" />
+                            <span>Continuous Background</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                          Automatically builds idle reflections in the background (uses more CPU & battery).
+                        </p>
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-violet-400 font-medium">
+                        <Check className={`w-3 h-3 ${aiProcessingMode === "continuous" ? "opacity-100" : "opacity-0"}`} />
+                        <span>{aiProcessingMode === "continuous" ? "Active Mode" : "Click to select"}</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">
+                  <button 
+                    onClick={() => {
+                      if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
+                      if (!aiModel || aiModel === "false") setAiModel("llama3.2");
+                      handleTestConnection(true);
+                    }}
+                    disabled={connectionStatus === 'testing'}
+                    className="group bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white px-5 py-2.5 rounded-xl text-xs font-medium transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-900/20"
+                  >
+                    {connectionStatus === 'testing' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    {connectionStatus === 'testing' ? 'Testing Ollama...' : 'Test Local Connection'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW 2: ONLINE SERVICE (CLOUD) CONFIG */}
+            {selectedAiMode === "cloud" && (
+              <div className="space-y-4 pt-2 border-t border-[var(--border-color)] text-xs">
+                {/* Provider Selector Tabs */}
+                <div>
+                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+                    Select Online Provider
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalCloudProvider("groq");
+                        setLocalCloudUrl("https://api.groq.com/openai/v1");
+                        setLocalCloudModel("llama-3.3-70b-versatile");
+                        setCloudTestStatus("idle");
+                      }}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        localCloudProvider === "groq"
+                          ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">Groq</span>
+                      <span className="text-[9px] text-emerald-400 font-medium">Fast / Free Tier</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalCloudProvider("openai");
+                        setLocalCloudUrl("https://api.openai.com/v1");
+                        setLocalCloudModel("gpt-4o-mini");
+                        setCloudTestStatus("idle");
+                      }}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        localCloudProvider === "openai"
+                          ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">OpenAI</span>
+                      <span className="text-[9px] text-zinc-400">gpt-4o-mini</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalCloudProvider("openrouter");
+                        setLocalCloudUrl("https://openrouter.ai/api/v1");
+                        setLocalCloudModel("meta-llama/llama-3.3-70b-instruct:free");
+                        setCloudTestStatus("idle");
+                      }}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        localCloudProvider === "openrouter"
+                          ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">OpenRouter</span>
+                      <span className="text-[9px] text-sky-400">Aggregator</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* API Key Input */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-[var(--text-muted)]">
+                      {localCloudProvider === "groq" ? "Groq API Key" : localCloudProvider === "openai" ? "OpenAI API Key" : "API Key"}
+                    </label>
+                    {localCloudProvider === "groq" && (
+                      <a 
+                        href="https://console.groq.com/keys" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[10px] text-violet-400 hover:text-violet-300 underline font-medium inline-flex items-center gap-0.5"
+                      >
+                        Get Free Groq Key <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                    {localCloudProvider === "openai" && (
+                      <a 
+                        href="https://platform.openai.com/api-keys" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[10px] text-violet-400 hover:text-violet-300 underline font-medium inline-flex items-center gap-0.5"
+                      >
+                        Get OpenAI Key <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showCloudKey ? "text" : "password"}
+                      value={localCloudKey}
+                      onChange={(e) => {
+                        setLocalCloudKey(e.target.value);
+                        setCloudTestStatus("idle");
+                      }}
+                      placeholder="Paste your API key here"
+                      className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl px-3 py-2 pr-10 text-xs text-[var(--text-color)] font-mono focus:outline-none focus:border-violet-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCloudKey(!showCloudKey)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    >
+                      {showCloudKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Model Identifier */}
+                <div>
+                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                    Model Identifier
+                  </label>
+                  <input
+                    type="text"
+                    value={localCloudModel}
+                    onChange={(e) => setLocalCloudModel(e.target.value)}
+                    placeholder="e.g. llama-3.3-70b-versatile"
+                    className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] font-mono"
+                  />
+                </div>
+
+                {/* Test status banner */}
+                {cloudTestStatus !== "idle" && (
+                  <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    cloudTestStatus === "success" 
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                  }`}>
+                    {cloudTestStatus === "success" ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                    <span>{cloudTestMessage}</span>
+                  </div>
+                )}
+
+                {/* Action Row */}
+                <div className="pt-2 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDisclosureModal(true)}
+                    className="text-xs text-sky-400 hover:text-sky-300 font-medium underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>View Privacy Disclosure & Live Payload</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!localCloudKey.trim()) {
+                          setCloudTestStatus("error");
+                          setCloudTestMessage("Please enter an API key first.");
+                          return;
+                        }
+                        setCloudTesting(true);
+                        setCloudTestStatus("idle");
+                        try {
+                          await invoke("test_cloud_connection", {
+                            baseUrl: localCloudUrl,
+                            apiKey: localCloudKey.trim(),
+                            model: localCloudModel,
+                          });
+                          setCloudTestStatus("success");
+                          setCloudTestMessage("Connection successful! Provider is responding.");
+                        } catch (err: any) {
+                          setCloudTestStatus("error");
+                          setCloudTestMessage(err?.toString() || "Connection test failed.");
+                        } finally {
+                          setCloudTesting(false);
+                        }
+                      }}
+                      disabled={cloudTesting || !localCloudKey.trim()}
+                      className="px-3.5 py-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--surface-color)] text-xs font-semibold text-[var(--text-color)] flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                    >
+                      {cloudTesting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      <span>Test Connection</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowDisclosureModal(true)}
+                      disabled={!localCloudKey.trim()}
+                      className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-violet-900/20"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Review & Save</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Revoke Key Danger Zone */}
+                {cloudApiKey && (
+                  <div className="pt-3 border-t border-rose-500/20 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-rose-400 block">Revoke Cloud Access</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">Deletes your API key from encrypted storage and reverts to offline.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await onRevokeCloudAccess?.();
+                        setLocalCloudKey("");
+                        setCloudTestStatus("idle");
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold cursor-pointer"
+                    >
+                      Delete Key
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* VIEW 3: AI OFF */}
+            {selectedAiMode === "off" && (
+              <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 text-xs space-y-3 pt-3">
+                <div className="flex items-center gap-2 text-[var(--text-muted)]">
+                  <Ban className="w-4 h-4 text-zinc-400" />
+                  <span className="font-semibold text-[var(--text-color)]">AI Reflections are Currently Off</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                  LifeMirror will function purely as a private desktop activity tracker and focus timer. No CPU power, RAM, or network connections are used for AI.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSelectedAiMode("local");
+                      await onUpdateAiMode?.("local");
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs cursor-pointer flex items-center gap-1"
+                  >
+                    <Cpu className="w-3.5 h-3.5" />
+                    <span>Turn On On-Device AI</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setSelectedAiMode("cloud");
+                      await onUpdateAiMode?.("cloud");
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs cursor-pointer flex items-center gap-1"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>Turn On Online Service</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Privacy Disclosure Modal */}
+          <CloudPrivacyDisclosureModal
+            isOpen={showDisclosureModal}
+            provider={localCloudProvider}
+            model={localCloudModel}
+            onConfirm={async () => {
+              setShowDisclosureModal(false);
+              await onSaveCloudConfig?.(localCloudProvider, localCloudKey.trim(), localCloudUrl, localCloudModel);
+              setCloudTestStatus("success");
+              setCloudTestMessage("Cloud configuration saved successfully!");
+            }}
+            onCancel={() => setShowDisclosureModal(false)}
+          />
         </div>
       )}
 

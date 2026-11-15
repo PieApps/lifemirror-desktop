@@ -20,6 +20,9 @@ export const formatDurationForAI = (seconds: number) => {
 interface UseLocalAIOptions {
   aiUrl: string;
   aiModel: string;
+  aiMode?: "local" | "cloud" | "off";
+  cloudModel?: string;
+  excludedDomains?: { domain: string }[];
   isIncognito: boolean;
   selectedDate: string;
   viewMode: "daily" | "weekly" | "monthly";
@@ -41,6 +44,9 @@ interface UseLocalAIOptions {
 export function useLocalAI({
   aiUrl,
   aiModel,
+  aiMode = "local",
+  cloudModel = "llama-3.3-70b-versatile",
+  excludedDomains = [],
   isIncognito,
   selectedDate,
   viewMode,
@@ -74,13 +80,37 @@ export function useLocalAI({
   // ─── Context Rollup ────────────────────────────────────
 
   const compileContextRollup = (): string => {
+    // Filter out incognito and excluded domains to prevent privacy leaks
+    const safeActivities = activities.filter(node => {
+      if (isIncognito || node.app_name === "Incognito") return false;
+      if (excludedDomains && excludedDomains.some(ex => 
+        (node.domain_tag && node.domain_tag.toLowerCase().includes(ex.domain.toLowerCase())) || 
+        (node.window_title && node.window_title.toLowerCase().includes(ex.domain.toLowerCase())) ||
+        (node.app_name && node.app_name.toLowerCase().includes(ex.domain.toLowerCase()))
+      )) {
+        return false;
+      }
+      return true;
+    });
+
+    const safeSubSessions = subSessionEvents.filter(e => {
+      if (isIncognito) return false;
+      if (excludedDomains && excludedDomains.some(ex => 
+        (e.context_tag && e.context_tag.toLowerCase().includes(ex.domain.toLowerCase())) ||
+        (e.title && e.title.toLowerCase().includes(ex.domain.toLowerCase()))
+      )) {
+        return false;
+      }
+      return true;
+    });
+
     if (viewMode === "daily") {
-      if (activities.length === 0) {
+      if (safeActivities.length === 0) {
         return "No activity logs recorded for this day.";
       }
 
       const appDurations: Record<string, number> = {};
-      activities.forEach((node) => {
+      safeActivities.forEach((node) => {
         appDurations[node.app_name] = (appDurations[node.app_name] || 0) + node.duration;
       });
 
@@ -90,7 +120,7 @@ export function useLocalAI({
         .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)}`)
         .join("\n");
 
-      const chronologicalFocus = [...activities].slice(0, 50).reverse();
+      const chronologicalFocus = [...safeActivities].slice(0, 50).reverse();
       const recentFocus = chronologicalFocus
         .map((node) => {
           const time = new Date(node.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -99,7 +129,7 @@ export function useLocalAI({
         })
         .join("\n");
         
-      const chronologicalSubSessions = [...subSessionEvents].slice(0, 50).reverse();
+      const chronologicalSubSessions = [...safeSubSessions].slice(0, 50).reverse();
       const recentSubSessions = chronologicalSubSessions.length > 0 
         ? "\n\nDetailed Browser Tab Switching Events:\n" + chronologicalSubSessions
             .map((e) => {
@@ -111,11 +141,21 @@ export function useLocalAI({
 
       return `Selected Date: ${selectedDate}\n\nTop Applications by Duration:\n${topApps}\n\nChronological Focus Transitions:\n${recentFocus}${recentSubSessions}`;
     } else if (viewMode === "weekly") {
-      if (weeklySummaries.length === 0) {
+      const safeWeeklySummaries = weeklySummaries.filter(sum => {
+        if (isIncognito || sum.app_name === "Incognito") return false;
+        if (excludedDomains && excludedDomains.some(ex => 
+          sum.app_name.toLowerCase().includes(ex.domain.toLowerCase())
+        )) {
+          return false;
+        }
+        return true;
+      });
+
+      if (safeWeeklySummaries.length === 0) {
         return "No activity summary recorded for this week.";
       }
       const appDurations: Record<string, number> = {};
-      weeklySummaries.forEach((sum) => {
+      safeWeeklySummaries.forEach((sum) => {
         appDurations[sum.app_name] = (appDurations[sum.app_name] || 0) + sum.total_duration;
       });
       const topApps = Object.entries(appDurations)
@@ -124,9 +164,9 @@ export function useLocalAI({
         .map(([app, duration]) => `- ${app}: ${formatDurationForAI(duration)}`)
         .join("\n");
         
-      const dates = Array.from(new Set(weeklySummaries.map(s => s.date))).sort();
+      const dates = Array.from(new Set(safeWeeklySummaries.map(s => s.date))).sort();
       const dailyBreakdown = dates.map(dateStr => {
-        const daySums = weeklySummaries.filter(s => s.date === dateStr);
+        const daySums = safeWeeklySummaries.filter(s => s.date === dateStr);
         const top5 = [...daySums].sort((a,b) => b.total_duration - a.total_duration).slice(0, 5);
         const total = daySums.reduce((acc, s) => acc + s.total_duration, 0);
         return `${dateStr} (Total Focus: ${formatDurationForAI(total)}):\n` + 
@@ -135,15 +175,25 @@ export function useLocalAI({
       
       return `Selected Period: Week of ${selectedDate}\n\nTop Applications This Week:\n${topApps}\n\nDaily Breakdown (To compute averages/trends):\n${dailyBreakdown}`;
     } else {
-      if (monthlySummaries.length === 0) {
+      const safeMonthlySummaries = monthlySummaries.filter(sum => {
+        if (isIncognito || sum.app_name === "Incognito") return false;
+        if (excludedDomains && excludedDomains.some(ex => 
+          sum.app_name.toLowerCase().includes(ex.domain.toLowerCase())
+        )) {
+          return false;
+        }
+        return true;
+      });
+
+      if (safeMonthlySummaries.length === 0) {
         return "No activity summary recorded for this month.";
       }
       const appDurations: Record<string, number> = {};
-      monthlySummaries.forEach((sum) => {
+      safeMonthlySummaries.forEach((sum) => {
         appDurations[sum.app_name] = (appDurations[sum.app_name] || 0) + sum.total_duration;
       });
       
-      const uniqueDays = new Set(monthlySummaries.map(s => s.date)).size || 1;
+      const uniqueDays = new Set(safeMonthlySummaries.map(s => s.date)).size || 1;
       const topApps = Object.entries(appDurations)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 20)
@@ -178,13 +228,31 @@ ${compileContextRollup()}`;
   // ─── Reflection ────────────────────────────────────────
 
   const generateAIReflection = async () => {
-    if (activities.length === 0) {
-      setAiReflection("No activity nodes recorded to reflect on.");
+    if (aiMode === "off") {
+      setAiReflection("AI is currently turned off. You can enable On-Device or Online AI in Settings.");
       return;
     }
 
-    if (!aiUrl || aiUrl === "false" || !aiModel || aiModel === "false") {
-      setAiReflection("Local AI is disabled or the configuration is incomplete.");
+    // Filter out incognito sessions and excluded domains
+    const safeActivities = activities.filter(node => {
+      if (isIncognito || node.app_name === "Incognito") return false;
+      if (excludedDomains && excludedDomains.some(ex => 
+        (node.domain_tag && node.domain_tag.toLowerCase().includes(ex.domain.toLowerCase())) || 
+        (node.window_title && node.window_title.toLowerCase().includes(ex.domain.toLowerCase())) ||
+        (node.app_name && node.app_name.toLowerCase().includes(ex.domain.toLowerCase()))
+      )) {
+        return false;
+      }
+      return true;
+    });
+
+    if (safeActivities.length === 0) {
+      setAiReflection("No non-incognito activity logs recorded to reflect on.");
+      return;
+    }
+
+    if (aiMode === "local" && (!aiUrl || aiUrl === "false" || !aiModel || aiModel === "false")) {
+      setAiReflection("On-Device AI is not configured. Please check your settings.");
       return;
     }
 
@@ -197,7 +265,7 @@ ${compileContextRollup()}`;
         console.debug("JIT memory sync notice:", e);
       });
 
-      const summaryText = activities.slice(0, 10).map(node => 
+      const summaryText = safeActivities.slice(0, 10).map(node => 
         `- App: ${node.app_name}, Session Title: ${node.window_title}, Spent: ${formatDurationForAI(node.duration)}`
       ).join("\n");
 
@@ -212,6 +280,14 @@ ${summaryText}
 
 Insights (exactly 3 lines):`;
 
+      if (aiMode === "cloud") {
+        const result = await invoke<string>("run_cloud_ai_completion", { prompt });
+        const tagged = `[Cloud: ${cloudModel || 'AI'}]\n\n${result.trim()}`;
+        setAiReflection(tagged);
+        return;
+      }
+
+      // Local Ollama flow
       const response = await fetch(`${aiUrl}/api/generate`, {
         method: 'POST',
         headers: {
@@ -236,10 +312,15 @@ Insights (exactly 3 lines):`;
       }
 
       const data = await response.json();
-      setAiReflection(data.response || "No response received.");
+      const tagged = `[Local: ${aiModel}]\n\n${data.response || "No response received."}`;
+      setAiReflection(tagged);
     } catch (err: any) {
       console.error(err);
-      setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Local AI is running locally (${aiUrl}) and that you ran 'ollama pull ${aiModel}' first.`);
+      if (aiMode === "cloud") {
+        setAiReflection(`Cloud AI reflection failed: ${err.message || err}. Check your API key and network connection in Settings.`);
+      } else {
+        setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Local AI is running locally (${aiUrl}) and that you ran 'ollama pull ${aiModel}' first.`);
+      }
     } finally {
       setAiLoading(false);
     }
@@ -355,6 +436,25 @@ Insights (exactly 3 lines):`;
 
 
 
+    if (aiMode === "off") {
+      const offNotice = "AI reflections and chat are currently turned off. You can enable On-Device or Online AI in Settings.";
+      if (isIncognito) {
+        setVolatileChatHistory(prev => {
+          const next = [...prev];
+          if (next.length > 0) next[next.length - 1].content = offNotice;
+          return next;
+        });
+      } else {
+        setChatMessages(prev => {
+          const next = [...prev];
+          if (next.length > 0) next[next.length - 1].content = offNotice;
+          return next;
+        });
+      }
+      setChatLoading(false);
+      return;
+    }
+
     try {
       console.log("[DEBUG Chat Flow] Compiling messages for context...");
       invoke("log_debug", { msg: "[DEBUG Chat Flow] Compiling messages for context..." }).catch(console.error);
@@ -362,6 +462,48 @@ Insights (exactly 3 lines):`;
       const ctxMsg = `[DEBUG Chat Flow] Context generated with ${systemContext.length} messages.`;
       console.log(ctxMsg);
       invoke("log_debug", { msg: ctxMsg }).catch(console.error);
+
+      if (aiMode === "cloud") {
+        try {
+          const fullPrompt = systemContext.map(m => `[${m.role.toUpperCase()}]: ${m.content}`).join("\n\n");
+          const reply = await invoke<string>("run_cloud_ai_completion", { prompt: fullPrompt });
+          const replyWithTag = `[Cloud: ${cloudModel || 'AI'}]\n\n${reply.trim()}`;
+
+          if (isIncognito) {
+            setVolatileChatHistory(prev => {
+              const next = [...prev];
+              if (next.length > 0) next[next.length - 1].content = replyWithTag;
+              return next;
+            });
+          } else {
+            setChatMessages(prev => {
+              const next = [...prev];
+              if (next.length > 0) next[next.length - 1].content = replyWithTag;
+              return next;
+            });
+            invoke("add_chat_message", { date: selectedDate, role: "assistant", content: replyWithTag }).catch(console.error);
+          }
+        } catch (err: any) {
+          console.error("Cloud chat error:", err);
+          const errMsg = `Cloud AI error: ${err.message || err}`;
+          if (isIncognito) {
+            setVolatileChatHistory(prev => {
+              const next = [...prev];
+              if (next.length > 0) next[next.length - 1].content = errMsg;
+              return next;
+            });
+          } else {
+            setChatMessages(prev => {
+              const next = [...prev];
+              if (next.length > 0) next[next.length - 1].content = errMsg;
+              return next;
+            });
+          }
+        } finally {
+          setChatLoading(false);
+        }
+        return;
+      }
 
       const fetchMsg = `[DEBUG Chat Flow] Executing fetch request to ${aiUrl}/api/chat`;
       console.log(fetchMsg);
