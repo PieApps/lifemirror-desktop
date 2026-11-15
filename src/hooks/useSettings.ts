@@ -31,6 +31,8 @@ export function useSettings() {
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
   const [isAiAvailable, setIsAiAvailable] = useState<boolean>(false);
+  const [aiProcessingMode, setAiProcessingMode] = useState<"on_demand" | "continuous">("on_demand");
+  const [hasSeenOnDemandNotice, setHasSeenOnDemandNotice] = useState<boolean>(true);
 
   const checkAiAvailability = useCallback(async (urlToCheck?: string): Promise<boolean> => {
     const targetUrl = urlToCheck !== undefined ? urlToCheck : ollamaUrl;
@@ -135,6 +137,16 @@ export function useSettings() {
         } else {
           setOllamaModel("llama3.2");
         }
+
+        const mode = await invoke<string>("get_db_setting", { key: "ai_processing_mode" });
+        if (mode === "continuous" || mode === "on_demand") {
+          setAiProcessingMode(mode);
+        } else {
+          setAiProcessingMode("on_demand");
+        }
+
+        const noticeSeen = await invoke<string>("get_db_setting", { key: "has_seen_on_demand_notice" });
+        setHasSeenOnDemandNotice(noticeSeen === "true");
 
         const minLogDurationStr = await invoke<string>("get_db_setting", { key: "min_log_duration" });
         if (minLogDurationStr && minLogDurationStr !== "false" && minLogDurationStr.trim() !== "") {
@@ -288,6 +300,24 @@ export function useSettings() {
     }
   };
 
+  const updateAiProcessingMode = async (mode: "on_demand" | "continuous") => {
+    setAiProcessingMode(mode);
+    try {
+      await invoke("set_db_setting", { key: "ai_processing_mode", value: mode });
+    } catch (e) {
+      console.error("Failed to update ai_processing_mode:", e);
+    }
+  };
+
+  const dismissOnDemandNotice = async () => {
+    setHasSeenOnDemandNotice(true);
+    try {
+      await invoke("set_db_setting", { key: "has_seen_on_demand_notice", value: "true" });
+    } catch (e) {
+      console.error("Failed to dismiss on_demand notice:", e);
+    }
+  };
+
   return {
     theme,
     setTheme,
@@ -301,6 +331,10 @@ export function useSettings() {
     ollamaModel,
     isAiAvailable,
     setIsAiAvailable,
+    aiProcessingMode,
+    updateAiProcessingMode,
+    hasSeenOnDemandNotice,
+    dismissOnDemandNotice,
     checkAiAvailability,
     updateOllamaUrl,
     updateOllamaModel,

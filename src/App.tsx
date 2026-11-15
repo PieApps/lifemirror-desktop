@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./hooks/useSettings";
@@ -167,7 +168,31 @@ function App() {
         onAILockedClick={handleAILockedClick}
       />
 
-      {missingModel && (
+      {/* One-time informative notice for users about the On-Demand battery & thermal optimization */}
+      {!settings.hasSeenOnDemandNotice && (
+        <div 
+          role="status" 
+          aria-live="polite"
+          className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border-b border-emerald-500/30 text-emerald-800 dark:text-emerald-200 px-4 py-2.5 text-xs shadow-sm flex items-center justify-between gap-4 z-50 animate-in fade-in slide-in-from-top-2 duration-300"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="p-1 rounded-md bg-emerald-500/20 text-emerald-400 shrink-0">
+              <Sparkles className="w-3.5 h-3.5" />
+            </span>
+            <p className="leading-relaxed">
+              <strong className="font-semibold text-emerald-700 dark:text-emerald-300">Quiet & Battery-Saving Update:</strong> Local AI is now set to <span className="font-semibold underline decoration-emerald-500/40">On-Demand</span> by default to keep cooling fans silent. Heavy background loops are paused until you request insights. You can customize this anytime in Settings.
+            </p>
+          </div>
+          <button
+            onClick={settings.dismissOnDemandNotice}
+            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors shrink-0 shadow-sm cursor-pointer"
+          >
+            Got it
+          </button>
+        </div>
+      )}
+
+      {missingModel && settings.aiProcessingMode === "continuous" && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 text-center text-sm shadow-inner relative">
           <p className="font-semibold mb-1">Semantic Search Unavailable: Missing AI Model</p>
           <p className="opacity-90 max-w-2xl mx-auto mb-3">
@@ -256,6 +281,8 @@ function App() {
               setAiUrl={settings.updateOllamaUrl}
               aiModel={settings.ollamaModel}
               setAiModel={settings.updateOllamaModel}
+              aiProcessingMode={settings.aiProcessingMode}
+              setAiProcessingMode={settings.updateAiProcessingMode}
               trackingActive={settings.trackingActive}
               setTrackingActive={settings.handleToggleTracking}
               minLogDuration={settings.minLogDuration}

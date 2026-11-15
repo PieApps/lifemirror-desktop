@@ -484,3 +484,28 @@ Instead of distractions vanishing when the shield drops, interceptions are perma
 2. **Timeline Visualization**: In the React frontend `SCurveTimeline.tsx`, distraction events are fetched and chronologically interleaved with regular focus activities. They render as distinct Red Shield nodes.
 3. **Gamification Metrics**: The main dashboard Date Scrubber displays a red badge metric `"🛡️ Deflected: X"` counting the total distractions successfully repelled for the day, gamifying focus retention.
 
+---
+
+## 9. On-Demand Intelligence Architecture & Fail-Fast Circuit Breaker
+
+To eliminate background fan spin, CPU heating, and battery consumption on laptops, LifeMirror operates an **On-Demand (Recommended)** AI model by default, configured via the SQLite `ai_processing_mode` setting (`"on_demand"` vs. `"continuous"`).
+
+### 1. Ingestion vs. Inference Decoupling
+* **Passive Continuous Ingestion ($T=0$):** OS window focus polling (`tracker.rs`), browser tab streaming (`native_msg.rs`), and raw event grouping into sessions (`Collector` and `SessionBuilder`) run continuously from the moment the computer boots up. This is written in pure Rust and SQLite with ~0% CPU load and ~15MB memory footprint.
+* **Suspended Background Forward Passes:** In `"on_demand"` mode:
+  - The 10-minute idle reflection loop (`ai.rs`) is completely skipped.
+  - The 60-second memory node processing pipeline in `queue.rs` (Steps 2, 3, 4: `EntityExtractor` tags, `Summarizer`, and `EmbeddingEngine`) is suspended.
+
+### 2. Just-In-Time (JIT) Execution
+When the user explicitly invokes an AI capability (clicking **Reflect with AI**, querying **Chat**, or requesting a **Catch-up Resume brief**):
+1. The frontend dispatches `invoke("sync_day_memories", { date })`.
+2. `MemoryQueue::process_pending_sessions` runs steps 2, 3, and 4 on-the-fly for pending nodes scoped to that query, caching the result in SQLite.
+3. The LLM generates the response, returning in 2–3 seconds before returning the AI subsystem to complete dormancy.
+
+### 3. Fail-Fast Circuit Breaker (`is_available()`)
+To ensure offline environments or stopped Ollama daemons never hang or freeze threads:
+* `InferenceProvider::is_available()` performs a fast sub-second (600ms timeout) probe against `${url}/api/version`.
+* If Ollama is offline or returns `ECONNREFUSED`, all inference methods (`prompt`, `embed`) fail fast immediately without waiting for standard 30-second socket timeouts.
+* Continuous mode workers detect the offline state and sleep without hammering loopback ports or producing log storms.
+
+

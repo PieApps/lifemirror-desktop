@@ -38,6 +38,9 @@ pub trait InferenceProvider: Send + Sync {
     /// Verify that the provider is properly configured and the required models are available
     async fn check_health(&self, purpose: ModelPurpose) -> Result<bool, InferenceError>;
 
+    /// Fast circuit-breaker: checks if the local AI service is online and responding (sub-second timeout)
+    async fn is_available(&self) -> bool;
+
     /// Pull/Download a model natively. Emits progress events over Tauri event system.
     async fn pull_model(&self, purpose: ModelPurpose, app_handle: tauri::AppHandle) -> Result<(), InferenceError>;
 }

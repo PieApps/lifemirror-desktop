@@ -957,6 +957,18 @@ impl DbState {
             [],
         )?;
 
+        // Seed default AI processing mode (on_demand by default to preserve battery and quiet fans)
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_processing_mode', 'on_demand');",
+            [],
+        )?;
+
+        // Seed one-time migration notification state for existing users
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES ('has_seen_on_demand_notice', 'false');",
+            [],
+        )?;
+
         // Indexes for performance
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_activity_logs_start_time ON activity_logs (start_time);",

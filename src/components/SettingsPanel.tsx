@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu } from "lucide-react";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 import { ExclusionEntry, PurgePreview, PurgeReport, JournalEntry } from "../types";
 import { normalizeDomain } from "../utils/domainRules";
@@ -16,6 +16,8 @@ interface SettingsPanelProps {
   setAiUrl: (url: string) => void;
   aiModel: string;
   setAiModel: (model: string) => void;
+  aiProcessingMode?: "on_demand" | "continuous";
+  setAiProcessingMode?: (mode: "on_demand" | "continuous") => void;
   trackingActive: boolean;
   setTrackingActive: (active: boolean) => void;
   minLogDuration: number;
@@ -43,6 +45,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   setAiUrl,
   aiModel,
   setAiModel,
+  aiProcessingMode = "on_demand",
+  setAiProcessingMode,
   trackingActive,
   setTrackingActive,
   minLogDuration,
@@ -1114,6 +1118,77 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
                 Ensure you run <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-violet-600 dark:text-violet-300 font-mono">ollama run {aiModel === "false" || !aiModel ? 'llama3.2' : aiModel}</code> in your terminal.
               </p>
+            </div>
+
+            {/* AI Processing Mode Choice Cards */}
+            <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
+              <label className="block text-xs text-[var(--text-color)] font-semibold">
+                AI Processing Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="AI Processing Mode">
+                {/* On-Demand Card */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={aiProcessingMode === "on_demand"}
+                  aria-label="On-Demand (Recommended) - Only processes data when requested"
+                  onClick={() => setAiProcessingMode?.("on_demand")}
+                  className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                    aiProcessingMode === "on_demand"
+                      ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10"
+                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>On-Demand</span>
+                      </span>
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        Recommended
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                      Only processes data when requested (Reflect with AI, Chat, Catch-up). Zero background CPU or fan noise, maximizing laptop battery life.
+                    </p>
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                    <Check className={`w-3 h-3 ${aiProcessingMode === "on_demand" ? "opacity-100" : "opacity-0"}`} />
+                    <span>{aiProcessingMode === "on_demand" ? "Active Mode" : "Click to select"}</span>
+                  </div>
+                </button>
+
+                {/* Continuous Background Card */}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={aiProcessingMode === "continuous"}
+                  aria-label="Continuous Background - Automatically indexes sessions in background"
+                  onClick={() => setAiProcessingMode?.("continuous")}
+                  className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                    aiProcessingMode === "continuous"
+                      ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10"
+                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5 text-violet-400" />
+                        <span>Continuous Background</span>
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                      Automatically indexes sessions, generates entity tags, and builds idle reflections in the background (consumes more CPU/battery).
+                    </p>
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-violet-400 font-medium">
+                    <Check className={`w-3 h-3 ${aiProcessingMode === "continuous" ? "opacity-100" : "opacity-0"}`} />
+                    <span>{aiProcessingMode === "continuous" ? "Active Mode" : "Click to select"}</span>
+                  </div>
+                </button>
+              </div>
             </div>
 
             <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">

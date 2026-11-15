@@ -2,9 +2,41 @@ use super::{InferenceError, InferenceProvider, ModelPurpose};
 use crate::db::DbState;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tauri::Emitter;
 use futures_util::StreamExt;
+
+static PROBE_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static HEALTH_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static INFERENCE_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn get_probe_client() -> &'static reqwest::Client {
+    PROBE_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_millis(600))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+fn get_health_client() -> &'static reqwest::Client {
+    HEALTH_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
+fn get_inference_client() -> &'static reqwest::Client {
+    INFERENCE_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
 
 pub struct OllamaProvider {
     pub db: Arc<DbState>,
@@ -50,10 +82,27 @@ impl OllamaProvider {
 
 #[async_trait::async_trait]
 impl InferenceProvider for OllamaProvider {
+    async fn is_available(&self) -> bool {
+        let ai_url = self.db.get_setting("ollama_url").unwrap_or_default();
+        let validated_url = match super::validate_local_ai_url(&ai_url) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let client = get_probe_client();
+        match client.get(format!("{}/api/version", validated_url)).send().await {
+            Ok(resp) => resp.status().is_success(),
+            Err(_) => false,
+        }
+    }
+
     async fn prompt(&self, prompt: &str) -> Result<String, InferenceError> {
         let (ai_url, ai_model) = self.get_config(ModelPurpose::TextGeneration)?;
 
-        let client = reqwest::Client::new();
+        if !self.is_available().await {
+            return Err(InferenceError::Api("Local AI server is not running or unreachable".into()));
+        }
+
+        let client = get_inference_client();
         let body = json!({
             "model": ai_model,
             "prompt": prompt,
@@ -82,7 +131,11 @@ impl InferenceProvider for OllamaProvider {
     async fn embed(&self, text: &str) -> Result<(Vec<f32>, String, String), InferenceError> {
         let (ai_url, ai_model) = self.get_config(ModelPurpose::Embedding)?;
 
-        let client = reqwest::Client::new();
+        if !self.is_available().await {
+            return Err(InferenceError::Api("Local AI server is not running or unreachable".into()));
+        }
+
+        let client = get_inference_client();
         let body = json!({
             "model": ai_model,
             "prompt": text,
@@ -121,10 +174,11 @@ impl InferenceProvider for OllamaProvider {
             Err(_) => return Ok(false), // Disabled configuration is "unhealthy" but shouldn't crash
         };
 
-        let client = reqwest::Client::new();
-        let res = client.get(format!("{}/api/tags", ai_url))
-            .send()
-            .await?;
+        let client = get_health_client();
+        let res = match client.get(format!("{}/api/tags", ai_url)).send().await {
+            Ok(r) => r,
+            Err(_) => return Ok(false),
+        };
 
         if !res.status().is_success() {
             return Ok(false);

@@ -98,6 +98,10 @@ LifeMirror's AI features run completely locally on your machine, ensuring your a
 2. Open LifeMirror Desktop and click the **Settings** icon (top right) to configure:
    * **Local AI Endpoint:** e.g., `http://localhost:11434`
    * **Text Generation Model:** e.g., `llama3.2`
+   * **AI Processing Mode:**
+     * **On-Demand (Recommended, Default):** Heavy background model inference (idle reflections, automatic entity tagging, vector embeddings) is completely suspended. Intelligence only processes when you explicitly request it (clicking *Reflect with AI*, entering a *Chat* query, or viewing a *Catch-up* brief). This keeps your laptop completely silent, prevents cooling fan spikes, and maximizes battery life.
+     * **Continuous Background:** Automatically pre-indexes memory nodes and builds idle reflections in the background every 60 seconds (best suited for plugged-in desktop workstations with dedicated GPUs).
+   * **Fail-Safe Offline Dormancy:** When Ollama is stopped or unreachable, LifeMirror immediately deactivates all AI routines with a sub-second circuit breaker—no hanging connections, no retry storms, and no CPU throttling.
 3. If the model is not installed, LifeMirror provides a native **Download Model Native** button on the dashboard. Simply click it to download the model without ever touching a terminal!
 4. Toggle between the **Reflect** and **Chat** modes in the AI panel on the right sidebar:
    - Click **Reflect with AI** to compile your daily focus logs into a 2-sentence mindfulness reflection card.

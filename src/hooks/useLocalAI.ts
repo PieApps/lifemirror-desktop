@@ -192,6 +192,11 @@ ${compileContextRollup()}`;
     setAiReflection("");
     
     try {
+      // Just-In-Time (JIT) memory indexing for on-demand mode
+      invoke("sync_day_memories", { date: selectedDate }).catch((e) => {
+        console.debug("JIT memory sync notice:", e);
+      });
+
       const summaryText = activities.slice(0, 10).map(node => 
         `- App: ${node.app_name}, Session Title: ${node.window_title}, Spent: ${formatDurationForAI(node.duration)}`
       ).join("\n");
@@ -308,6 +313,12 @@ Insights (exactly 3 lines):`;
     const prepMsg = `[DEBUG Chat Flow] Preparing to send request. URL: ${aiUrl}, Model: ${aiModel}`;
     console.log(prepMsg);
     invoke("log_debug", { msg: prepMsg }).catch(console.error);
+
+    // On-Demand JIT memory sync: process pending sessions in background
+    invoke("sync_day_memories", { date: selectedDate }).catch((e) => {
+      console.debug("JIT chat sync notice:", e);
+    });
+
     setChatLoading(true);
     setChatInput("");
     abortControllerRef.current?.abort();

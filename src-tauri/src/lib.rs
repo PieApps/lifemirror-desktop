@@ -892,6 +892,14 @@ async fn generate_resume_context(
     builder.generate_context(project_id).await
 }
 
+#[tauri::command]
+async fn sync_day_memories(
+    state: State<'_, Arc<DbState>>,
+    _date: Option<String>,
+) -> Result<usize, String> {
+    crate::memory_engine::queue::MemoryQueue::process_pending_sessions(state.inner().clone(), 20).await
+}
+
 fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
     let open_i = MenuItem::with_id(app, "open", "Open LifeMirror Desktop", true, None::<&str>)?;
 
@@ -1180,6 +1188,12 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let db_for_setup = db_arc_setup.clone();
             tauri::async_runtime::spawn(async move {
+                let mode = db_for_setup.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
+                if mode != "continuous" {
+                    // In On-Demand mode (default), startup is 100% silent and dormant.
+                    // Do not probe Ollama or emit missing model warnings on boot.
+                    return;
+                }
                 let provider = crate::inference::get_inference_provider(db_for_setup.clone());
                 match provider.check_health(crate::inference::ModelPurpose::Embedding).await {
                     Ok(true) => {},
@@ -1277,6 +1291,7 @@ pub fn run() {
             show_main,
             fix_autostart_registry_path,
             generate_resume_context,
+            sync_day_memories,
             ai::generate_chat_suggestions,
             pull_ai_model,
             get_excluded_domains,

@@ -16,6 +16,12 @@ pub fn start_idle_ai_summarizer(db: Arc<DbState>) {
                 continue;
             }
 
+            // In On-Demand mode (default), background idle reflection generation is completely suspended to preserve battery and quiet fans.
+            let processing_mode = db.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
+            if processing_mode == "on_demand" {
+                continue;
+            }
+
             // Retrieve the latest log to see when the last activity occurred
             if let Ok(logs) = db.get_activity_logs(1) {
                 if logs.is_empty() {
