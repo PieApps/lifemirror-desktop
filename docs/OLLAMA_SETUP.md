@@ -145,8 +145,11 @@ If running Ollama as a systemd service:
 
 1. Start **LifeMirror Desktop**.
 2. Open settings by clicking the **Settings Gear Icon** ⚙️ in the top-right corner.
-3. Configure the following inputs:
-   - **Ollama Host URL:** `http://localhost:11434` (or your custom remote IP/port)
+3. Configure the following inputs in the **Local AI** tab:
+   - **Ollama Host URL:** `http://localhost:11434` (must point to a local loopback address: localhost / 127.0.0.1 / ::1)
    - **Ollama Model:** `llama3.2` (or the specific model you pulled, e.g., `llama3`, `mistral`)
-4. Close settings.
-5. Click **Reflect with Ollama** on your dashboard.
+   - **AI Processing Mode:**
+     - **On-Demand (Recommended):** Keeps your cooling fans silent and battery preserved by suspending continuous background forward passes. AI runs only when you request reflections, chat, or project catch-up briefs.
+     - **Continuous Background:** For desktop workstations with dedicated GPUs that prefer autonomous background pre-computation.
+4. **Thermal & Fan Behavior:** In On-Demand mode, LifeMirror never hammers Ollama in the background. If you stop or shut down Ollama, LifeMirror fails fast within milliseconds without hanging or generating retry storms, keeping your timeline tracking fully functional.
+5. Close settings and click **Reflect with AI** on your dashboard.

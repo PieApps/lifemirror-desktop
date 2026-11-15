@@ -153,8 +153,36 @@ Links a `memory_node` (type="session") to its constituent raw events (like `acti
 
 ---
 
-## 5. Other Legacy Tables
-- `settings`: KV configuration.
-- `chat_history`: Raw AI conversation logs.
-- `distraction_rules` & `distraction_events`.
-- `aggregated_daily_metrics`: Pre-calculated metrics.
+## 5. System & Configuration Tables
+
+### `settings`
+Persistent key-value configuration store shared across the desktop GUI and headless browser native messaging processes.
+
+| Key | Default | Description |
+| :--- | :--- | :--- |
+| `ai_processing_mode` | `'on_demand'` | `'on_demand'` (default, quiet fans & battery saver) or `'continuous'` |
+| `has_seen_on_demand_notice` | `'false'` | One-time migration notice banner state for existing users |
+| `tracking_active` | `'true'` | Global activity tracking state |
+| `incognito` | `'false'` | Incognito privacy lock mode |
+| `ollama_url` | `'http://localhost:11434'` | Local loopback endpoint for local AI models |
+| `ollama_model` | `'llama3.2'` | Local text completion model |
+| `ollama_embedding_model` | `'nomic-embed-text'` | Local vector embedding model |
+| `min_log_duration` | `'60'` | Minimum seconds an app must be focused to be recorded |
+| `min_sub_session_duration` | `'60'` | Minimum seconds a browser tab must be focused to be recorded |
+| `excluded_domains_version` | `'0'` | Atomic synchronization clock for excluded domain cache invalidation |
+
+### `chat_history`
+Stores multi-turn conversational history with the local AI keyed by date.
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `INTEGER PRIMARY KEY` | Auto-incrementing ID |
+| `date` | `TEXT NOT NULL` | Target date (`YYYY-MM-DD`) |
+| `role` | `TEXT NOT NULL` | `'user'`, `'assistant'`, or `'system'` |
+| `content` | `TEXT NOT NULL` | Raw message content |
+| `timestamp` | `TEXT NOT NULL` | ISO 8601 message timestamp |
+
+### `distraction_rules` & `distraction_events`
+Stores regex rules and deflected distraction events for Active Interdiction.
+
+### `aggregated_daily_metrics`
+Stores daily rolled-up activity summaries for fast analytics querying.

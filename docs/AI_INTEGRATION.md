@@ -11,6 +11,15 @@ By removing the incomplete Gemini Nano (Chrome built-in AI) integration and repl
 ### In-App Model Pulling
 We now feature Native Model Downloading over Tauri IPC. Instead of instructing the user to run terminal commands, the UI calls `/api/pull` natively and renders a real-time progress bar.
 
+### On-Demand Architecture & Thermal Optimization
+To prevent fan noise, CPU overheating, and battery drain on laptops, LifeMirror decouples telemetry ingestion from model inference:
+* **Passive Ingestion ($T=0$):** Window focus polling and browser tab synchronization run continuously from boot in pure Rust and SQLite with near-zero overhead (<0.01% CPU, ~15MB RAM).
+* **On-Demand Execution (Default & Recommended):** In `"on_demand"` mode, all background LLM routines (the 60-second queue for semantic tagging, summarization, and vector embeddings, plus the 10-minute idle reflection loop) are suspended. Heavy matrix calculations run strictly when requested by the user.
+* **Just-In-Time (JIT) Processing:** When the user clicks **Reflect with AI**, queries **Chat**, or requests a **Catch-up Resume brief**, the backend executes `sync_day_memories` to synthesize pending sessions for that day on-the-fly in 2–3 seconds.
+* **Atomic De-Duplication Guard:** An RAII-scoped atomic compare-exchange (`static IS_SYNCING: AtomicBool`) prevents redundant concurrent forward passes if the user double-clicks reflection or chat triggers.
+* **Fail-Fast Circuit Breaker & Connection Pooling:** `InferenceProvider::is_available()` executes a 600ms sub-second health probe using connection-pooled HTTP clients (`OnceLock<reqwest::Client>`). If Ollama is offline or unreachable (`ECONNREFUSED`), inference calls fail fast immediately without hanging on socket timeouts or spawning retry storms.
+* **Boot-Time Dormancy:** In On-Demand mode, boot is 100% silent with zero localhost polling or missing-model alert banners. If Continuous mode is selected, a 180-second boot grace period lets OS startup services stabilize before any background cycles run.
+
 ### Why Ollama as the first provider?
 - **Pros:** Mature and stable, excellent model compatibility, handles model management and quantization formats, easy API, cross-platform, large community.
 - **Cons:** Requires a separate installation and runs as a background service. These are UX problems, which we mitigate via the Native Model Download UI.

@@ -197,10 +197,16 @@ LifeMirror is built on a local-first, zero-cloud architecture with comprehensive
 
 LifeMirror features an abstracted `InferenceProvider` allowing you to securely plug in local AI models without sending your timeline data to the cloud. Currently, **Ollama** is the default supported backend.
 
+* **On-Demand Intelligence (Default & Recommended)**: Designed for quiet, fanless operation and all-day battery life. While passive window and tab tracking runs continuously from boot at <0.01% CPU in pure Rust, heavy neural network forward passes (summaries, entity tags, vector embeddings) are completely suspended in the background. AI computes only when you explicitly ask (clicking *Reflect with AI*, querying *Chat*, or requesting a *Catch-up* brief).
+* **Continuous Background Mode**: Available via Settings → Local AI for plugged-in desktop workstations with dedicated GPUs that prefer autonomous background pre-computation. Includes a 3-minute cold-boot delay to prevent startup resource contention.
+* **Fail-Fast Circuit Breaker**: If Ollama is offline or unreachable, LifeMirror detects it in sub-second time (600ms probe) and enters complete dormancy—no socket timeout hangs, zero background retry storms, and no CPU throttling.
+
+#### Getting Started with Local AI:
 1. Download and run [Ollama](https://ollama.com) locally.
 2. In the LifeMirror app, open **Settings** (top-right cog) and set:
    - **Local AI Endpoint**: `http://localhost:11434`
    - **Model**: e.g. `llama3.2`
+   - **AI Processing Mode**: `On-Demand (Recommended)` or `Continuous Background`
 3. Click **Download Model Native** to fetch the model without needing the terminal.
 
 For detailed cross-OS setup and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
