@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — LifeMirror Desktop Companion
 
-> Last Updated: 2026-11-11
+> Last Updated: 2026-11-16
 
 ---
 
@@ -181,7 +181,8 @@ https://pieapps.github.io/lifemirror-desktop.web/
 
 | Version | Date | Changes | Status |
 |---|---|---|---|
-| **1.4.1** | 2026-11-11 | Architecture & security hardening: Removed legacy popup files (`popup.html`, `popup.js`, `popup.css`) in favor of unified Chrome Side Panel experience; added URL protocol validation on tab links (`sidepanel.js`), safe DOM building in purge preview, native host template dev ID removal, daily keys index avoiding full storage scans, debounced storage listener, session activity serializer queue, local timezone date pruning, explicit CSP meta tag, and `minimum_chrome_version: 102`. Broad `host_permissions` omitted to uphold minimal permission architecture. | Ready for Submission |
+| **1.5.0** | 2026-11-16 | Full parity with LifeMirror Desktop 1.5.0: Added bidirectional desktop tracking pause state detection with amber badge indicator; added native daily storage purge synchronization; eliminated inline styles in favor of scoped CSS classes to satisfy strict CSP compliance. | Ready for Submission |
+| **1.4.1** | 2026-11-11 | Architecture & security hardening: Removed legacy popup files (`popup.html`, `popup.js`, `popup.css`) in favor of unified Chrome Side Panel experience; added URL protocol validation on tab links (`sidepanel.js`), safe DOM building in purge preview, native host template dev ID removal, daily keys index avoiding full storage scans, debounced storage listener, session activity serializer queue, local timezone date pruning, explicit CSP meta tag, and `minimum_chrome_version: 102`. Broad `host_permissions` omitted to uphold minimal permission architecture. | Archival |
 | **1.4.0** | 2026-11-09 | Added full domain exclusion engine with subdomain matching, URL query/hash sanitization, search engine title masking, Side Panel Excluded Sites drawer with 1-click purge, popup exclusion toggle, and bidirectional native sync with tombstone LWW resolution. | Archival |
 | **1.3.0** | 2026-11-09 | Added Chrome Side Panel dashboard with 24-hour Hourly Focus Rhythm heat-strip, Top Domains progress bars, multi-signal semantic URL/title classifier, 1-click standup summary export, micro-hop noise filter, and standalone on-device 48-hour rolling storage. | Archival |
 | **1.2.1** | 2026-11-07 | Streamlined popup interface by removing redundant launch action bar in favor of context menu shortcuts and automatic background native sync. | Archival |

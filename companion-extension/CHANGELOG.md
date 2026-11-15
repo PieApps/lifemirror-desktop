@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.5.0] — 2026-11-16
+
+### Added
+* **Desktop Tracking Pause State Detection (`background.js`, `sidepanel.js`, `sidepanel.css`, `sidepanel.html`)**: Real-time synchronization of desktop tracking pause state via native messaging. Visual amber badge indicator and paused state notice in the side panel header when focus tracking is paused from the LifeMirror Desktop application.
+* **Native Daily Storage Purge Synchronization (`background.js`, `sidepanel.js`)**: Bidirectional native synchronization to handle daily rolling storage purges and coordinated single-domain history purges between browser extension storage and backend SQLCipher database.
+
+### Security & Hardening
+* **Strict CSP Compliance & Inline Styles Elimination (`sidepanel.html`, `sidepanel.css`, `sidepanel.js`)**: Fully eliminated inline `style="..."` attributes and dynamic style injections in `sidepanel.html` and `sidepanel.js`, migrating to scoped CSS rules in `sidepanel.css` to adhere to strict Manifest V3 Content Security Policy standards without requiring `'unsafe-inline'`.
+
+---
+
 ## [1.4.1] — 2026-11-11
 
 ### Security & Hardening
