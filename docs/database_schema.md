@@ -178,6 +178,9 @@ Persistent key-value configuration store shared across the desktop GUI and headl
 | `min_sub_session_duration` | `'60'` | Minimum seconds a browser tab must be focused to be recorded |
 | `excluded_domains_version` | `'0'` | Atomic synchronization clock for excluded domain cache invalidation |
 
+> [!NOTE]
+> In the Rust backend (`src-tauri/src/db.rs`), `ai_provider` and `ai_processing_mode` are mapped to strongly-typed enums (`AiProviderMode` and `AiProcessingMode`) via `DbState::get_ai_provider_mode()` and `DbState::get_ai_processing_mode()`. They implement `FromStr` and `Display` to guarantee safe compile-time checked fallbacks and prevent stringly-typed configuration bugs.
+
 ### `chat_history`
 Stores multi-turn conversational history with the local AI keyed by date.
 | Column | Type | Description |

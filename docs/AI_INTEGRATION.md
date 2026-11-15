@@ -31,11 +31,11 @@ pub trait InferenceProvider: Send + Sync {
 }
 ```
 
-Dynamic dispatch is handled by `get_inference_provider(db: Arc<Database>)`:
-1. Reads `ai_provider` from the encrypted `settings` table.
-2. If `"cloud"`, verifies that `cloud_disclosure_accepted == "true"` and builds a `CloudProvider` using the encrypted `cloud_api_key`, `cloud_base_url`, and `cloud_model`.
-3. If `"off"`, returns a dormant provider that fails gracefully without network activity.
-4. Defaults to `OllamaProvider` pointing to the configured `ollama_url`.
+Dynamic dispatch is handled by `get_inference_provider(db: Arc<DbState>)`:
+1. Queries `db.get_ai_provider_mode()` which returns the strongly-typed `AiProviderMode` enum (`Local`, `Cloud`, `Off`).
+2. If `AiProviderMode::Off`, returns `DisabledProvider` (Zero-Sized Type), which returns `InferenceError::Disabled` with 0 heap allocation and 0 socket traffic.
+3. If `AiProviderMode::Cloud`, verifies that `cloud_disclosure_accepted == "true"` and builds a `CloudProvider` using the encrypted `cloud_api_key`, `cloud_base_url`, and `cloud_model`.
+4. If `AiProviderMode::Local`, returns `OllamaProvider` pointing to the configured `ollama_url`.
 
 ---
 

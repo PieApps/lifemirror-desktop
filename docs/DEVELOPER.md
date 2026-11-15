@@ -237,7 +237,7 @@ To support secure opt-in cloud AI with transparent user review and 1-click key r
 - `test_cloud_connection(base_url: String, api_key: String, model: String)`: Performs a lightweight health check against the provider's `/models` or `/chat/completions` endpoint, passing base URL through SSRF validation.
 - `get_recent_preview_payload()`: Queries the top 3 most recent sessions directly from SQLCipher and constructs a real preview payload, allowing the user to review what data leaves their machine.
 - `run_cloud_ai_completion(base_url: String, api_key: String, model: String, prompt: String)`: Executes an inference call via `CloudProvider` with connection-pooled HTTP clients, returning the completion string.
-- `clear_cloud_ai_key()`: Immediately deletes the cloud API key, resets endpoint configs in SQLite, sets `ai_provider` back to `"local"`, and invalidates disclosure acceptance.
+- `clear_cloud_ai_key()`: Immediately deletes the cloud API key, resets endpoint configs in SQLite, sets `ai_provider` to `"off"` (safe dormant state), and invalidates disclosure acceptance.
 
 ### Dynamic Log Duration Threshold Settings
 The threshold for committing activities to SQLite is dynamically read from the database using the `"min_log_duration"` setting:
@@ -297,6 +297,12 @@ Interactive nodes are positioned along the curve peaks. Evaluated at the paramet
 * $y = (i + 0.5) \times rowHeight$
 * $x = (i \pmod 2 == 0) ? width \times 0.875 : width \times 0.125$
 * Cards are offset to the left (for even nodes) or right (for odd nodes) to align with the visual sweep.
+
+### Timeline Rendering Optimization & Referential Equality (`useActivityData.ts`)
+To prevent excessive CPU load and fan noise from continuous SVG re-renders:
+* **Relaxed Polling Interval:** Activity and timeline polling runs on an 8-second interval (relaxed from 3s).
+* **Referential Stability Helpers:** Data hooks (`useActivityData.ts`) perform field-by-field equality checks (`areActivitiesEqual`, `areMemoryNodesEqual`, `areEntitiesEqual`) between previous state and incoming IPC payloads.
+* **Redundant Render Suppression:** If the activity list, memory nodes, or entity tags have not changed, React state setters are skipped, preserving referential equality. This completely avoids re-calculating cubic Bézier paths and DOM layout thrashing, reducing `WebKitWebProcess` idle CPU usage from ~30% down to ~1%.
 
 ---
 
@@ -499,27 +505,27 @@ LifeMirror decouples intelligence inference from data collection using a modular
 
 ### 1. Ingestion vs. Inference Decoupling & Thermal Optimization
 * **Passive Continuous Ingestion ($T=0$):** OS window focus polling (`tracker.rs`), browser tab streaming (`native_msg.rs`), and raw event grouping into sessions (`Collector` and `SessionBuilder`) run continuously from boot in pure Rust and SQLite with ~0% CPU load and ~15MB memory footprint.
-* **On-Demand Mode (Default & Recommended):** Configured via SQLite `ai_processing_mode == "on_demand"`:
+* **On-Demand Mode (Default & Recommended):** Controlled via strongly-typed `AiProcessingMode::OnDemand` (configured in SQLite `ai_processing_mode == "on_demand"`):
   - Heavy background matrix multiplications (idle reflections, automated entity tagging, vector embeddings) remain suspended.
   - The 10-minute idle reflection loop (`ai.rs`) and the 60-second processing queue (`queue.rs`) are skipped while idling.
   - Intelligence activates Just-In-Time (JIT) when requested by the user, returning in 2–3 seconds before returning to complete dormancy.
-* **Atomic De-Duplication Guard:** An RAII-scoped atomic compare-exchange (`static IS_SYNCING: AtomicBool`) prevents duplicate concurrent forward passes if users trigger multiple reflections.
+* **Atomic De-Duplication Guard:** An RAII-scoped atomic compare-exchange (`static IS_SYNCING: AtomicBool`) prevents duplicate concurrent forward passes if users trigger multiple reflections. Optimized with canonical acquire-release semantics:
+  - `IS_SYNCING.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)` ensures visibility across threads on lock acquisition.
+  - `SyncGuard::drop` executes `IS_SYNCING.store(false, Ordering::Release)` to commit writes before releasing.
 
 ### 2. Multi-Provider Dispatch (`get_inference_provider`)
-The backend routes all AI capabilities (`ai.rs`, `resume_context.rs`, and Tauri IPC commands) dynamically:
+The backend routes all AI capabilities (`ai.rs`, `resume_context.rs`, and Tauri IPC commands) dynamically using strongly-typed enums (`AiProviderMode` and `AiProcessingMode` in `src-tauri/src/db.rs`):
 ```rust
-pub fn get_inference_provider(db: Arc<Database>) -> Box<dyn InferenceProvider> {
-    let mode = db.get_setting("ai_provider").unwrap_or_else(|_| "local".to_string());
-    match mode.as_str() {
-        "cloud" => {
-            // Checks disclosure acceptance and builds CloudProvider with connection pooling
-            ...
-        }
-        "off" => Box::new(DormantProvider),
-        _ => Box::new(OllamaProvider::new(db)),
+pub fn get_inference_provider(db: Arc<DbState>) -> Box<dyn InferenceProvider> {
+    match db.get_ai_provider_mode() {
+        AiProviderMode::Off => Box::new(DisabledProvider),
+        AiProviderMode::Cloud => Box::new(CloudProvider { db }),
+        AiProviderMode::Local => Box::new(OllamaProvider { db }),
     }
 }
 ```
+* `DisabledProvider`: Zero-Sized Type (ZST) that allocates 0 bytes on the heap and fails immediately with `InferenceError::Disabled`, ensuring 100% dormancy when AI is deactivated in Settings.
+* `get_ai_provider_mode()` & `get_ai_processing_mode()`: Inherent `DbState` methods parsing SQLite values with safe, compile-time verified default fallbacks.
 
 ### 3. Server-Side Request Forgery (SSRF) Hardening
 To prevent malicious or manipulated cloud URLs from targeting cloud instance metadata or private intranet networks, `validate_cloud_url(url: &str)` in `src-tauri/src/inference/mod.rs` enforces:
