@@ -119,6 +119,14 @@ pub struct TopSiteEntry {
     pub visit_count: i64,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct DesktopTodaySummary {
+    pub total_active_seconds: i64,
+    pub context_switches: i64,
+    pub domains_count: i64,
+    pub hourly: Vec<i64>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DistractionEvent {
     pub id: Option<i64>,
@@ -2360,6 +2368,80 @@ impl DbState {
         Ok(out)
     }
 
+    pub fn get_desktop_today_summary(
+        &self,
+        date: Option<&str>,
+        profile_id: Option<&str>,
+    ) -> Result<DesktopTodaySummary> {
+        let conn = self.conn.lock().unwrap();
+
+        let mut conditions = Vec::new();
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(d) = date {
+            if !d.is_empty() {
+                conditions.push("datetime(timestamp, 'localtime') >= datetime(? || ' 00:00:00')");
+                params.push(Box::new(d.to_string()));
+                conditions.push("datetime(timestamp, 'localtime') <= datetime(? || ' 23:59:59', '+10 minutes')");
+                params.push(Box::new(d.to_string()));
+            }
+        } else {
+            conditions.push("date(timestamp, 'localtime') = date('now', 'localtime')");
+        }
+
+        if let Some(pid) = profile_id {
+            if !pid.is_empty() {
+                conditions.push("profile_id = ?");
+                params.push(Box::new(pid.to_string()));
+            }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let count_sql = format!(
+            "SELECT COUNT(*), COUNT(DISTINCT context_tag) FROM sub_session_events {}",
+            where_clause
+        );
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&count_sql)?;
+        let (total_count, domains_count): (i64, i64) = stmt.query_row(param_refs.as_slice(), |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+
+        let hourly_sql = format!(
+            "SELECT CAST(strftime('%H', datetime(timestamp, 'localtime')) AS INTEGER) as hour, \
+                    COUNT(*) as cnt \
+             FROM sub_session_events \
+             {} \
+             GROUP BY hour",
+            where_clause
+        );
+        let mut hourly_stmt = conn.prepare(&hourly_sql)?;
+        let mut hourly_rows = hourly_stmt.query(param_refs.as_slice())?;
+        let mut hourly = vec![0i64; 24];
+
+        while let Some(row) = hourly_rows.next()? {
+            let hour: Option<usize> = row.get(0)?;
+            let cnt: i64 = row.get(1)?;
+            if let Some(h) = hour {
+                if h < 24 {
+                    hourly[h] = cnt;
+                }
+            }
+        }
+
+        Ok(DesktopTodaySummary {
+            total_active_seconds: total_count * 60,
+            context_switches: total_count,
+            domains_count,
+            hourly,
+        })
+    }
+
     pub fn get_distraction_rules(&self) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -3523,6 +3605,13 @@ mod tests {
         assert_eq!(count, 1);
         let (work_remaining, _) = db.get_sub_session_events_cursor(None, Some("prof_work"), None, 10).unwrap();
         assert_eq!(work_remaining.len(), 2);
+
+        // Test 7: Desktop today summary
+        let summary = db.get_desktop_today_summary(Some("2026-11-10"), Some("prof_work")).unwrap();
+        assert_eq!(summary.context_switches, 2);
+        assert_eq!(summary.total_active_seconds, 120);
+        assert_eq!(summary.domains_count, 1);
+        assert_eq!(summary.hourly.len(), 24);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

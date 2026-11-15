@@ -101,6 +101,8 @@ enum NativeHostMsg {
     GetSubSessions { request_id: String, date: Option<String>, profile_id: Option<String>, cursor: Option<String>, limit: usize },
     GetTopSites { request_id: String, date: Option<String>, profile_id: Option<String>, limit: usize },
     GetAvailableProfiles { request_id: String, date: Option<String> },
+    GetDesktopStatus { request_id: String },
+    GetDesktopSummary { request_id: String, date: Option<String>, profile_id: Option<String> },
 }
 
 pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
@@ -169,6 +171,7 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
     let consumer_handle = thread::spawn(move || {
         let mut prev_event: Option<SubSessionEvent> = None;
         let mut prev_time: Option<chrono::DateTime<Utc>> = None;
+        let mut prev_tracking_active: Option<bool> = None;
 
         while let Ok(msg) = rx.recv() {
             let now = Utc::now();
@@ -280,26 +283,91 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                         }
                     }
                 }
+                NativeHostMsg::GetDesktopStatus { request_id } => {
+                    let is_tracking_active = db_clone
+                        .get_setting("tracking_active")
+                        .unwrap_or_else(|_| "true".to_string())
+                        == "true";
+                    let resp = serde_json::json!({
+                        "event": "desktop_status_response",
+                        "requestId": request_id,
+                        "tracking_active": is_tracking_active,
+                    });
+                    send_native_json(&resp);
+                }
+                NativeHostMsg::GetDesktopSummary { request_id, date, profile_id } => {
+                    let date_ref = date.as_deref();
+                    let profile_ref = profile_id.as_deref();
+                    match db_clone.get_desktop_today_summary(date_ref, profile_ref) {
+                        Ok(summary) => {
+                            let resp = serde_json::json!({
+                                "event": "desktop_summary_response",
+                                "requestId": request_id,
+                                "totalActiveSeconds": summary.total_active_seconds,
+                                "contextSwitches": summary.context_switches,
+                                "domainsCount": summary.domains_count,
+                                "hourly": summary.hourly,
+                            });
+                            send_native_json(&resp);
+                        }
+                        Err(e) => {
+                            let resp = serde_json::json!({
+                                "event": "desktop_summary_response",
+                                "requestId": request_id,
+                                "error": e.to_string(),
+                                "totalActiveSeconds": 0,
+                                "contextSwitches": 0,
+                                "domainsCount": 0,
+                                "hourly": vec![0i64; 24],
+                            });
+                            send_native_json(&resp);
+                        }
+                    }
+                }
                 NativeHostMsg::Tab(payload) => {
+                    let is_tracking_active = db_clone
+                        .get_setting("tracking_active")
+                        .unwrap_or_else(|_| "true".to_string())
+                        == "true";
+                    if !is_tracking_active || is_incognito {
+                        prev_event = None;
+                        prev_time = None;
+                        let _ = db_clone.set_setting("active_tab_url", "");
+                        let _ = db_clone.set_setting("active_tab_title", "");
+                        let _ = db_clone.set_setting("active_tab_favicon", "");
+                        if prev_tracking_active != Some(false) {
+                            prev_tracking_active = Some(false);
+                            let resp = serde_json::json!({
+                                "event": "tracking_state",
+                                "tracking_active": false,
+                            });
+                            send_native_json(&resp);
+                        }
+                        continue;
+                    } else if prev_tracking_active == Some(false) {
+                        prev_tracking_active = Some(true);
+                        let resp = serde_json::json!({
+                            "event": "tracking_state",
+                            "tracking_active": true,
+                        });
+                        send_native_json(&resp);
+                    } else if prev_tracking_active.is_none() {
+                        prev_tracking_active = Some(true);
+                    }
+
                     let domain = extract_domain(&payload.url);
-                    if is_incognito || db_clone.is_domain_excluded(&domain) {
-                        if is_incognito {
-                            // In incognito mode, wipe previous event immediately without DB write
-                            prev_event = None;
-                            prev_time = None;
-                        } else if let Some(prev) = prev_event.take() {
+                    if db_clone.is_domain_excluded(&domain) {
+                        if let Some(prev) = prev_event.take() {
                             let duration = (now - prev_time.unwrap()).num_seconds();
                             if duration >= min_sub_session_duration {
                                 let _ = db_clone.insert_sub_session_event(&prev);
                             }
                         }
-                        if db_clone.is_domain_excluded(&domain) {
-                            let _ = db_clone.set_setting("active_tab_url", "");
-                            let _ = db_clone.set_setting("active_tab_title", "");
-                            let _ = db_clone.set_setting("active_tab_favicon", "");
-                            prev_event = None;
-                            prev_time = None;
-                        }
+                        let _ = db_clone.set_setting("active_tab_url", "");
+                        let _ = db_clone.set_setting("active_tab_title", "");
+                        let _ = db_clone.set_setting("active_tab_favicon", "");
+                        prev_event = None;
+                        prev_time = None;
                         continue;
                     }
                     
@@ -414,6 +482,14 @@ pub fn run_native_host_loop(db_path: PathBuf) -> io::Result<()> {
                     let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
                     let date = payload.get("date").and_then(|v| v.as_str()).map(|s| s.to_string());
                     let _ = tx.send(NativeHostMsg::GetAvailableProfiles { request_id, date });
+                } else if event_type == "get_desktop_status" {
+                    let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let _ = tx.send(NativeHostMsg::GetDesktopStatus { request_id });
+                } else if event_type == "get_desktop_summary" {
+                    let request_id = payload.get("requestId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let date = payload.get("date").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let profile_id = payload.get("profileId").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let _ = tx.send(NativeHostMsg::GetDesktopSummary { request_id, date, profile_id });
                 } else if event_type == "sync_excluded_domains" {
                     if let Some(entries_val) = payload.get("entries") {
                         if let Ok(entries) = serde_json::from_value::<Vec<crate::db::ExclusionEntry>>(entries_val.clone()) {

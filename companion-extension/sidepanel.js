@@ -26,6 +26,7 @@ const sessionsCountBadge = document.getElementById("sessions-count-badge");
 const streamDesktopLoader = document.getElementById("stream-desktop-loader");
 const copySummaryBtn = document.getElementById("copy-summary-btn");
 const dateLabel = document.getElementById("date-label");
+const trackingPausedBanner = document.getElementById("tracking-paused-banner");
 
 // Theme Elements
 const themeToggleBtn = document.getElementById("theme-toggle-btn");
@@ -798,32 +799,43 @@ async function loadData() {
     }
 
     isConnectedToDesktop = Boolean(status && status.connected);
+    const isTrackingActive = status ? status.trackingActive !== false : true;
     chrome.storage.local.set({ desktop_connected: isConnectedToDesktop }).catch(() => {});
 
     if (isConnectedToDesktop) {
-      modeBadge.className = "mode-badge mode-desktop";
-      modeBadgeText.textContent = "Desktop Sync Active";
+      if (!isTrackingActive) {
+        modeBadge.className = "mode-badge mode-paused";
+        modeBadgeText.textContent = "Tracking Paused";
+        if (trackingPausedBanner) trackingPausedBanner.classList.remove("hidden");
+      } else {
+        modeBadge.className = "mode-badge mode-desktop";
+        modeBadgeText.textContent = "Desktop Sync Active";
+        if (trackingPausedBanner) trackingPausedBanner.classList.add("hidden");
+      }
       if (desktopBridgeCard) desktopBridgeCard.style.display = "none";
       if (dataManagementCard) dataManagementCard.classList.add("hidden");
     } else {
       modeBadge.className = "mode-badge mode-standalone";
       modeBadgeText.textContent = "Standalone Active";
+      if (trackingPausedBanner) trackingPausedBanner.classList.add("hidden");
       if (desktopBridgeCard) desktopBridgeCard.style.display = "flex";
       if (dataManagementCard) dataManagementCard.classList.remove("hidden");
     }
 
-    currentAnalytics = analytics || {
-      totalActiveSeconds: 0,
-      contextSwitches: 0,
-      domains: {},
-      hourly: new Array(24).fill(0),
-      recentSessions: []
-    };
+    if (!isConnectedToDesktop) {
+      currentAnalytics = analytics || {
+        totalActiveSeconds: 0,
+        contextSwitches: 0,
+        domains: {},
+        hourly: new Array(24).fill(0),
+        recentSessions: []
+      };
 
-    totalTimeVal.textContent = formatDuration(currentAnalytics.totalActiveSeconds);
-    switchesVal.textContent = String(currentAnalytics.contextSwitches || 0);
-    domainsCountVal.textContent = String(Object.keys(currentAnalytics.domains || {}).length);
-    renderHeatStrip(currentAnalytics.hourly);
+      totalTimeVal.textContent = formatDuration(currentAnalytics.totalActiveSeconds);
+      switchesVal.textContent = String(currentAnalytics.contextSwitches || 0);
+      domainsCountVal.textContent = String(Object.keys(currentAnalytics.domains || {}).length);
+      renderHeatStrip(currentAnalytics.hourly);
+    }
 
     // 2. Hydrate Top Sites and Stream in Parallel
     const targetProfileId = activeProfileScope === "profile" ? myProfileId : null;
@@ -831,6 +843,24 @@ async function loadData() {
     if (isConnectedToDesktop) {
       // Immediately reflect syncing state on both tabs while querying desktop SQLite vault
       showSyncingPlaceholders();
+
+      const summaryPromise = chrome.runtime.sendMessage({
+        action: "get_desktop_summary",
+        profileId: targetProfileId
+      }).then((summaryRes) => {
+        if (currentSeq !== loadDataSeq || !summaryRes || summaryRes.error) return;
+        totalTimeVal.textContent = formatDuration(summaryRes.totalActiveSeconds || 0);
+        switchesVal.textContent = String(summaryRes.contextSwitches || 0);
+        domainsCountVal.textContent = String(summaryRes.domainsCount || 0);
+        renderHeatStrip(summaryRes.hourly || new Array(24).fill(0));
+        currentAnalytics = {
+          totalActiveSeconds: summaryRes.totalActiveSeconds || 0,
+          contextSwitches: summaryRes.contextSwitches || 0,
+          domains: currentAnalytics ? currentAnalytics.domains : {},
+          hourly: summaryRes.hourly || new Array(24).fill(0),
+          recentSessions: loadedSessions
+        };
+      }).catch(() => {});
 
       const topSitesPromise = chrome.runtime.sendMessage({
         action: "get_desktop_top_sites",
@@ -841,6 +871,18 @@ async function loadData() {
         if (topRes && Array.isArray(topRes.entries) && topRes.entries.length > 0) {
           lastDesktopTopSites = topRes.entries;
           renderTopDomains(topRes.entries);
+          if (currentAnalytics) {
+            const mappedDomains = {};
+            topRes.entries.forEach((e) => {
+              mappedDomains[e.domain] = {
+                seconds: e.total_seconds || (e.visit_count * 60) || 60,
+                tag: e.tag || "🌐 Other",
+                title: e.domain,
+                url: `https://${e.domain}`
+              };
+            });
+            currentAnalytics.domains = mappedDomains;
+          }
         } else {
           lastDesktopTopSites = null;
           renderTopDomains(currentAnalytics.domains);
@@ -895,7 +937,7 @@ async function loadData() {
         }
       });
 
-      await Promise.all([topSitesPromise, sessionsPromise]);
+      await Promise.all([summaryPromise, topSitesPromise, sessionsPromise]);
     } else {
       // Offline / Standalone mode fallback
       if (streamDesktopLoader) streamDesktopLoader.classList.add("hidden");
@@ -1469,7 +1511,11 @@ async function updateActiveTabPreview() {
 
       // Check current session from background
       const status = await chrome.runtime.sendMessage({ action: "get_status" });
-      if (status && status.currentSession) {
+      if (status && status.connected && status.trackingActive === false) {
+        if (activeTabTagText) activeTabTagText.textContent = "⏸ Paused";
+        activeTabDomain.textContent = `${currentActiveDomain} (Tracking Paused)`;
+        if (activeTabDesc) activeTabDesc.classList.add("hidden");
+      } else if (status && status.currentSession) {
         if (status.currentSession.description) {
           activeTabDesc.textContent = `"${status.currentSession.description}"`;
           activeTabDesc.classList.remove("hidden");

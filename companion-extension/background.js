@@ -12,6 +12,7 @@ const MAX_META_CACHE = 150;
 
 let port = null;
 let isNativeConnected = false;
+let isDesktopTrackingActive = true;
 let lastReportedPayload = null;
 let lastVaultError = null;
 
@@ -456,6 +457,18 @@ async function getCategoryForDomain(hostname) {
 }
 
 // ── Native Messaging Connection (Resilient) ──────────────────────────────────
+async function purgeLegacyDailyStorage() {
+  try {
+    const allDailyKeys = await getDailyKeys();
+    if (allDailyKeys.length > 0) {
+      await chrome.storage.local.remove(allDailyKeys);
+      await removeDailyKeysFromIndex(allDailyKeys);
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Purge legacy daily storage error:", err);
+  }
+}
+
 function getNativePort() {
   if (port) return port;
 
@@ -464,6 +477,9 @@ function getNativePort() {
     isNativeConnected = true;
     chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
 
+    // Active Zero-Leak Cleanup: Purge unencrypted daily browser session logs once connected
+    purgeLegacyDailyStorage();
+
     port.onMessage.addListener((msg) => {
       if (msg && msg.requestId && pendingNativeRpc.has(msg.requestId)) {
         const { resolve, timer } = pendingNativeRpc.get(msg.requestId);
@@ -471,6 +487,18 @@ function getNativePort() {
         pendingNativeRpc.delete(msg.requestId);
         resolve(msg);
         return;
+      }
+
+      if (msg && msg.event === "tracking_state") {
+        isDesktopTrackingActive = Boolean(msg.tracking_active);
+        if (!isDesktopTrackingActive) {
+          chrome.action.setBadgeText({ text: "PAUSE" });
+          chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+          currentSession = null;
+          persistActiveSession(null);
+        } else if (lastVaultError === null) {
+          chrome.action.setBadgeText({ text: "" });
+        }
       }
 
       if (msg && msg.event === "sync_excluded_domains" && Array.isArray(msg.entries)) {
@@ -499,13 +527,26 @@ function getNativePort() {
       }
     });
 
-    // Request current excluded domains from desktop host
+    // Request current excluded domains and initial desktop status
     try {
       port.postMessage({ event: "get_excluded_domains" });
     } catch {}
 
+    callNativeRpc({ event: "get_desktop_status" }, 1500)
+      .then((res) => {
+        if (res && typeof res.tracking_active === "boolean") {
+          isDesktopTrackingActive = res.tracking_active;
+          if (!isDesktopTrackingActive) {
+            chrome.action.setBadgeText({ text: "PAUSE" });
+            chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+          }
+        }
+      })
+      .catch(() => {});
+
     port.onDisconnect.addListener(() => {
       isNativeConnected = false;
+      isDesktopTrackingActive = true;
       port = null;
       chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
       // In standalone mode, we do NOT set scary red badges
@@ -601,6 +642,10 @@ async function pruneOldData() {
 async function recordCompletedSession(session, durationSeconds) {
   // Ignore sub-second noise
   if (!session || durationSeconds < 2) return;
+
+  // Zero Storage Leak: If connected to the desktop client, never record session logs to chrome.storage.local.
+  // LifeMirror Desktop's SQLite vault is the single source of truth.
+  if (isNativeConnected) return;
 
   const todayKey = getTodayKey();
   const hour = new Date().getHours();
@@ -728,6 +773,35 @@ async function reportTabActivity(tabId, changeInfo, tab) {
   const sanitizedTitle = LifeMirrorDomainRules.sanitizePageTitle(hostname, rawTitle);
   const category = await classifyTab(url, sanitizedTitle, hostname);
   const description = metaCache.get(url) || metaCache.get(cleanUrl) || null;
+
+  // If desktop tracking was paused, forward the tab event to the native host
+  // so it can evaluate whether tracking was resumed, but skip starting local session timer
+  if (isNativeConnected && !isDesktopTrackingActive) {
+    if (currentSession) {
+      currentSession = null;
+      await persistActiveSession(null);
+    }
+    const nativePort = getNativePort();
+    if (nativePort) {
+      const payload = {
+        event: "tab_activity",
+        url: cleanUrl,
+        title: sanitizedTitle,
+        favIconUrl: tab.favIconUrl || "",
+        description: description,
+        tag: category,
+        timestamp: Date.now(),
+        profileId: profileId,
+        profileLabel: profileLabel,
+        browserName: browserName
+      };
+      try {
+        nativePort.postMessage(payload);
+        lastReportedPayload = payload;
+      } catch {}
+    }
+    return;
+  }
 
   // 1. Guard against duplicate sessions on the SAME tab and SAME URL
   if (currentSession && currentSession.tabId === tabId && currentSession.url === cleanUrl) {
@@ -1011,8 +1085,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const nativePort = getNativePort();
     const connected = Boolean(isNativeConnected && nativePort !== null && !lastVaultError);
     chrome.storage.local.set({ desktop_connected: connected }).catch(() => {});
+
+    if (connected) {
+      callNativeRpc({ event: "get_desktop_status" }, 1500)
+        .then((res) => {
+          if (res && typeof res.tracking_active === "boolean") {
+            isDesktopTrackingActive = res.tracking_active;
+            if (!isDesktopTrackingActive) {
+              chrome.action.setBadgeText({ text: "PAUSE" });
+              chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+            } else if (lastVaultError === null) {
+              chrome.action.setBadgeText({ text: "" });
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     sendResponse({
       connected,
+      trackingActive: isDesktopTrackingActive,
       vaultError: lastVaultError,
       lastEvent: lastReportedPayload,
       currentSession: currentSession ? {
@@ -1169,6 +1261,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })
       .then((res) => sendResponse(res))
       .catch((err) => sendResponse({ error: err.message, profiles: [] }));
+    return true;
+  }
+
+  // Desktop RPC: Fetch today's summary metrics (total time, switches, hourly, domains count)
+  if (request.action === "get_desktop_summary") {
+    callNativeRpc({
+      event: "get_desktop_summary",
+      profileId: request.profileId || null,
+      date: request.date || null
+    })
+      .then((res) => sendResponse(res))
+      .catch((err) => sendResponse({
+        error: err.message,
+        totalActiveSeconds: 0,
+        contextSwitches: 0,
+        domainsCount: 0,
+        hourly: new Array(24).fill(0)
+      }));
     return true;
   }
 

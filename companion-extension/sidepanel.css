@@ -247,6 +247,50 @@ body {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.mode-paused {
+  background: rgba(107, 114, 128, 0.15);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* ── Tracking Paused Banner ────────────────────────────── */
+.paused-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  color: #ca8a04;
+  font-size: 11.5px;
+  line-height: 1.4;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+[data-theme="dark"] .paused-banner {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.4);
+  color: #facc15;
+}
+
+.paused-banner .pause-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.paused-banner .pause-text strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.paused-banner .pause-text span {
+  opacity: 0.85;
+}
+
 .pulse-dot {
   width: 6px;
   height: 6px;
