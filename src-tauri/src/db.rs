@@ -743,6 +743,31 @@ impl DbState {
         Self::init_or_migrate(path_ref, &store).expect("Failed to initialize database vault")
     }
 
+    pub fn new_with_key<P: AsRef<Path>>(db_path: P, key: &str) -> VaultResult<Self> {
+        let path_ref = db_path.as_ref();
+        let db_dir = path_ref.parent().unwrap_or(path_ref);
+        let _lock = VaultLock::acquire_exclusive(db_dir)?;
+
+        let key_file = db_dir.join(".vault_key");
+        write_protected_key_file(&key_file, key)?;
+
+        let conn = Self::open_and_verify(path_ref, key)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(path_ref, std::fs::Permissions::from_mode(0o600));
+        }
+
+        let state = DbState {
+            conn: Mutex::new(conn),
+            excluded_cache: Arc::new(RwLock::new((-1, Vec::new()))),
+            excluded_version: Arc::new(AtomicI64::new(0)),
+        };
+        state.run_migrations().map_err(VaultError::Sqlite)?;
+        state.sync_excluded_version_from_db();
+        Ok(state)
+    }
+
     pub fn open_existing<K: KeyStore>(db_path: &Path, key_store: &K) -> VaultResult<Self> {
         if !db_path.exists() {
             return Err(VaultError::VaultNotFound(db_path.display().to_string()));
@@ -3520,8 +3545,7 @@ mod tests {
         let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_exclusion_{}", uuid::Uuid::new_v4().simple()));
         let _ = std::fs::create_dir_all(&temp_dir);
         let db_path = temp_dir.join("test.db");
-        let store = MockKeyStore::new();
-        let db = DbState::init_or_migrate(&db_path, &store).unwrap();
+        let db = DbState::new_with_key(&db_path, "test_pass_12345").unwrap();
 
         // 1. Add some initial activity logs and sub sessions
         let log1 = ActivityLog {
@@ -3727,8 +3751,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&temp_dir);
         let db_path = temp_dir.join("test.db");
 
-        let store = MockKeyStore::new();
-        let db = DbState::init_or_migrate(&db_path, &store).unwrap();
+        let db = DbState::new_with_key(&db_path, "test_pass_12345").unwrap();
         // Defaults on initial db
         assert_eq!(db.get_ai_processing_mode(), AiProcessingMode::OnDemand);
         assert_eq!(db.get_ai_provider_mode(), AiProviderMode::Local);
