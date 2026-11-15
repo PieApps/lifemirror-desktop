@@ -1,4 +1,4 @@
-use crate::db::DbState;
+use crate::db::{AiProcessingMode, AiProviderMode, DbState};
 use crate::memory_engine::collector::Collector;
 use crate::memory_engine::session_builder::SessionBuilder;
 use crate::memory_engine::entity_extractor::EntityExtractor;
@@ -41,8 +41,7 @@ impl MemoryQueue {
                 // to let the OS boot and background daemons stabilize before starting heavy inference.
                 if is_first_run {
                     is_first_run = false;
-                    let mode = db_clone.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
-                    if mode == "continuous" {
+                    if db_clone.get_ai_processing_mode() == AiProcessingMode::Continuous {
                         sleep(Duration::from_secs(180)).await;
                     }
                 }
@@ -55,10 +54,15 @@ impl MemoryQueue {
                     }
                 }
 
-                // In On-Demand mode (default), heavy background LLM forward passes (entity tags,
-                // summaries, vector embeddings) are completely paused. Keeps fans silent and saves battery.
-                let mode = db_clone.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
-                if mode == "on_demand" {
+                // In On-Demand mode (default) or when AI is deactivated ("off"), heavy background
+                // LLM forward passes (entity tags, summaries, vector embeddings) are completely paused.
+                // Keeps fans silent and saves battery.
+                if db_clone.get_ai_provider_mode() == AiProviderMode::Off {
+                    sleep(Duration::from_secs(60)).await;
+                    continue;
+                }
+
+                if db_clone.get_ai_processing_mode() == AiProcessingMode::OnDemand {
                     sleep(Duration::from_secs(60)).await;
                     continue;
                 }
@@ -104,7 +108,7 @@ impl MemoryQueue {
     /// Just-In-Time (JIT) helper to process unindexed sessions on-demand
     pub async fn process_pending_sessions(db: Arc<DbState>, limit: usize) -> Result<usize, String> {
         // Atomic test-and-set: if another sync is already in flight, exit immediately to prevent duplicate work
-        if IS_SYNCING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        if IS_SYNCING.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
             return Ok(0);
         }
 
@@ -112,10 +116,14 @@ impl MemoryQueue {
         struct SyncGuard;
         impl Drop for SyncGuard {
             fn drop(&mut self) {
-                IS_SYNCING.store(false, Ordering::SeqCst);
+                IS_SYNCING.store(false, Ordering::Release);
             }
         }
         let _guard = SyncGuard;
+
+        if db.get_ai_provider_mode() == AiProviderMode::Off {
+            return Err("AI is deactivated in Settings.".to_string());
+        }
 
         let provider = crate::inference::get_inference_provider(db.clone());
         if !provider.is_available().await {

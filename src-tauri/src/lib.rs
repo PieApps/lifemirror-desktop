@@ -9,7 +9,7 @@ pub mod tracker;
 pub mod window_provider;
 pub mod memory_engine;
 
-use db::{ActivityLog, ChatMessage, DailySummary, DbState, HourlyMetric, JournalEntry};
+use db::{ActivityLog, AiProcessingMode, AiProviderMode, ChatMessage, DailySummary, DbState, HourlyMetric, JournalEntry};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::image::Image;
@@ -1237,9 +1237,21 @@ pub fn run() {
         }
     });
 
-    // Temp Backfill: Reclassify all existing nodes to populate projects
+    // Temp Backfill: Reclassify all existing nodes to populate projects (only if projects table is empty)
     let db_backfill = db_arc.clone();
     tauri::async_runtime::spawn(async move {
+        let needs_backfill = {
+            if let Ok(conn) = db_backfill.conn.lock() {
+                let count: i64 = conn.query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0)).unwrap_or(0);
+                count == 0
+            } else {
+                false
+            }
+        };
+        if !needs_backfill {
+            return;
+        }
+
         println!("[Backfill] Starting project classification backfill...");
         let classifier = memory_engine::project_classifier::ProjectClassifier::new(db_backfill.clone());
         
@@ -1327,8 +1339,10 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let db_for_setup = db_arc_setup.clone();
             tauri::async_runtime::spawn(async move {
-                let mode = db_for_setup.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
-                if mode != "continuous" {
+                if db_for_setup.get_ai_provider_mode() == AiProviderMode::Off {
+                    return;
+                }
+                if db_for_setup.get_ai_processing_mode() != AiProcessingMode::Continuous {
                     // In On-Demand mode (default), startup is 100% silent and dormant.
                     // Do not probe Ollama or emit missing model warnings on boot.
                     return;

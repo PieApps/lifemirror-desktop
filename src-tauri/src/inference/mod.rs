@@ -1,4 +1,4 @@
-use crate::db::DbState;
+use crate::db::{AiProviderMode, DbState};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -19,6 +19,8 @@ pub enum InferenceError {
     Api(String),
     #[error("Model not found: {0}")]
     ModelNotFound(String),
+    #[error("AI model is deactivated")]
+    Disabled,
 }
 
 /// Defines the operational purpose for the inference provider.
@@ -47,16 +49,43 @@ pub trait InferenceProvider: Send + Sync {
     async fn pull_model(&self, purpose: ModelPurpose, app_handle: tauri::AppHandle) -> Result<(), InferenceError>;
 }
 
+/// Fully dormant provider returned when the user deactivates the AI model.
+/// Guarantees zero socket connections, zero network probes, and zero background compute.
+pub struct DisabledProvider;
+
+#[async_trait::async_trait]
+impl InferenceProvider for DisabledProvider {
+    async fn prompt(&self, _prompt: &str) -> Result<String, InferenceError> {
+        Err(InferenceError::Disabled)
+    }
+
+    async fn embed(&self, _text: &str) -> Result<(Vec<f32>, String, String), InferenceError> {
+        Err(InferenceError::Disabled)
+    }
+
+    async fn check_health(&self, _purpose: ModelPurpose) -> Result<bool, InferenceError> {
+        Ok(false)
+    }
+
+    async fn is_available(&self) -> bool {
+        false
+    }
+
+    async fn pull_model(&self, _purpose: ModelPurpose, _app_handle: tauri::AppHandle) -> Result<(), InferenceError> {
+        Err(InferenceError::Disabled)
+    }
+}
+
 /// Factory function to retrieve the active InferenceProvider.
 /// Checks the user's configured ai_provider setting:
+/// - "off" -> DisabledProvider (100% dormant, zero network or local compute)
 /// - "cloud" -> CloudProvider (OpenAI-compatible)
 /// - "local" (default) -> OllamaProvider
 pub fn get_inference_provider(db: Arc<DbState>) -> Box<dyn InferenceProvider> {
-    let provider_mode = db.get_setting("ai_provider").unwrap_or_else(|_| "local".to_string());
-    if provider_mode == "cloud" {
-        Box::new(CloudProvider { db })
-    } else {
-        Box::new(OllamaProvider { db })
+    match db.get_ai_provider_mode() {
+        AiProviderMode::Off => Box::new(DisabledProvider),
+        AiProviderMode::Cloud => Box::new(CloudProvider { db }),
+        AiProviderMode::Local => Box::new(OllamaProvider { db }),
     }
 }
 

@@ -139,6 +139,63 @@ pub struct DistractionEvent {
     pub action_taken: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AiProviderMode {
+    #[default]
+    Local,
+    Cloud,
+    Off,
+}
+
+impl std::str::FromStr for AiProviderMode {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.trim().to_lowercase().as_str() {
+            "off" | "disabled" => Self::Off,
+            "cloud" => Self::Cloud,
+            _ => Self::Local,
+        })
+    }
+}
+
+impl std::fmt::Display for AiProviderMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Local => write!(f, "local"),
+            Self::Cloud => write!(f, "cloud"),
+            Self::Off => write!(f, "off"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AiProcessingMode {
+    #[default]
+    OnDemand,
+    Continuous,
+}
+
+impl std::str::FromStr for AiProcessingMode {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.trim().to_lowercase().as_str() {
+            "continuous" => Self::Continuous,
+            _ => Self::OnDemand,
+        })
+    }
+}
+
+impl std::fmt::Display for AiProcessingMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OnDemand => write!(f, "on_demand"),
+            Self::Continuous => write!(f, "continuous"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MemoryNode {
     pub id: Option<i64>,
@@ -1216,6 +1273,20 @@ impl DbState {
             |row| row.get(0),
         );
         Ok(val.unwrap_or_else(|_| "false".to_string()))
+    }
+
+    pub fn get_ai_provider_mode(&self) -> AiProviderMode {
+        self.get_setting("ai_provider")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(AiProviderMode::Local)
+    }
+
+    pub fn get_ai_processing_mode(&self) -> AiProcessingMode {
+        self.get_setting("ai_processing_mode")
+            .unwrap_or_default()
+            .parse()
+            .unwrap_or(AiProcessingMode::OnDemand)
     }
 
     pub fn insert_activity_log(&self, log: &ActivityLog) -> Result<i64> {
@@ -3624,6 +3695,53 @@ mod tests {
         assert_eq!(summary.total_active_seconds, 120);
         assert_eq!(summary.domains_count, 1);
         assert_eq!(summary.hourly.len(), 24);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_ai_provider_and_processing_modes() {
+        use std::str::FromStr;
+
+        // Provider parsing & display
+        assert_eq!(AiProviderMode::from_str("off").unwrap(), AiProviderMode::Off);
+        assert_eq!(AiProviderMode::from_str("disabled").unwrap(), AiProviderMode::Off);
+        assert_eq!(AiProviderMode::from_str("cloud").unwrap(), AiProviderMode::Cloud);
+        assert_eq!(AiProviderMode::from_str("local").unwrap(), AiProviderMode::Local);
+        assert_eq!(AiProviderMode::from_str("unknown").unwrap(), AiProviderMode::Local);
+        assert_eq!(AiProviderMode::default(), AiProviderMode::Local);
+        assert_eq!(AiProviderMode::Off.to_string(), "off");
+        assert_eq!(AiProviderMode::Cloud.to_string(), "cloud");
+        assert_eq!(AiProviderMode::Local.to_string(), "local");
+
+        // Processing mode parsing & display
+        assert_eq!(AiProcessingMode::from_str("continuous").unwrap(), AiProcessingMode::Continuous);
+        assert_eq!(AiProcessingMode::from_str("on_demand").unwrap(), AiProcessingMode::OnDemand);
+        assert_eq!(AiProcessingMode::from_str("").unwrap(), AiProcessingMode::OnDemand);
+        assert_eq!(AiProcessingMode::default(), AiProcessingMode::OnDemand);
+        assert_eq!(AiProcessingMode::Continuous.to_string(), "continuous");
+        assert_eq!(AiProcessingMode::OnDemand.to_string(), "on_demand");
+
+        // DbState integration
+        let temp_dir = std::env::temp_dir().join(format!("lifemirror_test_modes_{}", uuid::Uuid::new_v4().simple()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let db_path = temp_dir.join("test.db");
+
+        let store = MockKeyStore::new();
+        let db = DbState::init_or_migrate(&db_path, &store).unwrap();
+        // Defaults on initial db
+        assert_eq!(db.get_ai_processing_mode(), AiProcessingMode::OnDemand);
+        assert_eq!(db.get_ai_provider_mode(), AiProviderMode::Local);
+
+        // Explicit set
+        db.set_setting("ai_provider", "off").unwrap();
+        assert_eq!(db.get_ai_provider_mode(), AiProviderMode::Off);
+
+        db.set_setting("ai_provider", "cloud").unwrap();
+        assert_eq!(db.get_ai_provider_mode(), AiProviderMode::Cloud);
+
+        db.set_setting("ai_processing_mode", "continuous").unwrap();
+        assert_eq!(db.get_ai_processing_mode(), AiProcessingMode::Continuous);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

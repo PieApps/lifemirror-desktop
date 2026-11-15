@@ -40,6 +40,60 @@ export const getMonthRange = (dateStr: string) => {
   };
 };
 
+// ─── Referential Equality Helpers (Prevents unnecessary virtual DOM re-renders) ───
+
+function areActivitiesEqual(a: ActivityNode[], b: ActivityNode[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const itemA = a[i];
+    const itemB = b[i];
+    if (
+      itemA.id !== itemB.id ||
+      itemA.start_time !== itemB.start_time ||
+      itemA.window_title !== itemB.window_title ||
+      itemA.app_name !== itemB.app_name ||
+      itemA.notes !== itemB.notes
+    ) {
+      return false;
+    }
+    // For completed historical logs (id !== null), verify duration stability.
+    // In-progress active tasks (id === null) tick smoothly on the client via LiveTimer,
+    // avoiding expensive full-timeline virtual DOM re-renders every polling interval.
+    if (itemA.id !== null && itemB.id !== null && itemA.duration !== itemB.duration) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areMemoryNodesEqual(a: MemoryNode[], b: MemoryNode[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const nodeA = a[i];
+    const nodeB = b[i];
+    if (
+      nodeA.id !== nodeB.id ||
+      nodeA.status !== nodeB.status ||
+      nodeA.summary !== nodeB.summary ||
+      nodeA.title !== nodeB.title
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areEntitiesEqual<T extends { id?: number | null }>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+  }
+  return true;
+}
+
 // ─── Hook ───────────────────────────────────────────────────
 
 interface UseActivityDataOptions {
@@ -154,18 +208,18 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
           setActiveActivity(null);
         }
         
-        setActivities(mergedActivities);
-        setMemoryNodes(dbMemoryNodes);
+        setActivities(prev => areActivitiesEqual(prev, mergedActivities) ? prev : mergedActivities);
+        setMemoryNodes(prev => areMemoryNodesEqual(prev, dbMemoryNodes) ? prev : dbMemoryNodes);
         try {
           const events = await invoke<SubSessionEvent[]>("get_sub_session_events_for_day", { date: selectedDate });
-          setSubSessionEvents(events);
+          setSubSessionEvents(prev => areEntitiesEqual(prev, events) ? prev : events);
         } catch (err) {
           console.error("Failed to load sub session events:", err);
         }
         
         try {
           const dEvents = await invoke<DistractionEvent[]>("get_distraction_events_for_day", { date: selectedDate });
-          setDistractionEvents(dEvents);
+          setDistractionEvents(prev => areEntitiesEqual(prev, dEvents) ? prev : dEvents);
         } catch (err) {
           console.error("Failed to load distraction events:", err);
         }
@@ -186,7 +240,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
       if (!incognitoState) {
         try {
           const history = await invoke<ChatMessage[]>("get_chat_history", { date: selectedDate });
-          setChatMessages(history);
+          setChatMessages(prev => areEntitiesEqual(prev, history) ? prev : history);
         } catch (err) {
           console.error("Failed to load chat history:", err);
         }
@@ -197,7 +251,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   };
 
 
-  // Poll database records when visible, pause when hidden
+  // Poll database records when visible (8s interval, only re-renders on true database diffs)
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -208,7 +262,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
         if (trackingActive && !isIncognito && document.visibilityState !== "hidden") {
           loadData();
         }
-      }, 3000);
+      }, 8000);
     };
 
     const stopPolling = () => {

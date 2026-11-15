@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::Duration;
 use std::sync::Arc;
-use crate::db::DbState;
+use crate::db::{AiProcessingMode, AiProviderMode, DbState};
 use chrono::{DateTime, Utc};
 
 pub fn start_idle_ai_summarizer(db: Arc<DbState>) {
@@ -18,14 +18,13 @@ pub fn start_idle_ai_summarizer(db: Arc<DbState>) {
 
             // If AI is off or configured for Cloud, skip background idle pre-computation
             // to eliminate unexpected billing/quota exhaustion while away from computer.
-            let ai_provider = db.get_setting("ai_provider").unwrap_or_else(|_| "local".to_string());
-            if ai_provider == "off" || ai_provider == "cloud" {
+            let ai_provider = db.get_ai_provider_mode();
+            if ai_provider == AiProviderMode::Off || ai_provider == AiProviderMode::Cloud {
                 continue;
             }
 
             // In On-Demand mode (default), background idle reflection generation is completely suspended to preserve battery and quiet fans.
-            let processing_mode = db.get_setting("ai_processing_mode").unwrap_or_else(|_| "on_demand".to_string());
-            if processing_mode == "on_demand" {
+            if db.get_ai_processing_mode() == AiProcessingMode::OnDemand {
                 continue;
             }
 
