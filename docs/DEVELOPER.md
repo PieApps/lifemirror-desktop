@@ -68,7 +68,7 @@ Stores daily reflection journal entries.
 Persistent configuration store shared across processes (Tauri GUI and CLI Native Messaging Hosts).
 * `key`: `TEXT PRIMARY KEY`
 * `value`: `TEXT NOT NULL`
-* Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, `active_tab_favicon`, and `migration_tab_events_done`.
+* Seeds: `incognito` (defaults to `"false"`), `tracking_active` (defaults to `"true"`), `active_tab_url`, `active_tab_title`, `active_tab_favicon`, `migration_tab_events_done`, `ai_provider` (`"local"`, `"cloud"`, or `"off"`), `cloud_provider` (`"groq"`, `"openai"`, `"openrouter"`, `"custom"`), `cloud_api_key`, `cloud_base_url`, `cloud_model`, `cloud_disclosure_accepted`, and `has_completed_ai_setup`.
 
 ### Table 4: `distraction_rules`
 Stores rules for detecting and blocking distractions (Active Interdiction).
@@ -231,6 +231,13 @@ To interface with the persistent SQLite chat history, three Tauri command endpoi
 - `get_chat_history(date: String)`: Retrieves a chronological array of messages for the selected date.
 - `add_chat_message(date: String, role: String, content: String)`: Persists a new message turn into the database.
 - `clear_chat_history(date: String)`: Deletes all chat dialogue associated with the selected date.
+
+### Cloud AI & Privacy IPC Commands
+To support secure opt-in cloud AI with transparent user review and 1-click key revocation:
+- `test_cloud_connection(base_url: String, api_key: String, model: String)`: Performs a lightweight health check against the provider's `/models` or `/chat/completions` endpoint, passing base URL through SSRF validation.
+- `get_recent_preview_payload()`: Queries the top 3 most recent sessions directly from SQLCipher and constructs a real preview payload, allowing the user to review what data leaves their machine.
+- `run_cloud_ai_completion(base_url: String, api_key: String, model: String, prompt: String)`: Executes an inference call via `CloudProvider` with connection-pooled HTTP clients, returning the completion string.
+- `clear_cloud_ai_key()`: Immediately deletes the cloud API key, resets endpoint configs in SQLite, sets `ai_provider` back to `"local"`, and invalidates disclosure acceptance.
 
 ### Dynamic Log Duration Threshold Settings
 The threshold for committing activities to SQLite is dynamically read from the database using the `"min_log_duration"` setting:
@@ -486,26 +493,55 @@ Instead of distractions vanishing when the shield drops, interceptions are perma
 
 ---
 
-## 9. On-Demand Intelligence Architecture & Fail-Fast Circuit Breaker
+## 9. Multi-Provider Intelligence Architecture & Security Controls
 
-To eliminate background fan spin, CPU heating, and battery consumption on laptops, LifeMirror operates an **On-Demand (Recommended)** AI model by default, configured via the SQLite `ai_processing_mode` setting (`"on_demand"` vs. `"continuous"`).
+LifeMirror decouples intelligence inference from data collection using a modular `InferenceProvider` abstraction, supporting both 100% offline local inference (Ollama) and secure opt-in cloud models (Groq, OpenAI, OpenRouter) with strict defense-in-depth controls.
 
-### 1. Ingestion vs. Inference Decoupling
-* **Passive Continuous Ingestion ($T=0$):** OS window focus polling (`tracker.rs`), browser tab streaming (`native_msg.rs`), and raw event grouping into sessions (`Collector` and `SessionBuilder`) run continuously from the moment the computer boots up. This is written in pure Rust and SQLite with ~0% CPU load and ~15MB memory footprint.
-* **Suspended Background Forward Passes:** In `"on_demand"` mode:
-  - The 10-minute idle reflection loop (`ai.rs`) is completely skipped.
-  - The 60-second memory node processing pipeline in `queue.rs` (Steps 2, 3, 4: `EntityExtractor` tags, `Summarizer`, and `EmbeddingEngine`) is suspended.
+### 1. Ingestion vs. Inference Decoupling & Thermal Optimization
+* **Passive Continuous Ingestion ($T=0$):** OS window focus polling (`tracker.rs`), browser tab streaming (`native_msg.rs`), and raw event grouping into sessions (`Collector` and `SessionBuilder`) run continuously from boot in pure Rust and SQLite with ~0% CPU load and ~15MB memory footprint.
+* **On-Demand Mode (Default & Recommended):** Configured via SQLite `ai_processing_mode == "on_demand"`:
+  - Heavy background matrix multiplications (idle reflections, automated entity tagging, vector embeddings) remain suspended.
+  - The 10-minute idle reflection loop (`ai.rs`) and the 60-second processing queue (`queue.rs`) are skipped while idling.
+  - Intelligence activates Just-In-Time (JIT) when requested by the user, returning in 2–3 seconds before returning to complete dormancy.
+* **Atomic De-Duplication Guard:** An RAII-scoped atomic compare-exchange (`static IS_SYNCING: AtomicBool`) prevents duplicate concurrent forward passes if users trigger multiple reflections.
 
-### 2. Just-In-Time (JIT) Execution
-When the user explicitly invokes an AI capability (clicking **Reflect with AI**, querying **Chat**, or requesting a **Catch-up Resume brief**):
-1. The frontend dispatches `invoke("sync_day_memories", { date })`.
-2. `MemoryQueue::process_pending_sessions` runs steps 2, 3, and 4 on-the-fly for pending nodes scoped to that query, caching the result in SQLite.
-3. The LLM generates the response, returning in 2–3 seconds before returning the AI subsystem to complete dormancy.
+### 2. Multi-Provider Dispatch (`get_inference_provider`)
+The backend routes all AI capabilities (`ai.rs`, `resume_context.rs`, and Tauri IPC commands) dynamically:
+```rust
+pub fn get_inference_provider(db: Arc<Database>) -> Box<dyn InferenceProvider> {
+    let mode = db.get_setting("ai_provider").unwrap_or_else(|_| "local".to_string());
+    match mode.as_str() {
+        "cloud" => {
+            // Checks disclosure acceptance and builds CloudProvider with connection pooling
+            ...
+        }
+        "off" => Box::new(DormantProvider),
+        _ => Box::new(OllamaProvider::new(db)),
+    }
+}
+```
 
-### 3. Fail-Fast Circuit Breaker (`is_available()`)
+### 3. Server-Side Request Forgery (SSRF) Hardening
+To prevent malicious or manipulated cloud URLs from targeting cloud instance metadata or private intranet networks, `validate_cloud_url(url: &str)` in `src-tauri/src/inference/mod.rs` enforces:
+1. **Scheme Constraint:** WAN endpoints must use `https://`. Unencrypted `http://` is strictly rejected (except loopback for development).
+2. **Link-Local & Cloud Metadata Blocking:** Prohibits IP addresses matching `169.254.169.254` or IPv6 `fe80::/10`.
+3. **Private Subnet Defense:** Blocks RFC 1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), broadcast (`255.255.255.255`), and unspecified (`0.0.0.0`) addresses.
+
+### 4. Chat Context Sanitization & Data Scoping
+`compileContextRollup` in `src/hooks/useLocalAI.ts` enforces strict boundary scrubbing before assembling prompt strings:
+* **Incognito Discard:** Any session flagged `isIncognito: true` is filtered out across daily, weekly, and monthly activity windows.
+* **Domain Exclusion Filtering:** Domain names matching the blacklist stored in `excluded_domains` are stripped.
+* Prompt payloads contain strictly application names, window titles, and duration metrics. Passwords, keystrokes, clipboard entries, and raw SQLite tables are never included.
+
+### 5. Background Cloud Cost Suppression
+To safeguard users against unintended billable API usage while away from their keyboard:
+* `start_idle_ai_summarizer` in `src-tauri/src/ai.rs` checks `ai_provider`.
+* If `ai_provider == "cloud"` or `"off"`, the idle background loop terminates early, ensuring cloud API keys are only consumed during active user requests.
+
+### 6. Fail-Fast Circuit Breaker (`is_available()`)
 To ensure offline environments or stopped Ollama daemons never hang or freeze threads:
 * `InferenceProvider::is_available()` performs a fast sub-second (600ms timeout) probe against `${url}/api/version`.
-* If Ollama is offline or returns `ECONNREFUSED`, all inference methods (`prompt`, `embed`) fail fast immediately without waiting for standard 30-second socket timeouts.
+* If Ollama is offline or returns `ECONNREFUSED`, all inference methods fail fast immediately without waiting for standard 30-second socket timeouts.
 * Continuous mode workers detect the offline state and sleep without hammering loopback ports or producing log storms.
 
 

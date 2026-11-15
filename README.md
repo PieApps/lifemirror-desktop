@@ -2,7 +2,7 @@
 
 LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, and visualizes your day as a beautiful serpentine "S-Curve" timeline infographic.
 
-Additionally, LifeMirror interfaces with a locally running AI to compile daily mindfulness reflection cards entirely offline, ensuring no telemetry or analytical data leaves your host machine.
+Additionally, LifeMirror interfaces with an intelligent reflection engine to compile daily mindfulness reflection cards. By default, it operates 100% offline using a locally running AI model (Ollama) so no analytical data ever leaves your computer, while also offering an optional, strictly-disclosed Bring-Your-Own-Key (BYOK) cloud mode for instant setup on lighter hardware.
 
 ---
 
@@ -193,23 +193,36 @@ LifeMirror is built on a local-first, zero-cloud architecture with comprehensive
 * **Search Engine Query Masking**: Window and tab titles for major search engines (Google, Bing, DuckDuckGo, Yahoo, Baidu, Yandex, Ecosia, Brave, Qwant, Startpage) are automatically masked (e.g. `"Google Search"` instead of `"symptoms of X - Google Search"`).
 * **Scope Clarification**: LifeMirror manages its own local records and does not alter Chrome's internal history. Third-party authentication portals (OAuth/SAML) and payment gateways redirect through independent domains and should be excluded individually.
 
-### Pluggable Local AI (No Cloud APIs)
+### Pluggable AI: Local-First by Default with Opt-In Cloud (BYOK)
 
-LifeMirror features an abstracted `InferenceProvider` allowing you to securely plug in local AI models without sending your timeline data to the cloud. Currently, **Ollama** is the default supported backend.
+LifeMirror features an abstracted `InferenceProvider` architecture that puts privacy and user choice first. You decide how your reflections are generated:
 
-* **On-Demand Intelligence (Default & Recommended)**: Designed for quiet, fanless operation and all-day battery life. While passive window and tab tracking runs continuously from boot at <0.01% CPU in pure Rust, heavy neural network forward passes (summaries, entity tags, vector embeddings) are completely suspended in the background. AI computes only when you explicitly ask (clicking *Reflect with AI*, querying *Chat*, or requesting a *Catch-up* brief).
-* **Continuous Background Mode**: Available via Settings → Local AI for plugged-in desktop workstations with dedicated GPUs that prefer autonomous background pre-computation. Includes a 3-minute cold-boot delay to prevent startup resource contention.
-* **Fail-Fast Circuit Breaker**: If Ollama is offline or unreachable, LifeMirror detects it in sub-second time (600ms probe) and enters complete dormancy—no socket timeout hangs, zero background retry storms, and no CPU throttling.
+* **Private: Runs on your computer (Local Ollama — Default & Recommended)**:
+  * 100% offline, zero data sent to external servers, and free forever.
+  * In-app native model download (`/api/pull`) lets you download models such as `llama3.2` directly from the UI without terminal commands.
+  * Works best on computers with 16GB+ RAM (~2.0 GB–4.0 GB disk space).
+* **Faster: Uses an online service (Cloud AI — Bring Your Own Key)**:
+  * 0 MB download and instant setup on any computer or lightweight laptop.
+  * Native presets for **Groq** (free tier with `llama-3.3-70b-versatile`), **OpenAI** (`gpt-4o-mini`), and **OpenRouter**, plus custom OpenAI-compatible endpoints.
+  * **Strict Data Boundaries**: Before any cloud key is saved, you review a **Privacy & Data Impact Review** featuring an interactive **live payload preview** of the exact data being sent.
+  * **Never Sent**: Incognito sessions and excluded domains are strictly filtered out before transmission. Keystrokes, passwords, clipboard, screen captures, and local SQLite databases are never transmitted.
+  * **Cost Protection**: Background idle reflection summarizers are automatically suspended in Cloud mode to prevent unintended billable calls while AFK.
+  * **One-Click Revocation**: Revoke access and purge the encrypted API key at any time from Settings → AI Settings.
+* **Track without AI (Skip for now)**:
+  * Run LifeMirror purely as an offline activity tracker and focus timer with zero AI configuration required.
 
-#### Getting Started with Local AI:
-1. Download and run [Ollama](https://ollama.com) locally.
-2. In the LifeMirror app, open **Settings** (top-right cog) and set:
-   - **Local AI Endpoint**: `http://localhost:11434`
-   - **Model**: e.g. `llama3.2`
-   - **AI Processing Mode**: `On-Demand (Recommended)` or `Continuous Background`
-3. Click **Download Model Native** to fetch the model without needing the terminal.
+* **On-Demand Intelligence Architecture**: Designed for quiet, fanless operation and all-day battery life. Passive window and tab tracking runs continuously from boot at <0.01% CPU in pure Rust, while heavy neural network passes (summaries, entity tags, vector embeddings) remain suspended until explicitly requested (*Reflect with AI*, querying *Chat*, or requesting a *Catch-up* brief).
+* **Fail-Fast Circuit Breaker**: If local Ollama is offline or unreachable, LifeMirror detects it in sub-second time (600ms probe) and enters complete dormancy—no socket timeout hangs, zero background retry storms, and no CPU throttling.
 
-For detailed cross-OS setup and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
+#### Getting Started with AI:
+1. Open LifeMirror Desktop. AI setup is completely optional and non-intrusive—you can explore your timeline immediately.
+2. When ready, click **"Set Up AI for Reflections"** on the dashboard or open **Settings** (top-right cog) → **AI Settings**.
+3. Select your preferred mode:
+   - **On-Device (Local)**: Select your local model (e.g. `llama3.2`) and download it with 1 click.
+   - **Online Service (Cloud)**: Enter your API key (Groq, OpenAI, or OpenRouter), inspect the live data payload preview, and confirm.
+   - **Skip**: Continue tracking offline without AI.
+
+For cross-OS local setup and model management, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md) and [AI Integration Architecture](file:///var/www/pieapps/lifemirror-desktop/docs/AI_INTEGRATION.md).
 
 ---
 
@@ -258,6 +271,8 @@ Output: `src-tauri/target/release/bundle/dmg/lifemirror-desktop_x.x.x_x64.dmg`
 | Document | Description |
 |----------|-------------|
 | [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) | Initial installation, Chrome extension setup, and settings |
+| [AI Integration](file:///var/www/pieapps/lifemirror-desktop/docs/AI_INTEGRATION.md) | Inference engine architecture, local & cloud provider specifications, and privacy boundaries |
 | [Ollama Setup](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md) | Model management and environment variable configuration |
-| [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | Database schemas, Wayland focus hooks, S-curve geometry, packaging |
+| [Database Schema](file:///var/www/pieapps/lifemirror-desktop/docs/database_schema.md) | SQLCipher encrypted tables, indexes, and settings key-value definitions |
+| [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | IPC commands, Wayland focus hooks, S-curve geometry, packaging |
 | [Workflow Guide](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md) | Step-by-step instructions for safely implementing future changes |

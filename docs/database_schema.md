@@ -160,13 +160,20 @@ Persistent key-value configuration store shared across the desktop GUI and headl
 
 | Key | Default | Description |
 | :--- | :--- | :--- |
+| `ai_provider` | `'local'` | Active intelligence backend: `'local'`, `'cloud'`, or `'off'` |
 | `ai_processing_mode` | `'on_demand'` | `'on_demand'` (default, quiet fans & battery saver) or `'continuous'` |
 | `has_seen_on_demand_notice` | `'false'` | One-time migration notice banner state for existing users |
+| `has_completed_ai_setup` | `'false'` | Deferred setup state flag for the AI onboarding dialog |
 | `tracking_active` | `'true'` | Global activity tracking state |
 | `incognito` | `'false'` | Incognito privacy lock mode |
 | `ollama_url` | `'http://localhost:11434'` | Local loopback endpoint for local AI models |
 | `ollama_model` | `'llama3.2'` | Local text completion model |
 | `ollama_embedding_model` | `'nomic-embed-text'` | Local vector embedding model |
+| `cloud_provider` | `'groq'` | Configured cloud preset: `'groq'`, `'openai'`, `'openrouter'`, `'custom'` |
+| `cloud_api_key` | `''` | User-supplied API key, encrypted at rest in SQLCipher |
+| `cloud_base_url` | `'https://api.groq.com/openai/v1'` | Validated HTTPS endpoint for OpenAI-compatible completions |
+| `cloud_model` | `'llama-3.3-70b-versatile'` | Cloud completion model identifier |
+| `cloud_disclosure_accepted` | `'false'` | Explicit user acceptance flag for the cloud privacy and data boundary disclosure |
 | `min_log_duration` | `'60'` | Minimum seconds an app must be focused to be recorded |
 | `min_sub_session_duration` | `'60'` | Minimum seconds a browser tab must be focused to be recorded |
 | `excluded_domains_version` | `'0'` | Atomic synchronization clock for excluded domain cache invalidation |

@@ -2,6 +2,9 @@
 
 This guide details how to install, configure, and manage **Ollama** on different operating systems (macOS, Windows, and Linux) to power **LifeMirror**'s local mindfulness reflection engine.
 
+> [!NOTE]
+> **Prefer not to install local models?** LifeMirror is local-first by default, but also supports an opt-in **Online Service (Cloud AI)** mode via Bring Your Own Key (Groq, OpenAI, OpenRouter) with zero download footprint. You can also skip AI setup entirely and use LifeMirror purely as an offline tracker. See the [AI Integration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/AI_INTEGRATION.md) for details.
+
 ---
 
 ## 1. Installation by Operating System

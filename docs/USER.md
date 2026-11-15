@@ -90,24 +90,54 @@ Create a symlink or copy your host manifest JSON to your browser's NativeMessagi
 
 ---
 
-## 3. Configuring Local AI
+## 3. Configuring AI (Local-First or Opt-In Cloud)
 
-LifeMirror's AI features run completely locally on your machine, ensuring your activity logs are never sent to external servers.
+LifeMirror is **private by default and local-first**. You have complete control over whether and how artificial intelligence processes your activity logs.
 
-1. Download and install a local inference provider. Currently, we recommend Ollama from [ollama.com](https://ollama.com) as the most stable engine.
-2. Open LifeMirror Desktop and click the **Settings** icon (top right) to configure:
-   * **Local AI Endpoint:** e.g., `http://localhost:11434`
-   * **Text Generation Model:** e.g., `llama3.2`
-   * **AI Processing Mode:**
-     * **On-Demand (Recommended, Default):** Heavy background model inference (idle reflections, automatic entity tagging, vector embeddings) is completely suspended. Intelligence only processes when you explicitly request it (clicking *Reflect with AI*, entering a *Chat* query, or viewing a *Catch-up* brief). This keeps your laptop completely silent, prevents cooling fan spikes, and maximizes battery life.
-     * **Continuous Background:** Automatically pre-indexes memory nodes and builds idle reflections in the background every 60 seconds (best suited for plugged-in desktop workstations with dedicated GPUs).
-   * **Fail-Safe Offline Dormancy:** When Ollama is stopped or unreachable, LifeMirror immediately deactivates all AI routines with a sub-second circuit breaker—no hanging connections, no retry storms, and no CPU throttling.
-3. If the model is not installed, LifeMirror provides a native **Download Model Native** button on the dashboard. Simply click it to download the model without ever touching a terminal!
-4. Toggle between the **Reflect** and **Chat** modes in the AI panel on the right sidebar:
-   - Click **Reflect with AI** to compile your daily focus logs into a 2-sentence mindfulness reflection card.
-   - Select **Chat** to type custom queries and interact with the local AI regarding your log metrics or productivity details!
+### Zero-Interruption Launch
+When you open LifeMirror for the first time, you are never blocked by a required setup wizard. You land directly on your timeline dashboard. When you are ready to configure AI reflections, you can click **"Set Up AI for Reflections"** on the dashboard or open **Settings** (gear icon) → **AI Settings**.
 
-> For advanced configurations, environment variable setup, and detailed instructions for other operating systems, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md).
+### Guided 3-Option Setup
+The setup dialog offers three clear choices tailored to your preferences and hardware:
+
+1. **Private: Runs on your computer (Local AI — Default & Recommended)**
+   * **100% Offline:** All prompts and embeddings are processed locally. No analytical data or telemetry ever leaves your computer.
+   * **Hardware Requirements:** Requires ~2.0 GB–4.0 GB of disk space per model. Best suited for computers with 16GB+ RAM.
+   * **In-App Installation:** If you have [Ollama](https://ollama.com) installed, LifeMirror detects it automatically on `http://localhost:11434`. You can download models (such as `llama3.2`) directly from the UI with a single click—no command line needed!
+2. **Faster: Uses an online service (Cloud AI — Bring Your Own Key)**
+   * **Instant & Lightweight:** 0 MB download size; runs immediately with high performance even on older or resource-constrained laptops.
+   * **Supported Presets:** Groq (fast free tier with `llama-3.3-70b-versatile`), OpenAI (`gpt-4o-mini`), OpenRouter, or custom OpenAI-compatible endpoints.
+   * **Gated by Privacy Review:** Before saving your key, you must review and confirm the **Privacy & Data Impact Review**.
+3. **Track without AI (Skip for now)**
+   * Run LifeMirror purely as an offline activity tracker and focus timer. You can configure AI at any time later.
+
+---
+
+### Privacy Boundaries & Data Impact Review (Cloud Mode)
+If you opt into Cloud AI, LifeMirror enforces strict boundaries before transmitting any prompts:
+* **What Leaves Your Device:** Open application names (e.g. `VS Code`, `Chrome`), window and session titles, duration, and notes attached to reflections.
+* **What NEVER Leaves Your Device:**
+  * **Incognito Sessions:** Automatically stripped before assembling prompts.
+  * **Excluded Domains:** Any websites on your privacy blacklist are permanently blocked from prompt payloads.
+  * **Sensory & OS Data:** Keystrokes, passwords, clipboard contents, screen captures, and your local SQLite database are never captured or transmitted.
+* **Live Payload Preview:** The setup modal displays the exact JSON payload from your last 3 actual sessions so you can inspect what would leave your machine before confirming.
+* **Cost Protection:** Background idle reflection loops are suspended in Cloud mode to prevent unexpected API bills while you are AFK.
+* **1-Click Revocation:** Click **"Delete Key & Revoke Cloud Access"** in Settings → AI Settings at any time to purge your API key from encrypted storage and revert immediately to offline mode.
+
+---
+
+### AI Processing Modes
+Under Settings → AI Settings, you can configure:
+* **On-Demand Mode (Recommended, Default):** Background neural network passes (idle reflections, automated tagging, vector embeddings) remain suspended. Intelligence runs strictly when you click *Reflect with AI*, query *Chat*, or open a *Catch-up* brief. This keeps your machine cool, fans silent, and battery life maximized.
+* **Continuous Background Mode:** Pre-indexes memory nodes in the background every 60 seconds (best suited for plugged-in desktop workstations with dedicated GPUs; automatically dormant on Cloud mode).
+* **Fail-Safe Circuit Breaker:** When Ollama is stopped or unreachable, LifeMirror detects it in sub-second time (600ms probe) and enters complete dormancy—no hanging connections, retry storms, or CPU spikes.
+
+### Using Reflections and Chat
+In the AI sidebar on the right:
+* Click **Reflect with AI** to synthesize your daily activity into a concise mindfulness reflection. Reflection cards display a provenance badge indicating which engine generated them (e.g., `[Local: llama3.2]` or `[Cloud: Groq llama-3.3-70b-versatile]`).
+* Select **Chat** to ask natural-language questions about your productivity (*"Where did my time go this morning?"*). All chat queries respect your incognito and domain exclusion filters.
+
+> For advanced Ollama setup and cross-platform installation instructions, see the [Ollama Configuration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md). Detailed engineering specifications are available in the [AI Integration Guide](file:///var/www/pieapps/lifemirror-desktop/docs/AI_INTEGRATION.md).
 
 ---
 

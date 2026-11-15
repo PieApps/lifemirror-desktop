@@ -1,43 +1,109 @@
-# LifeMirror AI Integration
+# LifeMirror AI Integration Architecture
 
-This document outlines the current state of AI integration in LifeMirror, the supported inference providers, and the future architectural roadmap for local AI capabilities.
+This document details LifeMirror's AI architecture, supported inference providers, privacy boundaries, and security enforcement mechanisms.
 
-## Current Status (Phase 2 Completed)
+LifeMirror is **private by default and local-first**. It allows users to run models entirely offline on their own hardware, or optionally connect an external cloud inference provider using their own API key (Bring Your Own Key - BYOK) with explicit disclosure and strict data boundaries.
 
-LifeMirror currently relies on a provider-agnostic `InferenceProvider` trait for all AI-driven workflows. By default, it connects to a local **Ollama** instance via native `reqwest` HTTP clients.
+---
 
-By removing the incomplete Gemini Nano (Chrome built-in AI) integration and replacing brittle shell `curl` commands with robust native Rust networking, the codebase provides a single, robust execution path. The inference layer is designed to be completely abstracted, allowing us to easily introduce embedded backends in the future.
+## 1. Architecture Overview
 
-### In-App Model Pulling
-We now feature Native Model Downloading over Tauri IPC. Instead of instructing the user to run terminal commands, the UI calls `/api/pull` natively and renders a real-time progress bar.
+All intelligence workloads (daily reflections, interactive chat, resume brief context, intention checking) route through the `InferenceProvider` abstraction defined in `src-tauri/src/inference/mod.rs`.
 
-### On-Demand Architecture & Thermal Optimization
-To prevent fan noise, CPU overheating, and battery drain on laptops, LifeMirror decouples telemetry ingestion from model inference:
-* **Passive Ingestion ($T=0$):** Window focus polling and browser tab synchronization run continuously from boot in pure Rust and SQLite with near-zero overhead (<0.01% CPU, ~15MB RAM).
-* **On-Demand Execution (Default & Recommended):** In `"on_demand"` mode, all background LLM routines (the 60-second queue for semantic tagging, summarization, and vector embeddings, plus the 10-minute idle reflection loop) are suspended. Heavy matrix calculations run strictly when requested by the user.
-* **Just-In-Time (JIT) Processing:** When the user clicks **Reflect with AI**, queries **Chat**, or requests a **Catch-up Resume brief**, the backend executes `sync_day_memories` to synthesize pending sessions for that day on-the-fly in 2–3 seconds.
-* **Atomic De-Duplication Guard:** An RAII-scoped atomic compare-exchange (`static IS_SYNCING: AtomicBool`) prevents redundant concurrent forward passes if the user double-clicks reflection or chat triggers.
-* **Fail-Fast Circuit Breaker & Connection Pooling:** `InferenceProvider::is_available()` executes a 600ms sub-second health probe using connection-pooled HTTP clients (`OnceLock<reqwest::Client>`). If Ollama is offline or unreachable (`ECONNREFUSED`), inference calls fail fast immediately without hanging on socket timeouts or spawning retry storms.
-* **Boot-Time Dormancy:** In On-Demand mode, boot is 100% silent with zero localhost polling or missing-model alert banners. If Continuous mode is selected, a 180-second boot grace period lets OS startup services stabilize before any background cycles run.
+```mermaid
+flowchart TD
+    UI[Frontend / React UI] -->|Tauri IPC| CMD[Tauri Commands / Background Loops]
+    CMD --> ROUTE[get_inference_provider]
+    ROUTE -->|ai_provider = local| OLLAMA[OllamaProvider (src/inference/ollama.rs)]
+    ROUTE -->|ai_provider = cloud| CLOUD[CloudProvider (src/inference/cloud.rs)]
+    ROUTE -->|ai_provider = off| DORMANT[Dormant Provider (No-Op)]
+    
+    OLLAMA -->|Loopback HTTP| LOCAL_SRV[Local Ollama (localhost:11434)]
+    CLOUD -->|HTTPS POST /v1/chat/completions| WAN[Groq / OpenAI / OpenRouter]
+```
 
-### Why Ollama as the first provider?
-- **Pros:** Mature and stable, excellent model compatibility, handles model management and quantization formats, easy API, cross-platform, large community.
-- **Cons:** Requires a separate installation and runs as a background service. These are UX problems, which we mitigate via the Native Model Download UI.
+### The `InferenceProvider` Trait
+```rust
+pub trait InferenceProvider: Send + Sync {
+    fn is_available(&self) -> Result<bool, Box<dyn std::error::Error>>;
+    fn prompt(&self, prompt: &str) -> Result<String, Box<dyn std::error::Error>>;
+    fn embed(&self, text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>>;
+}
+```
 
-## Future Roadmap
+Dynamic dispatch is handled by `get_inference_provider(db: Arc<Database>)`:
+1. Reads `ai_provider` from the encrypted `settings` table.
+2. If `"cloud"`, verifies that `cloud_disclosure_accepted == "true"` and builds a `CloudProvider` using the encrypted `cloud_api_key`, `cloud_base_url`, and `cloud_model`.
+3. If `"off"`, returns a dormant provider that fails gracefully without network activity.
+4. Defaults to `OllamaProvider` pointing to the configured `ollama_url`.
 
-To eventually achieve a zero-install user experience without sacrificing privacy, we plan to transition to an embedded inference engine.
+---
 
-### Phase 3: Embedded llama.cpp
-- Implement embedded `llama.cpp` using Rust bindings (`llama-cpp-rs`).
-- Implement automatic downloading of GGUF models.
-- Implement hardware auto-detection (CPU fallback, GPU acceleration).
-- Provide settings for users to switch between the embedded engine and an external Ollama instance.
+## 2. Supported Inference Providers
 
-### Phase 4: Zero-Install Default
-- Make embedded inference the default out-of-the-box experience.
-- Retain Ollama as an advanced option for users who already have large models installed and running on their systems.
+### A. Local AI: `OllamaProvider` (Default & Recommended)
+* **Execution:** Connects over loopback HTTP to a locally running Ollama daemon (`http://localhost:11434`).
+* **Privacy:** 100% on-device. Zero telemetry or timeline data leaves the host machine.
+* **Cost:** Free forever.
+* **Hardware Profile:** Requires ~2.0 GB–4.0 GB disk space per model. Recommended for systems with 16GB+ RAM and/or dedicated GPUs.
+* **In-App Model Downloading:** Downloads models (`llama3.2`, `nomic-embed-text`) over Tauri IPC via `/api/pull` with native progress tracking.
+* **Fail-Fast Circuit Breaker:** Health check (`/api/version`) probes with a 600ms timeout. If offline, the app immediately enters dormant mode without retry storms.
 
-### Evaluated Alternatives
-- **Candle:** While an excellent Rust ML framework, it currently lacks the maturity, community adoption, and broad inference support of `llama.cpp` for shipping an offline desktop LLM.
-- **WebLLM:** Avoided due to Browser/WebGPU limitations, memory constraints, less predictable performance, and more difficult debugging compared to native Rust inference.
+### B. Cloud AI: `CloudProvider` (Opt-In BYOK)
+* **Execution:** Uses standard OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` specifications via pooled Rust `reqwest::Client` singletons.
+* **Privacy:** Gated behind the **Privacy & Data Impact Review** modal requiring explicit user consent.
+* **Hardware Profile:** 0 MB download size; runs instantly on any laptop or resource-constrained machine.
+* **Supported Presets:**
+  * **Groq Cloud:** High-speed inference with generous free-tier access (`llama-3.3-70b-versatile`).
+  * **OpenAI:** Direct integration with `gpt-4o-mini` (pay-as-you-go).
+  * **OpenRouter:** Access to multiple hosted models (`meta-llama/llama-3.3-70b-instruct:free`).
+  * **Custom:** Any self-hosted or proxy endpoint implementing the OpenAI API standard.
+
+---
+
+## 3. Privacy Boundaries & Security Enforcement
+
+When a user opts into Cloud AI, strict defense-in-depth protections are enforced:
+
+### 1. Pre-Inference Data Sanitization (Context Scrubbing)
+Before any activity data is bundled into prompt rollups (`compileContextRollup` in `src/hooks/useLocalAI.ts` and background jobs in `src-tauri/src/ai.rs`):
+* **Incognito Sessions:** All events tagged `is_incognito: true` are discarded immediately.
+* **Domain Exclusion List:** All events matching domains or subdomains on the user's blacklist are stripped.
+* **Never Transmitted:** Keystrokes, passwords, clipboard contents, screen captures, raw SQLite database files, and operating system credentials are fundamentally never captured or sent.
+
+### 2. Live Real-Data Payload Preview
+Rather than presenting generic boilerplate, the consent dialog queries the user's actual top 3 recent activity sessions via the `get_recent_preview_payload` IPC command. Users see the exact JSON structure and window titles before deciding to save their API key.
+
+### 3. Server-Side Request Forgery (SSRF) Prevention
+To protect local and intranet services from malicious or misconfigured cloud endpoints, `src-tauri/src/inference/mod.rs` enforces `validate_cloud_url`:
+* **HTTPS Enforcement:** WAN endpoints must strictly use `https://`. Unencrypted `http://` is rejected.
+* **Cloud Metadata Protection:** Link-local and cloud instance metadata addresses (`169.254.169.254`, IPv6 `fe80::/10`) are unconditionally blocked.
+* **Private Subnet Defense:** Private RFC 1918 subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), broadcast, and unspecified addresses are rejected for cloud inference.
+* Loopback IPs (`127.0.0.1`, `::1`) are permitted exclusively when testing against local proxies.
+
+### 4. Background Cost Suppression
+To prevent accidental billable API consumption while users are away from their keyboard:
+* The 10-minute idle summarizer (`start_idle_ai_summarizer` in `src-tauri/src/ai.rs`) inspects the active `ai_provider`.
+* If set to `"cloud"` or `"off"`, background idle summarization is suspended. Cloud inference only runs during active, user-initiated actions (*Reflect with AI* or *Chat*).
+
+### 5. Encrypted Key Storage & 1-Click Revocation
+* API keys are stored encrypted at rest inside the SQLCipher database.
+* The Settings panel features a **1-click Key Revocation** button that invokes `clear_cloud_ai_key`, immediately deleting the key from disk and reverting the application to offline mode.
+
+### 6. Provenance Badging
+Every generated reflection card is tagged with its source engine (e.g. `[Local: llama3.2]` or `[Cloud: Groq llama-3.3-70b-versatile]`), providing ongoing transparency about where data was processed.
+
+---
+
+## 4. On-Demand vs. Continuous Processing Modes
+
+To ensure quiet, fanless operation and preserve laptop battery life:
+* **On-Demand Mode (Default & Recommended):** All background model inference (idle reflections, automated entity extraction, vector indexing) is paused. Intelligence activates strictly when the user clicks *Reflect with AI*, queries *Chat*, or opens a *Resume* brief.
+* **Continuous Background Mode:** Memory queues pre-index nodes every 60 seconds and compute idle summaries every 10 minutes. Intended for desktop workstations with dedicated GPUs. When Cloud AI is active, continuous idle loops remain dormant to prevent API costs.
+
+---
+
+## 5. Future Roadmap
+
+* **Embedded GGUF (`llama.cpp`):** Future phases will incorporate embedded native Rust bindings (`llama-cpp-rs`) to provide a zero-install on-device LLM out of the box without requiring external daemons.
+* **Hybrid Embeddings:** Compute vector embeddings locally while optionally using cloud LLMs for generation.
