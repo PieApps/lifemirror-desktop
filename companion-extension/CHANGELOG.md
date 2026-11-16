@@ -5,6 +5,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.6.0] — 2026-11-16
+
+### Architecture & Modularization
+* **ES Modules Migration (`manifest.json`, `background.js`, `native-rpc.js`, `session-tracker.js`)**:
+  * Configured `"type": "module"` in `manifest.json` for the background service worker, decomposing the monolithic background script into modular, single-responsibility ES modules.
+  * Extracted `native-rpc.js` to handle sandboxed native messaging stdio connections, circuit-breaker reconnection cooldowns, protocol framing, and pending RPC promise tracking.
+  * Extracted `session-tracker.js` to manage active tab dwell timing, semantic URL/title categorization, 48-hour local rolling storage, and session activity queue locking.
+  * Transformed `background.js` into a lightweight, declarative coordinator orchestrating Chrome lifecycle events, context menus, and IPC messages.
+
+### Stability & Resilience
+* **Native Host Error Suppression & Circuit Breaker (`native-rpc.js`)**:
+  * Silenced recurring `Unchecked runtime.lastError: Native host has exited` errors by explicitly inspecting `chrome.runtime.lastError` in the `port.onDisconnect` callback before teardown.
+  * Implemented a connection cooldown circuit breaker (`RECONNECT_COOLDOWN_MS = 10000`) preventing infinite native reconnection loops when the desktop client exits or restarts.
+  * Guaranteed fail-fast rejection of in-flight RPC promises upon port disconnection to prevent hung async callers.
+  * Fixed stale vault lock state retention by automatically resetting `lastVaultError` upon receiving successful native responses.
+
+### Reconnection & Acknowledgement
+* **Interactive Desktop Reconnection Controls (`sidepanel.js`, `sidepanel.html`, `sidepanel.css`)**:
+  * Made the `#mode-badge` indicator clickable in the side panel header, allowing instant manual reconnection to the desktop client.
+  * Added a dedicated `[⚡ Connect to Desktop Client]` action button in the standalone Desktop Bridge card for quick pairing.
+  * Introduced an animated real-time status banner (`#connection-status-banner`) providing clear user acknowledgement across connecting, success, offline, and locked states.
+
+### Performance & Memory
+* **Side Panel Render Optimization (`sidepanel.js`)**:
+  * Filtered `chrome.storage.onChanged` listener to prevent full-page `loadData()` re-render cycles when connection state flags (`desktop_connected`) fluctuate.
+  * Refactored category and hourly bar DOM population to use `DocumentFragment` batching, eliminating layout thrashing during dashboard updates.
+* **Service Worker Restart Resilience (`session-tracker.js`)**:
+  * Backed metadata cache (`metaCache`) with `chrome.storage.session`, preserving extracted page descriptions across Chrome service worker idle termination cycles.
+
+---
+
 ## [1.5.0] — 2026-11-16
 
 ### Added

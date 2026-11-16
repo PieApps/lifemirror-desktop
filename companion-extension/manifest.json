@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LifeMirror Desktop",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "minimum_chrome_version": "102",
   "description": "Companion for LifeMirror Desktop. Privately reflects active browsing time, smart tags, and page summaries to your local timeline.",
   "icons": {

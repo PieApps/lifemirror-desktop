@@ -24,7 +24,9 @@ LifeMirror is engineered with strict local-first privacy guarantees:
 ```
 companion-extension/
 ├── manifest.json                    # Manifest V3 extension configuration (SidePanel, Storage, Idle)
-├── background.js                    # Background service worker (dwell time, idle detection, tags, native bridge)
+├── background.js                    # Service worker coordinator (lifecycle, tab listeners, context menu)
+├── native-rpc.js                    # Native messaging RPC module (circuit breaker, protocol framing, auto-rejection)
+├── session-tracker.js               # Browsing session tracker (dwell time, classifier, 48h rolling store, session cache)
 ├── domain-rules.js                  # Shared domain normalization, public-suffix validation & matching rules
 ├── content.js                       # Content script extracting page descriptions (<meta> / og:description)
 ├── sidepanel.html                   # Dedicated Chrome Side Panel reflection dashboard
