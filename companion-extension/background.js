@@ -21,6 +21,34 @@ let currentSession = null;
 let isUserIdle = false;
 const metaCache = new Map(); // url -> description
 
+async function persistMetaCache() {
+  try {
+    if (chrome.storage?.session) {
+      const entries = Array.from(metaCache.entries());
+      await chrome.storage.session.set({ meta_cache: entries });
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Failed to persist meta cache to session storage:", err);
+  }
+}
+
+async function restoreMetaCache() {
+  try {
+    if (chrome.storage?.session) {
+      const res = await chrome.storage.session.get("meta_cache");
+      if (Array.isArray(res && res.meta_cache)) {
+        for (const [url, desc] of res.meta_cache) {
+          if (!metaCache.has(url)) {
+            metaCache.set(url, desc);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[LifeMirror] Failed to restore meta cache from session storage:", err);
+  }
+}
+
 async function persistActiveSession(session) {
   try {
     if (chrome.storage?.session) {
@@ -48,8 +76,9 @@ async function restoreActiveSession() {
   }
 }
 
-// Restore active session if service worker was restarted while user was reading a page
+// Restore active session & meta cache if service worker was restarted while user was browsing
 restoreActiveSession();
+restoreMetaCache();
 
 // In-memory cache of domain exclusion rules
 let excludedEntries = []; // array of { domain, include_subdomains, updated_at, removed }
@@ -114,6 +143,9 @@ async function initProfileIdentity() {
 initProfileIdentity();
 
 // Eagerly connect to desktop host so status & SQLite sync are ready immediately on user click
+let lastConnectAttempt = 0;
+const RECONNECT_COOLDOWN_MS = 10000;
+
 try {
   getNativePort();
 } catch {}
@@ -469,13 +501,17 @@ async function purgeLegacyDailyStorage() {
   }
 }
 
-function getNativePort() {
+function getNativePort(force = false) {
   if (port) return port;
+
+  const now = Date.now();
+  if (!force && (now - lastConnectAttempt < RECONNECT_COOLDOWN_MS)) {
+    return null;
+  }
+  lastConnectAttempt = now;
 
   try {
     port = chrome.runtime.connectNative(HOST_NAME);
-    isNativeConnected = true;
-    chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
 
     // Active Zero-Leak Cleanup: Purge unencrypted daily browser session logs once connected
     purgeLegacyDailyStorage();
@@ -485,23 +521,37 @@ function getNativePort() {
         const { resolve, timer } = pendingNativeRpc.get(msg.requestId);
         clearTimeout(timer);
         pendingNativeRpc.delete(msg.requestId);
+        if (msg.error) {
+          lastVaultError = msg.error;
+        } else {
+          lastVaultError = null;
+          isNativeConnected = true;
+          chrome.action.setBadgeText({ text: "" });
+          chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
+        }
         resolve(msg);
         return;
       }
 
       if (msg && msg.event === "tracking_state") {
+        lastVaultError = null;
+        isNativeConnected = true;
+        chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
         isDesktopTrackingActive = Boolean(msg.tracking_active);
         if (!isDesktopTrackingActive) {
           chrome.action.setBadgeText({ text: "PAUSE" });
           chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
           currentSession = null;
           persistActiveSession(null);
-        } else if (lastVaultError === null) {
+        } else {
           chrome.action.setBadgeText({ text: "" });
         }
       }
 
       if (msg && msg.event === "sync_excluded_domains" && Array.isArray(msg.entries)) {
+        lastVaultError = null;
+        isNativeConnected = true;
+        chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
         const prevExcluded = new Set(
           excludedEntries.filter(e => !e.removed).map(e => e.domain)
         );
@@ -535,22 +585,42 @@ function getNativePort() {
     callNativeRpc({ event: "get_desktop_status" }, 1500)
       .then((res) => {
         if (res && typeof res.tracking_active === "boolean") {
+          lastVaultError = null;
+          isNativeConnected = true;
+          chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
           isDesktopTrackingActive = res.tracking_active;
           if (!isDesktopTrackingActive) {
             chrome.action.setBadgeText({ text: "PAUSE" });
             chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+          } else {
+            chrome.action.setBadgeText({ text: "" });
           }
         }
       })
       .catch(() => {});
 
     port.onDisconnect.addListener(() => {
+      // Consume lastError to prevent Chrome from logging "Unchecked runtime.lastError"
+      const err = chrome.runtime.lastError;
+      if (err) {
+        console.debug("[LifeMirror] Native messaging disconnected:", err.message);
+      }
+
+      // Immediately reject all pending in-flight RPCs rather than waiting for 4s timeout
+      for (const [requestId, { reject, timer }] of pendingNativeRpc.entries()) {
+        clearTimeout(timer);
+        reject(new Error(err?.message || "Native host disconnected"));
+      }
+      pendingNativeRpc.clear();
+
       isNativeConnected = false;
       isDesktopTrackingActive = true;
       port = null;
       chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
-      // In standalone mode, we do NOT set scary red badges
-      chrome.action.setBadgeText({ text: "" });
+      // In standalone mode, clear badge if no permanent vault error
+      if (lastVaultError === null) {
+        chrome.action.setBadgeText({ text: "" });
+      }
     });
   } catch {
     port = null;
@@ -855,27 +925,29 @@ async function reportTabActivity(tabId, changeInfo, tab) {
   await persistActiveSession(currentSession);
 
   // 3. Forward enriched payload to Desktop App if connected
-  const nativePort = getNativePort();
-  if (nativePort) {
-    const payload = {
-      event: "tab_activity",
-      url: cleanUrl,
-      title: sanitizedTitle,
-      favIconUrl: tab.favIconUrl || "",
-      description: description,
-      tag: category,
-      timestamp: Date.now(),
-      profileId: profileId,
-      profileLabel: profileLabel,
-      browserName: browserName
-    };
-    try {
-      nativePort.postMessage(payload);
-      lastReportedPayload = payload;
-    } catch {
-      port = null;
-      isNativeConnected = false;
-      chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
+  if (isNativeConnected) {
+    const nativePort = getNativePort();
+    if (nativePort) {
+      const payload = {
+        event: "tab_activity",
+        url: cleanUrl,
+        title: sanitizedTitle,
+        favIconUrl: tab.favIconUrl || "",
+        description: description,
+        tag: category,
+        timestamp: Date.now(),
+        profileId: profileId,
+        profileLabel: profileLabel,
+        browserName: browserName
+      };
+      try {
+        nativePort.postMessage(payload);
+        lastReportedPayload = payload;
+      } catch {
+        port = null;
+        isNativeConnected = false;
+        chrome.storage.local.set({ desktop_connected: false }).catch(() => {});
+      }
     }
   }
 }
@@ -1075,6 +1147,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           currentSession.description = sanitized;
           persistActiveSession(currentSession);
         }
+        persistMetaCache();
       }
     }
     return false;
@@ -1082,37 +1155,99 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Query status for side panel
   if (request.action === "get_status") {
-    const nativePort = getNativePort();
-    const connected = Boolean(isNativeConnected && nativePort !== null && !lastVaultError);
-    chrome.storage.local.set({ desktop_connected: connected }).catch(() => {});
+    (async () => {
+      const nativePort = getNativePort();
+      let connected = Boolean(isNativeConnected && nativePort !== null && !lastVaultError);
 
-    if (connected) {
-      callNativeRpc({ event: "get_desktop_status" }, 1500)
-        .then((res) => {
+      if (nativePort && !lastVaultError) {
+        try {
+          const res = await callNativeRpc({ event: "get_desktop_status" }, 1500);
           if (res && typeof res.tracking_active === "boolean") {
             isDesktopTrackingActive = res.tracking_active;
+            lastVaultError = null;
+            isNativeConnected = true;
+            connected = true;
             if (!isDesktopTrackingActive) {
               chrome.action.setBadgeText({ text: "PAUSE" });
               chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
-            } else if (lastVaultError === null) {
+            } else {
               chrome.action.setBadgeText({ text: "" });
             }
           }
-        })
-        .catch(() => {});
-    }
+        } catch {
+          // If RPC timed out, maintain current status
+        }
+      }
 
-    sendResponse({
-      connected,
-      trackingActive: isDesktopTrackingActive,
-      vaultError: lastVaultError,
-      lastEvent: lastReportedPayload,
-      currentSession: currentSession ? {
-        ...currentSession,
-        currentDuration: Math.round((Date.now() - currentSession.startTime) / 1000)
-      } : null,
-      hostName: HOST_NAME
-    });
+      chrome.storage.local.set({ desktop_connected: connected }).catch(() => {});
+
+      sendResponse({
+        connected,
+        trackingActive: isDesktopTrackingActive,
+        vaultError: lastVaultError,
+        lastEvent: lastReportedPayload,
+        currentSession: currentSession ? {
+          ...currentSession,
+          currentDuration: Math.round((Date.now() - currentSession.startTime) / 1000)
+        } : null,
+        hostName: HOST_NAME
+      });
+    })();
+    return true;
+  }
+
+  // Desktop RPC: Manual Reconnect Request from Side Panel UI
+  if (request.action === "reconnect_native") {
+    (async () => {
+      if (port) {
+        try { port.disconnect(); } catch {}
+        port = null;
+      }
+      isNativeConnected = false;
+      lastVaultError = null;
+      chrome.action.setBadgeText({ text: "" });
+
+      const nativePort = getNativePort(true);
+      if (!nativePort) {
+        sendResponse({ connected: false, error: "Failed to establish native port" });
+        return;
+      }
+
+      try {
+        const res = await callNativeRpc({ event: "get_desktop_status" }, 2500);
+        if (res && typeof res.tracking_active === "boolean") {
+          isDesktopTrackingActive = res.tracking_active;
+          isNativeConnected = true;
+          lastVaultError = null;
+          chrome.storage.local.set({ desktop_connected: true }).catch(() => {});
+          if (!isDesktopTrackingActive) {
+            chrome.action.setBadgeText({ text: "PAUSE" });
+            chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+          } else {
+            chrome.action.setBadgeText({ text: "" });
+          }
+          sendResponse({
+            connected: true,
+            trackingActive: isDesktopTrackingActive,
+            vaultError: null
+          });
+          return;
+        }
+      } catch (err) {
+        sendResponse({
+          connected: false,
+          vaultError: lastVaultError || "unreachable",
+          error: err.message
+        });
+        return;
+      }
+
+      sendResponse({
+        connected: Boolean(isNativeConnected && !lastVaultError),
+        vaultError: lastVaultError,
+        trackingActive: isDesktopTrackingActive
+      });
+    })();
     return true;
   }
 
@@ -1286,6 +1421,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "clear_local_data") {
     chrome.storage.local.clear().then(async () => {
       metaCache.clear();
+      await persistMetaCache();
       currentSession = null;
       // Re-seed the daily keys index as an empty array after a full storage clear
       await chrome.storage.local.set({ [DAILY_KEYS_STORE]: [] }).catch(() => {});

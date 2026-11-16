@@ -53,6 +53,16 @@
           <span>Browsing activity and dwell time are currently not being recorded.</span>
         </div>
       </div>
+
+      <!-- Connection Status / Feedback Banner -->
+      <div id="connection-status-banner" class="connection-banner hidden" role="status">
+        <span id="connection-banner-icon" class="connection-banner-icon">⚡</span>
+        <div class="connection-banner-text">
+          <strong id="connection-banner-title">Connected to LifeMirror Desktop</strong>
+          <span id="connection-banner-desc">Full-system timeline and native vault are active.</span>
+        </div>
+        <button id="connection-banner-action" type="button" class="btn-banner-action hidden">Retry</button>
+      </div>
     </header>
 
     <!-- TAB PANEL 1: INSIGHTS (Standup Summary, Top Domains, Profile Scope, Bridge) -->
@@ -104,15 +114,21 @@
       <!-- Desktop Bridge Card -->
       <section id="desktop-bridge-card" class="card bridge-card">
         <div class="bridge-content">
-          <div class="bridge-icon">🚀</div>
+          <div class="bridge-icon" id="bridge-card-icon">🚀</div>
           <div>
-            <h4 class="bridge-title">Unlock Full-System Reflection</h4>
-            <p class="bridge-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
+            <h4 class="bridge-title" id="bridge-card-title">Unlock Full-System Reflection</h4>
+            <p class="bridge-desc" id="bridge-card-desc">LifeMirror Desktop connects your IDE, terminal, and local Ollama AI into one encrypted offline timeline.</p>
           </div>
         </div>
-        <a href="https://pieapps.github.io/lifemirror-desktop.web/" target="_blank" rel="noopener noreferrer" class="btn btn-bridge external-link">
-          Get Desktop App →
-        </a>
+        <div class="bridge-actions" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button id="btn-reconnect-desktop" type="button" class="btn btn-bridge" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span id="reconnect-btn-icon">⚡</span>
+            <span id="reconnect-btn-label">Connect to Desktop Client</span>
+          </button>
+          <a href="https://pieapps.github.io/lifemirror-desktop.web/" target="_blank" rel="noopener noreferrer" class="btn btn-bridge-secondary external-link">
+            Get Desktop App →
+          </a>
+        </div>
       </section>
     </main>
 

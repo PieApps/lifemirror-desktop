@@ -27,6 +27,72 @@ const streamDesktopLoader = document.getElementById("stream-desktop-loader");
 const copySummaryBtn = document.getElementById("copy-summary-btn");
 const dateLabel = document.getElementById("date-label");
 const trackingPausedBanner = document.getElementById("tracking-paused-banner");
+const connectionStatusBanner = document.getElementById("connection-status-banner");
+const connectionBannerIcon = document.getElementById("connection-banner-icon");
+const connectionBannerTitle = document.getElementById("connection-banner-title");
+const connectionBannerDesc = document.getElementById("connection-banner-desc");
+const connectionBannerAction = document.getElementById("connection-banner-action");
+const btnReconnectDesktop = document.getElementById("btn-reconnect-desktop");
+const reconnectBtnIcon = document.getElementById("reconnect-btn-icon");
+const reconnectBtnLabel = document.getElementById("reconnect-btn-label");
+const bridgeCardTitle = document.getElementById("bridge-card-title");
+const bridgeCardDesc = document.getElementById("bridge-card-desc");
+
+let _bannerTimer = null;
+function showConnectionBanner(type, title, desc, showRetry = false) {
+  if (!connectionStatusBanner) return;
+  clearTimeout(_bannerTimer);
+  connectionStatusBanner.className = `connection-banner banner-${type}`;
+  if (connectionBannerTitle) connectionBannerTitle.textContent = title;
+  if (connectionBannerDesc) connectionBannerDesc.textContent = desc;
+  if (connectionBannerIcon) {
+    connectionBannerIcon.textContent = type === "success" ? "✓" : (type === "warning" ? "🔒" : "⚡");
+  }
+  if (connectionBannerAction) {
+    if (showRetry) {
+      connectionBannerAction.classList.remove("hidden");
+      connectionBannerAction.textContent = "Retry";
+      connectionBannerAction.onclick = triggerReconnectDesktop;
+    } else {
+      connectionBannerAction.classList.add("hidden");
+    }
+  }
+  connectionStatusBanner.classList.remove("hidden");
+  if (type === "success") {
+    _bannerTimer = setTimeout(() => {
+      connectionStatusBanner.classList.add("hidden");
+    }, 4000);
+  }
+}
+
+async function triggerReconnectDesktop() {
+  if (modeBadge) {
+    modeBadge.className = "mode-badge mode-connecting clickable";
+    modeBadge.title = "Connecting to LifeMirror Desktop...";
+  }
+  if (modeBadgeText) modeBadgeText.textContent = "Connecting...";
+  if (reconnectBtnLabel) reconnectBtnLabel.textContent = "Connecting...";
+  if (btnReconnectDesktop) btnReconnectDesktop.disabled = true;
+
+  try {
+    const res = await chrome.runtime.sendMessage({ action: "reconnect_native" });
+    if (res && res.connected) {
+      showConnectionBanner("success", "Connected to LifeMirror Desktop", "Full-system timeline and native vault are active.");
+      await loadData();
+    } else if (res && res.vaultError === "vault_locked") {
+      showConnectionBanner("warning", "Desktop Vault Locked", "Open and unlock LifeMirror Desktop application, then click retry.", true);
+      await loadData();
+    } else {
+      showConnectionBanner("warning", "Desktop Client Not Detected", "Could not connect to LifeMirror Desktop. Make sure the application is open and running.", true);
+      await loadData();
+    }
+  } catch (err) {
+    showConnectionBanner("warning", "Connection Failed", err.message || "Could not reach background worker.", true);
+    await loadData();
+  } finally {
+    if (btnReconnectDesktop) btnReconnectDesktop.disabled = false;
+  }
+}
 
 // Theme Elements
 const themeToggleBtn = document.getElementById("theme-toggle-btn");
@@ -235,7 +301,7 @@ function renderTopDomains(domainsInput = {}) {
     return;
   }
 
-  topDomainsList.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   filtered.slice(0, 5).forEach(([dom, data]) => {
     const pct = Math.round((data.seconds / totalSeconds) * 100);
     const item = document.createElement("div");
@@ -284,8 +350,10 @@ function renderTopDomains(domainsInput = {}) {
       });
     }
 
-    topDomainsList.appendChild(item);
+    fragment.appendChild(item);
   });
+
+  topDomainsList.replaceChildren(fragment);
 }
 
 // ── Render Recent Page Reflections with Descriptions & Tags ───────────────────
@@ -353,7 +421,7 @@ function renderSessions(sessions = []) {
     sessionsCountBadge.textContent = `${consolidated.length} item${consolidated.length === 1 ? "" : "s"}${nextCursor ? " • scroll for more" : ""}`;
   }
 
-  sessionsStream.innerHTML = "";
+  const fragment = document.createDocumentFragment();
   consolidated.forEach((session) => {
     const item = document.createElement("div");
     item.className = "session-item";
@@ -447,8 +515,10 @@ function renderSessions(sessions = []) {
       });
     }
 
-    sessionsStream.appendChild(item);
+    fragment.appendChild(item);
   });
+
+  sessionsStream.replaceChildren(fragment);
 
   // Update Keyset Sentinel & Load More button visibility
   if (nextCursor) {
@@ -800,25 +870,45 @@ async function loadData() {
 
     isConnectedToDesktop = Boolean(status && status.connected);
     const isTrackingActive = status ? status.trackingActive !== false : true;
-    chrome.storage.local.set({ desktop_connected: isConnectedToDesktop }).catch(() => {});
+    const vaultError = status ? status.vaultError : null;
 
     if (isConnectedToDesktop) {
       if (!isTrackingActive) {
-        modeBadge.className = "mode-badge mode-paused";
+        modeBadge.className = "mode-badge mode-paused clickable";
         modeBadgeText.textContent = "Tracking Paused";
+        modeBadge.title = "Desktop tracking is paused in LifeMirror Desktop (Click to refresh)";
         if (trackingPausedBanner) trackingPausedBanner.classList.remove("hidden");
       } else {
-        modeBadge.className = "mode-badge mode-desktop";
+        modeBadge.className = "mode-badge mode-desktop clickable";
         modeBadgeText.textContent = "Desktop Sync Active";
+        modeBadge.title = "Connected to LifeMirror Desktop (Click to refresh)";
         if (trackingPausedBanner) trackingPausedBanner.classList.add("hidden");
       }
       if (desktopBridgeCard) desktopBridgeCard.style.display = "none";
       if (dataManagementCard) dataManagementCard.classList.add("hidden");
-    } else {
-      modeBadge.className = "mode-badge mode-standalone";
-      modeBadgeText.textContent = "Standalone Active";
+    } else if (vaultError === "vault_locked") {
+      modeBadge.className = "mode-badge mode-locked clickable";
+      modeBadgeText.textContent = "Vault Locked";
+      modeBadge.title = "LifeMirror Desktop vault is locked. Click to reconnect after unlocking.";
       if (trackingPausedBanner) trackingPausedBanner.classList.add("hidden");
-      if (desktopBridgeCard) desktopBridgeCard.style.display = "flex";
+      if (desktopBridgeCard) {
+        desktopBridgeCard.style.display = "flex";
+        if (bridgeCardTitle) bridgeCardTitle.textContent = "LifeMirror Vault is Locked";
+        if (bridgeCardDesc) bridgeCardDesc.textContent = "LifeMirror Desktop is running, but the database is locked. Open the desktop app to unlock, then click retry.";
+        if (reconnectBtnLabel) reconnectBtnLabel.textContent = "Retry Connection";
+      }
+      if (dataManagementCard) dataManagementCard.classList.remove("hidden");
+    } else {
+      modeBadge.className = "mode-badge mode-standalone clickable";
+      modeBadgeText.textContent = "Standalone Active";
+      modeBadge.title = "Click to connect to LifeMirror Desktop client";
+      if (trackingPausedBanner) trackingPausedBanner.classList.add("hidden");
+      if (desktopBridgeCard) {
+        desktopBridgeCard.style.display = "flex";
+        if (bridgeCardTitle) bridgeCardTitle.textContent = "Connect to Desktop Client";
+        if (bridgeCardDesc) bridgeCardDesc.textContent = "Running LifeMirror Desktop? Connect to sync your active browser dwell time with your encrypted offline vault.";
+        if (reconnectBtnLabel) reconnectBtnLabel.textContent = "Connect to Desktop Client";
+      }
       if (dataManagementCard) dataManagementCard.classList.remove("hidden");
     }
 
@@ -1068,6 +1158,11 @@ loadData();
 let _storageRefreshTimer = null;
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
+  // If ONLY desktop_connected changed, don't trigger a full loadData query storm
+  const keys = Object.keys(changes);
+  if (keys.length === 1 && keys[0] === "desktop_connected") {
+    return;
+  }
   clearTimeout(_storageRefreshTimer);
   _storageRefreshTimer = setTimeout(() => {
     const isAtTop = (window.scrollY || document.documentElement.scrollTop || 0) < 30;
@@ -1687,6 +1782,18 @@ function initExternalLinks() {
         window.location.href = url;
       }
     });
+  });
+}
+
+// ── Reconnection Controls ───────────────────────────────────────────────────
+if (modeBadge) {
+  modeBadge.addEventListener("click", () => {
+    triggerReconnectDesktop();
+  });
+}
+if (btnReconnectDesktop) {
+  btnReconnectDesktop.addEventListener("click", () => {
+    triggerReconnectDesktop();
   });
 }
 
