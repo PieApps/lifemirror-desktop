@@ -1028,10 +1028,13 @@ async fn test_cloud_connection(
         return Err("API key is empty.".to_string());
     }
 
-    let endpoint = if clean_url.ends_with("/chat/completions") {
-        clean_url.to_string()
+    // SSRF validation against private/internal networks and cloud metadata endpoints
+    let validated_url = crate::inference::validate_cloud_url(clean_url).map_err(|e| e.to_string())?;
+
+    let endpoint = if validated_url.ends_with("/chat/completions") {
+        validated_url
     } else {
-        format!("{clean_url}/chat/completions")
+        format!("{validated_url}/chat/completions")
     };
 
     let client = reqwest::Client::builder()

@@ -104,13 +104,13 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={isAiAvailable === false && onAILockedClick ? () => onAILockedClick("Where was I? (Resume Context)") : onResumeClick}
           aria-haspopup={isAiAvailable === false ? "dialog" : undefined}
-          aria-label={isAiAvailable === false ? "Where was I? - Locked, local AI required" : "Resume where you left off"}
+          aria-label={isAiAvailable === false ? "Where was I? - Locked, AI Engine required" : "Resume where you left off"}
           className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all border text-xs sm:text-sm cursor-pointer ${
             isAiAvailable === false
               ? "border-zinc-300 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 group"
               : "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold"
           }`}
-          title={isAiAvailable === false ? "Where was I? (Locked - Requires Local AI to be running)" : "Resume where you left off"}
+          title={isAiAvailable === false ? "Where was I? (Locked - Requires AI Engine to be active)" : "Resume where you left off"}
         >
           {isAiAvailable === false ? (
             <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 dark:text-zinc-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" />

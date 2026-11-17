@@ -29,7 +29,7 @@ export function useSettings() {
 
   // Unified AI mode: "local" | "cloud" | "off"
   const [aiMode, setAiModeState] = useState<"local" | "cloud" | "off">("local");
-  const [cloudProvider, setCloudProvider] = useState<"groq" | "openai" | "openrouter" | "custom">("groq");
+  const [cloudProvider, setCloudProvider] = useState<"gemini" | "groq" | "openai" | "openrouter" | "custom">("groq");
   const [cloudApiKey, setCloudApiKey] = useState("");
   const [cloudBaseUrl, setCloudBaseUrl] = useState("https://api.groq.com/openai/v1");
   const [cloudModel, setCloudModel] = useState("llama-3.3-70b-versatile");
@@ -140,7 +140,7 @@ export function useSettings() {
         }
 
         const rawCloudProvider = await invoke<string>("get_db_setting", { key: "cloud_provider" });
-        if (rawCloudProvider === "openai" || rawCloudProvider === "openrouter" || rawCloudProvider === "custom" || rawCloudProvider === "groq") {
+        if (rawCloudProvider === "gemini" || rawCloudProvider === "openai" || rawCloudProvider === "openrouter" || rawCloudProvider === "custom" || rawCloudProvider === "groq") {
           setCloudProvider(rawCloudProvider);
         }
 
@@ -378,7 +378,7 @@ export function useSettings() {
   };
 
   const saveCloudConfig = async (
-    provider: "groq" | "openai" | "openrouter" | "custom",
+    provider: "gemini" | "groq" | "openai" | "openrouter" | "custom",
     apiKey: string,
     baseUrl: string,
     model: string

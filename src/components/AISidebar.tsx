@@ -78,9 +78,9 @@ export const AISidebar: React.FC<AISidebarProps> = ({
           <div className="flex items-center gap-2">
             {!isAiAvailable ? (
               <button
-                onClick={() => onAILockedClick?.("Local AI Engine")}
+                onClick={() => onAILockedClick?.("AI Engine")}
                 className="text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
-                title="Local AI is offline (Click to view requirements)"
+                title="AI Engine is offline (Click to view requirements)"
               >
                 <Lock className="w-2.5 h-2.5" />
                 <span>AI Offline</span>
@@ -288,7 +288,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                               ? "border-zinc-300 dark:border-zinc-700/50 bg-zinc-100 dark:bg-zinc-800/40 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 font-semibold cursor-pointer"
                               : "border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 font-semibold cursor-pointer shadow-violet-500/5"
                           }`}
-                          title={!isAiAvailable ? "Generate AI Suggestions (Locked - Requires Local AI)" : "Generate suggestions from logs"}
+                          title={!isAiAvailable ? "Generate AI Suggestions (Locked - Requires AI Engine)" : "Generate suggestions from logs"}
                         >
                           {loadingSuggestions ? (
                             <>
@@ -384,7 +384,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
               disabled={chatLoading}
               placeholder={
                 !isAiAvailable 
-                  ? "Local AI is offline (click to see how to unlock)..." 
+                  ? "AI Engine is offline (click to configure in Settings)..." 
                   : chatLoading 
                   ? "AI is typing..." 
                   : "Ask AI..."
@@ -406,7 +406,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                   ? "border border-zinc-300 dark:border-zinc-700/50 bg-zinc-100 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-500 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400"
                   : "bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
               }`}
-              title={!isAiAvailable ? "AI Chat is locked (Requires Local AI)" : "Send chat message"}
+              title={!isAiAvailable ? "AI Chat is locked (Requires AI Engine)" : "Send chat message"}
             >
               {!isAiAvailable ? (
                 <Lock className="w-3.5 h-3.5" />

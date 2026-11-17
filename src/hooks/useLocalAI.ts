@@ -319,7 +319,7 @@ Insights (exactly 3 lines):`;
       if (aiMode === "cloud") {
         setAiReflection(`Cloud AI reflection failed: ${err.message || err}. Check your API key and network connection in Settings.`);
       } else {
-        setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Local AI is running locally (${aiUrl}) and that you ran 'ollama pull ${aiModel}' first.`);
+        setAiReflection(`Mindfulness engine failed: ${err.message || err}. Check that Ollama is running locally (${aiUrl}) and that you ran 'ollama pull ${aiModel}' first.`);
       }
     } finally {
       setAiLoading(false);
@@ -374,7 +374,7 @@ Insights (exactly 3 lines):`;
       const skipMsg2 = `[DEBUG Chat Flow] Skipping request because Local AI is disabled or incomplete. URL: ${aiUrl}, Model: ${aiModel}`;
       console.log(skipMsg2);
       invoke("log_debug", { msg: skipMsg2 }).catch(console.error);
-      const errMsg = "Local AI is disabled or configuration is incomplete.";
+      const errMsg = "AI engine is disabled or configuration is incomplete.";
       if (isIncognito) {
         setVolatileChatHistory(prev => [
           ...prev, 
@@ -541,13 +541,13 @@ Insights (exactly 3 lines):`;
 
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("text/html")) {
-        throw new Error("Received HTML response. Ensure the Local AI URL is correct.");
+        throw new Error("Received HTML response. Ensure the AI server URL is correct.");
       }
 
       if (!response.body) {
         console.error("[DEBUG Chat Flow] Response body is null.");
         invoke("log_debug", { msg: "[DEBUG Chat Flow] Error: Response body is null." }).catch(console.error);
-        throw new Error("No response body received from Local AI server.");
+        throw new Error("No response body received from AI server.");
       }
 
       console.log("[DEBUG Chat Flow] Starting to read response stream.");
@@ -630,7 +630,7 @@ Insights (exactly 3 lines):`;
         return;
       }
       console.error(err);
-      const errText = `Failed to get response: ${err.message || err}. Ensure Local AI is running at ${aiUrl} and '${aiModel}' model is pulled.`;
+      const errText = `Failed to get response: ${err.message || err}. Ensure AI engine is running at ${aiUrl} and '${aiModel}' model is pulled.`;
       
       if (isIncognito) {
         setVolatileChatHistory(prev => {

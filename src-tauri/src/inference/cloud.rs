@@ -49,6 +49,7 @@ impl CloudProvider {
         if base_url.trim().is_empty() {
             let provider = self.db.get_setting("cloud_provider").unwrap_or_default();
             base_url = match provider.as_str() {
+                "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
                 "groq" => "https://api.groq.com/openai/v1".to_string(),
                 "openrouter" => "https://openrouter.ai/api/v1".to_string(),
                 _ => "https://api.openai.com/v1".to_string(),
@@ -61,6 +62,7 @@ impl CloudProvider {
         if model.trim().is_empty() {
             let provider = self.db.get_setting("cloud_provider").unwrap_or_default();
             model = match provider.as_str() {
+                "gemini" => "gemini-2.5-flash".to_string(),
                 "groq" => "llama-3.3-70b-versatile".to_string(),
                 "openrouter" => "meta-llama/llama-3.3-70b-instruct:free".to_string(),
                 _ => "gpt-4o-mini".to_string(),
@@ -137,7 +139,14 @@ impl InferenceProvider for CloudProvider {
             format!("{base_url}/embeddings")
         };
 
-        let embed_model = self.db.get_setting("cloud_embed_model").unwrap_or_else(|_| "text-embedding-3-small".to_string());
+        let provider = self.db.get_setting("cloud_provider").unwrap_or_default();
+        let embed_model = self.db.get_setting("cloud_embed_model").unwrap_or_else(|_| {
+            if provider == "gemini" {
+                "text-embedding-004".to_string()
+            } else {
+                "text-embedding-3-small".to_string()
+            }
+        });
         let client = get_inference_client();
 
         let payload = json!({

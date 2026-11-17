@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { CloudPrivacyDisclosureModal } from "./CloudPrivacyDisclosureModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
@@ -40,12 +40,12 @@ interface SettingsPanelProps {
   onRefreshUnattachedNotes?: () => Promise<void>;
   aiMode?: "local" | "cloud" | "off";
   onUpdateAiMode?: (mode: "local" | "cloud" | "off") => Promise<void>;
-  cloudProvider?: "groq" | "openai" | "openrouter" | "custom";
+  cloudProvider?: "gemini" | "groq" | "openai" | "openrouter" | "custom";
   cloudApiKey?: string;
   cloudBaseUrl?: string;
   cloudModel?: string;
   cloudDisclosureAccepted?: boolean;
-  onSaveCloudConfig?: (provider: "groq" | "openai" | "openrouter" | "custom", apiKey: string, baseUrl: string, model: string) => Promise<void>;
+  onSaveCloudConfig?: (provider: "gemini" | "groq" | "openai" | "openrouter" | "custom", apiKey: string, baseUrl: string, model: string) => Promise<void>;
   onRevokeCloudAccess?: () => Promise<void>;
 }
 
@@ -118,7 +118,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Cloud AI & Mode states
   const [selectedAiMode, setSelectedAiMode] = React.useState<"local" | "cloud" | "off">(aiMode);
-  const [localCloudProvider, setLocalCloudProvider] = React.useState<"groq" | "openai" | "openrouter" | "custom">(cloudProvider);
+  const [localCloudProvider, setLocalCloudProvider] = React.useState<"gemini" | "groq" | "openai" | "openrouter" | "custom">(cloudProvider);
 
   // Knowledge Vault states
   const [vaultPathInput, setVaultPathInput] = React.useState("");
@@ -187,9 +187,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [localCloudModel, setLocalCloudModel] = React.useState(cloudModel);
   const [showDisclosureModal, setShowDisclosureModal] = React.useState(false);
   const [showTradeoffsModal, setShowTradeoffsModal] = React.useState(false);
-  const [cloudTesting, setCloudTesting] = React.useState(false);
   const [cloudTestStatus, setCloudTestStatus] = React.useState<"idle" | "success" | "error">("idle");
   const [cloudTestMessage, setCloudTestMessage] = React.useState("");
+  const [installedOllamaModels, setInstalledOllamaModels] = React.useState<string[]>([]);
+  const [loadingOllamaModels, setLoadingOllamaModels] = React.useState(false);
+  const [showAdvancedOllamaUrl, setShowAdvancedOllamaUrl] = React.useState(false);
+  const [copiedOllamaCmd, setCopiedOllamaCmd] = React.useState(false);
+  const [isSavingCloud, setIsSavingCloud] = React.useState(false);
 
   React.useEffect(() => {
     setSelectedAiMode(aiMode);
@@ -503,6 +507,28 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
+  const fetchInstalledOllamaModels = async (baseUrl: string) => {
+    setLoadingOllamaModels(true);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, { signal: controller.signal });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.models)) {
+          const names = data.models.map((m: any) => m.name || m.model).filter(Boolean);
+          setInstalledOllamaModels(names);
+        }
+      }
+    } catch {
+      // Ignore tag fetch errors if offline or aborted
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      setLoadingOllamaModels(false);
+    }
+  };
+
   const handleTestConnection = async (isManualClick: boolean = false) => {
     let urlToTest = aiUrl;
     
@@ -515,7 +541,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         }
       } else {
         setConnectionStatus('disconnected');
-        setConnectionMessage('Local AI is not configured.');
+        setConnectionMessage('Ollama endpoint is not configured.');
         return;
       }
     }
@@ -523,11 +549,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     setConnectionStatus('testing');
     setConnectionMessage('');
     try {
-      const res = await fetch(`${urlToTest.replace(/\/$/, '')}/api/version`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(`${urlToTest.replace(/\/$/, '')}/api/version`, { signal: controller.signal });
+      clearTimeout(timeout);
       if (res.ok) {
         setConnectionStatus('connected');
-        setConnectionMessage('Successfully connected to local AI.');
+        setConnectionMessage('Ollama is running and ready.');
         onAiConnectionTested?.(true);
+        fetchInstalledOllamaModels(urlToTest);
       } else {
         setConnectionStatus('disconnected');
         setConnectionMessage(`Connection failed (Status: ${res.status}).`);
@@ -535,7 +565,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       }
     } catch (err: any) {
       setConnectionStatus('disconnected');
-      setConnectionMessage('Failed to connect. Make sure it is running.');
+      setConnectionMessage('Ollama is offline or unreachable.');
       onAiConnectionTested?.(false);
     }
   };
@@ -566,7 +596,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {[
           { id: "general", label: "General", icon: Sliders },
           { id: "focus", label: "Focus & Blocks", icon: Target },
-          { id: "ai", label: "Local AI", icon: Sparkles },
+          { id: "ai", label: "AI & Privacy", icon: Sparkles },
           { id: "about", label: "About & Help", icon: Heart },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1249,7 +1279,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 3: AI CONFIGURATION */}
+      {/* TAB 3: AI & PRIVACY CONFIGURATION */}
       {activeTab === "ai" && (
         <div className="space-y-4 animate-in fade-in duration-150">
           {isIncognito && (
@@ -1262,122 +1292,308 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           {!trackingActive && (
             <div className="p-3 rounded-xl bg-zinc-500/10 border border-zinc-500/20 text-[var(--text-muted)] text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>Activity tracking is paused. You can still test your AI endpoint below.</span>
+              <span>Activity tracking is paused. You can still configure and test your AI endpoint below.</span>
             </div>
           )}
 
-          {/* Mode Switcher Banner */}
-          <div className="bg-[var(--surface-color)] p-4 rounded-xl shadow-sm border border-[var(--border-color)] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-[var(--text-color)] flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-violet-400" />
-                  <span>AI Reflection Engine</span>
-                </h3>
-                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                  Private by default. Choose how you want productivity insights computed.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTradeoffsModal(!showTradeoffsModal)}
-                className="text-xs text-violet-400 hover:text-violet-300 font-medium underline inline-flex items-center gap-1 self-start sm:self-auto cursor-pointer"
-              >
-                <span>{showTradeoffsModal ? "Hide Comparison" : "Compare Trade-offs"}</span>
-              </button>
-            </div>
-
-            {/* Segmented Mode Control */}
-            <div className="grid grid-cols-3 gap-2 p-1 bg-[var(--bg-color)]/70 rounded-xl border border-[var(--border-color)]">
-              <button
-                type="button"
-                onClick={async () => {
-                  setSelectedAiMode("local");
-                  await onUpdateAiMode?.("local");
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedAiMode === "local"
-                    ? "bg-[var(--surface-color)] text-emerald-400 shadow-sm border border-emerald-500/30"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                <span>On-Device</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  setSelectedAiMode("cloud");
-                  await onUpdateAiMode?.("cloud");
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedAiMode === "cloud"
-                    ? "bg-[var(--surface-color)] text-violet-400 shadow-sm border border-violet-500/30"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                <span>Online Service</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={async () => {
-                  setSelectedAiMode("off");
-                  await onUpdateAiMode?.("off");
-                }}
-                className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+          {/* 1. LIVE ENGINE STATUS CARD */}
+          <div className="glass p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)]/70 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
                   selectedAiMode === "off"
-                    ? "bg-[var(--surface-color)] text-zinc-300 shadow-sm border border-zinc-500/30"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <Ban className="w-3.5 h-3.5" />
-                <span>AI Off</span>
-              </button>
+                    ? "bg-zinc-500/10 border-zinc-500/20 text-zinc-400"
+                    : selectedAiMode === "local"
+                    ? connectionStatus === "connected"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                    : cloudApiKey
+                    ? "bg-violet-500/10 border-violet-500/30 text-violet-400"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                }`}>
+                  {selectedAiMode === "off" ? (
+                    <Ban className="w-4 h-4" />
+                  ) : selectedAiMode === "local" ? (
+                    <Cpu className="w-4 h-4" />
+                  ) : (
+                    <Cloud className="w-4 h-4" />
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-[var(--text-color)]">
+                      {selectedAiMode === "off"
+                        ? "AI Reflections Disabled"
+                        : selectedAiMode === "local"
+                        ? "On-Device Engine (Ollama)"
+                        : `Online Service (${localCloudProvider === "gemini" ? "Google Gemini" : localCloudProvider === "groq" ? "Groq Cloud" : localCloudProvider === "openai" ? "OpenAI" : "OpenRouter"})`}
+                    </span>
+
+                    {/* Live status pill */}
+                    {selectedAiMode === "off" ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 text-zinc-400">
+                        ⚪ Inactive
+                      </span>
+                    ) : selectedAiMode === "local" ? (
+                      connectionStatus === "connected" ? (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Ready & Connected
+                        </span>
+                      ) : connectionStatus === "testing" ? (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400 flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          Testing...
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center gap-1">
+                          <XCircle className="w-2.5 h-2.5" />
+                          Offline / Unreachable
+                        </span>
+                      )
+                    ) : cloudApiKey ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-400 flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5" />
+                        Configured
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                        Missing API Key
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    {selectedAiMode === "off"
+                      ? "LifeMirror functions as a private desktop activity tracker. No AI computation."
+                      : selectedAiMode === "local"
+                      ? "100% Private Loopback · Zero data ever leaves your computer"
+                      : "Direct Encrypted HTTPS · Fast response & zero RAM usage"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Action */}
+              <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                {selectedAiMode === "local" && (
+                  <button
+                    type="button"
+                    onClick={() => handleTestConnection(true)}
+                    disabled={connectionStatus === "testing"}
+                    className="px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 hover:bg-[var(--surface-color)] text-[11px] font-medium text-[var(--text-color)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${connectionStatus === "testing" ? "animate-spin" : ""}`} />
+                    <span>Check Connection</span>
+                  </button>
+                )}
+                {selectedAiMode === "cloud" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDisclosureModal(true)}
+                    className="px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 hover:bg-[var(--surface-color)] text-[11px] font-medium text-sky-400 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Inspect Payload</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Expandable Trade-offs Matrix */}
+            {/* Quick Metadata Bar */}
+            {selectedAiMode !== "off" && (
+              <div className="pt-2 border-t border-[var(--border-color)]/50 flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-muted)]">
+                <div className="flex items-center gap-1">
+                  <span className="text-[var(--text-muted)]">Model:</span>
+                  <span className="font-mono font-semibold text-[var(--text-color)] bg-[var(--bg-color)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
+                    {selectedAiMode === "local" ? (aiModel || "llama3.2") : (localCloudModel || "gemini-2.5-flash")}
+                  </span>
+                </div>
+                {selectedAiMode === "local" && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[var(--text-muted)]">Endpoint:</span>
+                    <span className="font-mono text-[var(--text-muted)]">
+                      {aiUrl || "http://localhost:11434"}
+                    </span>
+                  </div>
+                )}
+                {selectedAiMode === "local" && (
+                  <div className="flex items-center gap-1 ml-auto">
+                    <span className="text-[var(--text-muted)]">Mode:</span>
+                    <span className="text-emerald-400 font-medium">
+                      {aiProcessingMode === "on_demand" ? "⚡ On-Demand" : "🔄 Continuous"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 2. THREE-WAY MODE SELECTOR */}
+          <div className="bg-[var(--surface-color)] p-4 rounded-2xl shadow-sm border border-[var(--border-color)] space-y-4">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Choose Intelligence Engine
+                  </h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    Select where reflections and focus insights are processed.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTradeoffsModal(!showTradeoffsModal)}
+                  className="text-xs text-violet-400 hover:text-violet-300 font-medium inline-flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+                >
+                  <span>{showTradeoffsModal ? "Hide Specs Comparison" : "Compare Hardware & Privacy Specs"}</span>
+                  {showTradeoffsModal ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* 3 Mode Choice Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Mode: On-Device */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSelectedAiMode("local");
+                    await onUpdateAiMode?.("local");
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                    selectedAiMode === "local"
+                      ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10 text-[var(--text-color)]"
+                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
+                        <Cpu className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>On-Device</span>
+                      </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        100% Private
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      Runs locally on your computer via Ollama. Free forever, no data sent to cloud.
+                    </p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                    <Check className={`w-3 h-3 ${selectedAiMode === "local" ? "opacity-100" : "opacity-0"}`} />
+                    <span>{selectedAiMode === "local" ? "Active Engine" : "Select On-Device"}</span>
+                  </div>
+                </button>
+
+                {/* Mode: Online Service */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSelectedAiMode("cloud");
+                    await onUpdateAiMode?.("cloud");
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                    selectedAiMode === "cloud"
+                      ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10 text-[var(--text-color)]"
+                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
+                        <Cloud className="w-3.5 h-3.5 text-violet-400" />
+                        <span>Online Service</span>
+                      </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
+                        Zero RAM
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      Connect Gemini, Groq, or OpenAI with your key. Instant setup, zero downloads.
+                    </p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 text-[10px] text-violet-400 font-medium">
+                    <Check className={`w-3 h-3 ${selectedAiMode === "cloud" ? "opacity-100" : "opacity-0"}`} />
+                    <span>{selectedAiMode === "cloud" ? "Active Engine" : "Select Online"}</span>
+                  </div>
+                </button>
+
+                {/* Mode: Disabled */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSelectedAiMode("off");
+                    await onUpdateAiMode?.("off");
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                    selectedAiMode === "off"
+                      ? "border-zinc-500/60 bg-zinc-500/10 shadow-sm text-[var(--text-color)]"
+                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
+                        <Ban className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>AI Off</span>
+                      </div>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">
+                        Tracking Only
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                      Pause all AI processing. Track app time and focus without summaries or chat.
+                    </p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 text-[10px] text-zinc-400 font-medium">
+                    <Check className={`w-3 h-3 ${selectedAiMode === "off" ? "opacity-100" : "opacity-0"}`} />
+                    <span>{selectedAiMode === "off" ? "Active Engine" : "Turn AI Off"}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Hardware & Privacy Specs Table */}
             {showTradeoffsModal && (
               <div className="p-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 text-xs space-y-2 animate-in fade-in duration-150">
                 <span className="font-bold text-[var(--text-color)] block text-xs">
-                  Trade-offs & Limitations Comparison
+                  Hardware & Privacy Comparison
                 </span>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-[11px] border-collapse">
                     <thead>
                       <tr className="border-b border-[var(--border-color)] text-[var(--text-muted)]">
-                        <th className="py-1.5 pr-2 font-medium">Feature</th>
+                        <th className="py-1.5 pr-2 font-medium">Category</th>
                         <th className="py-1.5 pr-2 font-medium text-emerald-400">💻 On-Device (Ollama)</th>
-                        <th className="py-1.5 font-medium text-violet-400">☁️ Online Service (API Key)</th>
+                        <th className="py-1.5 font-medium text-violet-400">☁️ Online (Gemini / Groq / OpenAI)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border-color)]/40 text-[var(--text-muted)]">
                       <tr>
                         <td className="py-1.5 font-medium text-[var(--text-color)]">Privacy</td>
-                        <td className="py-1.5 text-emerald-400 font-medium">100% Offline, Zero data sent</td>
-                        <td className="py-1.5">Encrypted HTTPS to provider</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">100% Offline, Zero data leaves device</td>
+                        <td className="py-1.5">Direct HTTPS to provider with private API key</td>
                       </tr>
                       <tr>
                         <td className="py-1.5 font-medium text-[var(--text-color)]">Disk Space</td>
-                        <td className="py-1.5">Requires ~2.0 GB - 4.5 GB</td>
-                        <td className="py-1.5 text-emerald-400 font-medium">0 MB (Zero download)</td>
+                        <td className="py-1.5">Requires ~2.0 GB - 4.5 GB for model files</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">0 MB (Zero local download)</td>
                       </tr>
                       <tr>
-                        <td className="py-1.5 font-medium text-[var(--text-color)]">Computer Specs</td>
-                        <td className="py-1.5">16GB+ RAM recommended</td>
-                        <td className="py-1.5 text-emerald-400 font-medium">Works fast on any laptop</td>
+                        <td className="py-1.5 font-medium text-[var(--text-color)]">System RAM</td>
+                        <td className="py-1.5">8GB - 16GB+ RAM recommended</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">Runs fast on any laptop or netbook</td>
                       </tr>
                       <tr>
                         <td className="py-1.5 font-medium text-[var(--text-color)]">Battery & Fans</td>
-                        <td className="py-1.5">Uses laptop CPU/GPU power</td>
-                        <td className="py-1.5 text-emerald-400 font-medium">Zero fan noise or laptop strain</td>
+                        <td className="py-1.5">Uses laptop CPU/GPU resources</td>
+                        <td className="py-1.5 text-emerald-400 font-medium">Zero fan noise or laptop battery strain</td>
                       </tr>
                       <tr>
                         <td className="py-1.5 font-medium text-[var(--text-color)]">Cost</td>
                         <td className="py-1.5 text-emerald-400 font-medium">Free forever</td>
-                        <td className="py-1.5">Free tiers or pennies per token</td>
+                        <td className="py-1.5">Free tiers available (AI Studio / Groq) or fractions of a cent</td>
                       </tr>
                     </tbody>
                   </table>
@@ -1387,136 +1603,263 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             {/* VIEW 1: ON-DEVICE AI CONFIG */}
             {selectedAiMode === "local" && (
-              <div className="space-y-4 pt-2 border-t border-[var(--border-color)]">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs text-[var(--text-muted)] font-medium">Ollama Server URL</label>
-                    <span className="text-[10px] text-emerald-400 font-medium">100% Private Loopback</span>
+              <div className="space-y-4 pt-3 border-t border-[var(--border-color)]">
+                {/* Offline Troubleshooting Banner */}
+                {connectionStatus === "disconnected" && (
+                  <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-xs space-y-2.5">
+                    <div className="flex items-start gap-2 text-rose-400 font-semibold">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div>
+                        <span>Ollama is not running on your computer</span>
+                        <p className="text-[11px] text-[var(--text-muted)] font-normal mt-0.5 leading-relaxed">
+                          To use on-device private AI, start Ollama or download it from <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">ollama.com</a>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-[var(--bg-color)]/80 border border-[var(--border-color)] flex items-center justify-between gap-2">
+                      <div className="font-mono text-emerald-400 text-[11px] truncate select-all">
+                        ollama run llama3.2
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText("ollama run llama3.2");
+                            setCopiedOllamaCmd(true);
+                            setTimeout(() => setCopiedOllamaCmd(false), 2000);
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }}
+                        className="px-2 py-1 rounded bg-[var(--surface-color)] hover:bg-zinc-500/20 text-[10px] font-medium text-[var(--text-color)] border border-[var(--border-color)] flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        {copiedOllamaCmd ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedOllamaCmd ? "Copied" : "Copy Command"}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await openUrl("https://ollama.com");
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="text-[11px] text-emerald-400 hover:underline font-medium inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Download Ollama</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                      <span className="text-[var(--text-muted)]">·</span>
+                      <button
+                        type="button"
+                        onClick={() => handleTestConnection(true)}
+                        className="text-[11px] text-[var(--text-color)] hover:underline font-medium cursor-pointer"
+                      >
+                        Retry Connection
+                      </button>
+                    </div>
                   </div>
-                  <input 
-                    type="text" 
-                    value={aiUrl === "false" ? "" : aiUrl}
-                    onChange={(e) => {
-                      setAiUrl(e.target.value);
-                      setConnectionStatus('idle');
-                      setConnectionMessage('');
-                    }}
-                    placeholder="http://localhost:11434"
-                    className="w-full bg-[var(--bg-color)]/50 border border-[var(--border-color)] rounded-xl px-3 py-2 text-sm text-[var(--text-color)] focus:outline-none focus:border-emerald-500/50"
-                  />
-                  {connectionStatus !== 'idle' && (
-                    <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
-                      connectionStatus === 'connected' ? 'text-green-500' : 'text-red-500'
-                    }`}>
-                      {connectionStatus === 'connected' ? (
-                        <CheckCircle className="w-3.5 h-3.5" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5" />
-                      )}
-                      <span>{connectionMessage}</span>
+                )}
+
+                {/* Model Selector & Suggestions */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-[var(--text-color)]">
+                      Local Model
+                    </label>
+                    {loadingOllamaModels && (
+                      <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                        Detecting installed models...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Dropdown if models exist */}
+                  {installedOllamaModels.length > 0 ? (
+                    <div>
+                      {(() => {
+                        const activeVal = aiModel === "false" ? "" : aiModel;
+                        const hasExactMatch = installedOllamaModels.includes(activeVal);
+                        const matchedTag = hasExactMatch
+                          ? activeVal
+                          : installedOllamaModels.find((m) => m === `${activeVal}:latest` || m.replace(/:latest$/, "") === activeVal) || activeVal;
+                        return (
+                          <select
+                            value={matchedTag}
+                            onChange={(e) => setAiModel(e.target.value)}
+                            className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-emerald-500/50 cursor-pointer"
+                          >
+                            {installedOllamaModels.map((m) => (
+                              <option key={m} value={m}>
+                                {m} {m.includes("llama3.2") ? "(Recommended)" : ""}
+                              </option>
+                            ))}
+                            {!installedOllamaModels.includes(matchedTag) && activeVal && (
+                              <option value={activeVal}>{activeVal} (Custom / Other)</option>
+                            )}
+                          </select>
+                        );
+                      })()}
+                      <span className="text-[10px] text-emerald-400 mt-1 block">
+                        ✓ Showing models installed in your local Ollama instance
+                      </span>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={aiModel === "false" ? "" : aiModel}
+                      onChange={(e) => setAiModel(e.target.value)}
+                      placeholder="e.g. llama3.2"
+                      className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] focus:outline-none focus:border-emerald-500/50"
+                    />
+                  )}
+
+                  {/* Model Quick Preset Pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-[var(--text-muted)]">Quick presets:</span>
+                    {[
+                      { name: "llama3.2", label: "llama3.2 (3B · Recommended)" },
+                      { name: "qwen2.5:3b", label: "qwen2.5:3b (3B · Fast)" },
+                      { name: "mistral", label: "mistral (7B)" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => setAiModel(preset.name)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                          aiModel === preset.name
+                            ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 font-semibold"
+                            : "bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Collapsible Advanced Endpoint URL */}
+                <div className="pt-2 border-t border-[var(--border-color)]/60">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedOllamaUrl(!showAdvancedOllamaUrl)}
+                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-color)] font-medium inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>{showAdvancedOllamaUrl ? "Hide Endpoint Settings" : "Advanced Endpoint Settings (URL)"}</span>
+                    {showAdvancedOllamaUrl ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+
+                  {showAdvancedOllamaUrl && (
+                    <div className="mt-2 p-3 rounded-xl bg-[var(--bg-color)]/50 border border-[var(--border-color)] space-y-2 animate-in fade-in duration-100">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs text-[var(--text-muted)] font-medium">Ollama Server URL</label>
+                        <span className="text-[10px] text-emerald-400 font-medium">Default: http://localhost:11434</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={aiUrl === "false" ? "" : aiUrl}
+                        onChange={(e) => {
+                          setAiUrl(e.target.value);
+                          setConnectionStatus('idle');
+                          setConnectionMessage('');
+                        }}
+                        placeholder="http://localhost:11434"
+                        className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-color)] font-mono focus:outline-none focus:border-emerald-500/50"
+                      />
                     </div>
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs text-[var(--text-muted)] mb-1.5 font-medium">Model Name</label>
-                  <input 
-                    type="text" 
-                    value={aiModel === "false" ? "" : aiModel}
-                    onChange={(e) => setAiModel(e.target.value)}
-                    placeholder="e.g. llama3.2" 
-                    className="w-full px-3 py-2 text-sm bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg text-[var(--text-color)] focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  />
-                  <p className="mt-1.5 text-[10px] text-[var(--text-muted)] leading-relaxed">
-                    Recommended: <code className="bg-[var(--bg-color)]/80 px-1 py-0.5 rounded text-emerald-400 font-mono">llama3.2</code> (fast, lightweight 3B parameter model).
-                  </p>
-                </div>
-
-                {/* AI Processing Mode Choice Cards */}
-                <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
-                  <label className="block text-xs text-[var(--text-color)] font-semibold">
-                    AI Processing Mode
+                {/* AI Processing Mode */}
+                <div className="pt-2 border-t border-[var(--border-color)]/60 space-y-2">
+                  <label className="block text-xs font-semibold text-[var(--text-color)]">
+                    Performance & Battery Impact
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="AI Processing Mode">
-                    {/* On-Demand Card */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Processing Mode">
+                    {/* On-Demand */}
                     <button
                       type="button"
                       role="radio"
                       aria-checked={aiProcessingMode === "on_demand"}
                       onClick={() => setAiProcessingMode?.("on_demand")}
-                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                      className={`text-left p-3 rounded-xl border transition-all cursor-pointer relative ${
                         aiProcessingMode === "on_demand"
-                          ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                          ? "border-emerald-500/60 bg-emerald-500/10 text-[var(--text-color)]"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>On-Demand</span>
-                          </span>
-                          <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            Recommended
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                          Only processes data when requested. Zero background CPU or fan noise, preserving laptop battery life.
-                        </p>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                          <span>⚡ On-Demand</span>
+                        </span>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          Silent Fans
+                        </span>
                       </div>
-                      <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
-                        <Check className={`w-3 h-3 ${aiProcessingMode === "on_demand" ? "opacity-100" : "opacity-0"}`} />
-                        <span>{aiProcessingMode === "on_demand" ? "Active Mode" : "Click to select"}</span>
-                      </div>
+                      <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                        Processes reflections only when you open them. Zero background CPU or fan noise.
+                      </p>
                     </button>
 
-                    {/* Continuous Background Card */}
+                    {/* Continuous */}
                     <button
                       type="button"
                       role="radio"
                       aria-checked={aiProcessingMode === "continuous"}
                       onClick={() => setAiProcessingMode?.("continuous")}
-                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                      className={`text-left p-3 rounded-xl border transition-all cursor-pointer relative ${
                         aiProcessingMode === "continuous"
-                          ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80"
+                          ? "border-violet-500/60 bg-violet-500/10 text-[var(--text-color)]"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
                       }`}
                     >
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                            <Cpu className="w-3.5 h-3.5 text-violet-400" />
-                            <span>Continuous Background</span>
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                          Automatically builds idle reflections in the background (uses more CPU & battery).
-                        </p>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                          <span>🔄 Continuous</span>
+                        </span>
                       </div>
-                      <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-violet-400 font-medium">
-                        <Check className={`w-3 h-3 ${aiProcessingMode === "continuous" ? "opacity-100" : "opacity-0"}`} />
-                        <span>{aiProcessingMode === "continuous" ? "Active Mode" : "Click to select"}</span>
-                      </div>
+                      <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                        Builds reflections continuously in the background (uses more CPU & battery).
+                      </p>
                     </button>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border-color)] flex justify-end">
+                {/* Connection Status & Test button */}
+                <div className="pt-2 border-t border-[var(--border-color)] flex items-center justify-between">
+                  <div className="text-xs">
+                    {connectionStatus !== 'idle' && (
+                      <span className={`flex items-center gap-1 text-xs font-medium ${
+                        connectionStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'
+                      }`}>
+                        {connectionStatus === 'connected' ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                        <span>{connectionMessage}</span>
+                      </span>
+                    )}
+                  </div>
+
                   <button 
+                    type="button"
                     onClick={() => {
                       if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
                       if (!aiModel || aiModel === "false") setAiModel("llama3.2");
                       handleTestConnection(true);
                     }}
                     disabled={connectionStatus === 'testing'}
-                    className="group bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white px-5 py-2.5 rounded-xl text-xs font-medium transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-900/20"
+                    className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-900/20"
                   >
                     {connectionStatus === 'testing' ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
                       <Check className="w-3.5 h-3.5" />
                     )}
-                    {connectionStatus === 'testing' ? 'Testing Ollama...' : 'Test Local Connection'}
+                    <span>{connectionStatus === 'testing' ? 'Testing Ollama...' : 'Test Local Connection'}</span>
                   </button>
                 </div>
               </div>
@@ -1524,13 +1867,33 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             {/* VIEW 2: ONLINE SERVICE (CLOUD) CONFIG */}
             {selectedAiMode === "cloud" && (
-              <div className="space-y-4 pt-2 border-t border-[var(--border-color)] text-xs">
+              <div className="space-y-4 pt-3 border-t border-[var(--border-color)] text-xs">
                 {/* Provider Selector Tabs */}
                 <div>
-                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-                    Select Online Provider
+                  <label className="block text-xs font-semibold text-[var(--text-color)] mb-1.5">
+                    Select Cloud Provider
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {/* Google Gemini */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalCloudProvider("gemini");
+                        setLocalCloudUrl("https://generativelanguage.googleapis.com/v1beta/openai");
+                        setLocalCloudModel("gemini-2.5-flash");
+                        setCloudTestStatus("idle");
+                      }}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        localCloudProvider === "gemini"
+                          ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
+                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">Gemini</span>
+                      <span className="text-[9px] text-emerald-400 font-medium">Free AI Studio</span>
+                    </button>
+
+                    {/* Groq */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1549,6 +1912,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <span className="text-[9px] text-emerald-400 font-medium">Fast / Free Tier</span>
                     </button>
 
+                    {/* OpenAI */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1567,6 +1931,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <span className="text-[9px] text-zinc-400">gpt-4o-mini</span>
                     </button>
 
+                    {/* OpenRouter */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1591,8 +1956,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-[var(--text-muted)]">
-                      {localCloudProvider === "groq" ? "Groq API Key" : localCloudProvider === "openai" ? "OpenAI API Key" : "API Key"}
+                      {localCloudProvider === "gemini"
+                        ? "Google Gemini API Key"
+                        : localCloudProvider === "groq"
+                        ? "Groq API Key"
+                        : localCloudProvider === "openai"
+                        ? "OpenAI API Key"
+                        : "API Key"}
                     </label>
+
+                    {localCloudProvider === "gemini" && (
+                      <a 
+                        href="https://aistudio.google.com/app/apikey" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[10px] text-violet-400 hover:text-violet-300 underline font-medium inline-flex items-center gap-0.5"
+                      >
+                        Get Free Gemini Key (AI Studio) <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
                     {localCloudProvider === "groq" && (
                       <a 
                         href="https://console.groq.com/keys" 
@@ -1614,6 +1996,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       </a>
                     )}
                   </div>
+
                   <div className="relative">
                     <input
                       type={showCloudKey ? "text" : "password"}
@@ -1628,25 +2011,103 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowCloudKey(!showCloudKey)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
                     >
                       {showCloudKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
                 </div>
 
-                {/* Model Identifier */}
-                <div>
-                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                {/* Model Identifier & Presets */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-[var(--text-muted)]">
                     Model Identifier
                   </label>
                   <input
                     type="text"
                     value={localCloudModel}
                     onChange={(e) => setLocalCloudModel(e.target.value)}
-                    placeholder="e.g. llama-3.3-70b-versatile"
+                    placeholder="e.g. gemini-2.5-flash or llama-3.3-70b-versatile"
                     className="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-color)] font-mono"
                   />
+
+                  {/* Preset Pills for current provider */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] text-[var(--text-muted)]">Suggestions:</span>
+                    {localCloudProvider === "gemini" && [
+                      "gemini-2.5-flash",
+                      "gemini-1.5-flash",
+                      "gemini-2.0-flash",
+                    ].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setLocalCloudModel(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                          localCloudModel === m
+                            ? "bg-violet-500/20 border-violet-500/40 text-violet-300 font-semibold"
+                            : "bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                    {localCloudProvider === "groq" && [
+                      "llama-3.3-70b-versatile",
+                      "llama-3.1-8b-instant",
+                      "mixtral-8x7b-32768",
+                    ].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setLocalCloudModel(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                          localCloudModel === m
+                            ? "bg-violet-500/20 border-violet-500/40 text-violet-300 font-semibold"
+                            : "bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                    {localCloudProvider === "openai" && [
+                      "gpt-4o-mini",
+                      "gpt-4o",
+                    ].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setLocalCloudModel(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                          localCloudModel === m
+                            ? "bg-violet-500/20 border-violet-500/40 text-violet-300 font-semibold"
+                            : "bg-[var(--bg-color)] border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Inline Privacy Assurance */}
+                <div className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/50 text-[11px] text-[var(--text-muted)] space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-[var(--text-color)] flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-violet-400" />
+                      Direct Encrypted Communication
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDisclosureModal(true)}
+                      className="text-[10px] text-sky-400 hover:underline font-medium cursor-pointer"
+                    >
+                      Inspect Live Data Payload
+                    </button>
+                  </div>
+                  <p className="leading-relaxed">
+                    LifeMirror communicates directly with {localCloudProvider === "gemini" ? "Google" : localCloudProvider === "groq" ? "Groq" : "OpenAI"} over HTTPS using your personal API key. Your logs never pass through or get saved on LifeMirror servers.
+                  </p>
                 </div>
 
                 {/* Test status banner */}
@@ -1661,15 +2122,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </div>
                 )}
 
-                {/* Action Row */}
-                <div className="pt-2 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-2">
+                {/* Action Row: Single Unified "Save & Connect" Action */}
+                <div className="pt-2 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={() => setShowDisclosureModal(true)}
-                    className="text-xs text-sky-400 hover:text-sky-300 font-medium underline flex items-center gap-1 cursor-pointer"
+                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-color)] underline cursor-pointer"
                   >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>View Privacy Disclosure & Live Payload</span>
+                    Privacy Review
                   </button>
 
                   <div className="flex items-center gap-2">
@@ -1681,38 +2141,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                           setCloudTestMessage("Please enter an API key first.");
                           return;
                         }
-                        setCloudTesting(true);
+                        setIsSavingCloud(true);
                         setCloudTestStatus("idle");
+                        setCloudTestMessage("");
                         try {
                           await invoke("test_cloud_connection", {
                             baseUrl: localCloudUrl,
                             apiKey: localCloudKey.trim(),
                             model: localCloudModel,
                           });
+                          await onSaveCloudConfig?.(localCloudProvider, localCloudKey.trim(), localCloudUrl, localCloudModel);
                           setCloudTestStatus("success");
-                          setCloudTestMessage("Connection successful! Provider is responding.");
+                          setCloudTestMessage("Connection verified & cloud configuration saved!");
                         } catch (err: any) {
                           setCloudTestStatus("error");
-                          setCloudTestMessage(err?.toString() || "Connection test failed.");
+                          setCloudTestMessage(err?.toString() || "Connection test failed. Check key & URL.");
                         } finally {
-                          setCloudTesting(false);
+                          setIsSavingCloud(false);
                         }
                       }}
-                      disabled={cloudTesting || !localCloudKey.trim()}
-                      className="px-3.5 py-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--surface-color)] text-xs font-semibold text-[var(--text-color)] flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
-                    >
-                      {cloudTesting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                      <span>Test Connection</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowDisclosureModal(true)}
-                      disabled={!localCloudKey.trim()}
+                      disabled={isSavingCloud || !localCloudKey.trim()}
                       className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-violet-900/20"
                     >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Review & Save</span>
+                      {isSavingCloud ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      <span>{isSavingCloud ? "Verifying..." : "Save & Connect"}</span>
                     </button>
                   </div>
                 </div>
@@ -1748,7 +2200,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <span className="font-semibold text-[var(--text-color)]">AI Reflections are Currently Off</span>
                 </div>
                 <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                  LifeMirror will function purely as a private desktop activity tracker and focus timer. No CPU power, RAM, or network connections are used for AI.
+                  LifeMirror is functioning purely as a private desktop activity tracker and focus timer. No CPU power, RAM, or network connections are used for AI.
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <button

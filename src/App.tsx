@@ -145,7 +145,7 @@ function App() {
       setResumeContext(result);
     } catch (e) {
       console.error("Failed to generate resume context:", e);
-      setResumeError(typeof e === "string" ? e : "Failed to generate context. Please check if Local AI is running and you have recent activity.");
+      setResumeError(typeof e === "string" ? e : "Failed to generate context. Please check if your AI engine is running and you have recent activity.");
     } finally {
       setIsResuming(false);
     }
@@ -230,7 +230,7 @@ function App() {
               <Sparkles className="w-3.5 h-3.5" />
             </span>
             <p className="leading-relaxed">
-              <strong className="font-semibold text-emerald-700 dark:text-emerald-300">Quiet & Battery-Saving Update:</strong> Local AI is now set to <span className="font-semibold underline decoration-emerald-500/40">On-Demand</span> by default to keep cooling fans silent. Heavy background loops are paused until you request insights. You can customize this anytime in Settings.
+              <strong className="font-semibold text-emerald-700 dark:text-emerald-300">Quiet & Battery-Saving Update:</strong> AI Engine is now set to <span className="font-semibold underline decoration-emerald-500/40">On-Demand</span> by default to keep cooling fans silent. Heavy background loops are paused until you request insights. You can customize this anytime in Settings.
             </p>
           </div>
           <button

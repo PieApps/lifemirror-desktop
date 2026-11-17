@@ -7,7 +7,7 @@ interface AISetupModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectLocal: (model: string, url: string) => Promise<void>;
-  onSelectCloud: (provider: "groq" | "openai" | "openrouter" | "custom", apiKey: string, baseUrl: string, model: string) => Promise<void>;
+  onSelectCloud: (provider: "gemini" | "groq" | "openai" | "openrouter" | "custom", apiKey: string, baseUrl: string, model: string) => Promise<void>;
   onSkip: () => Promise<void>;
   currentOllamaUrl?: string;
   currentOllamaModel?: string;
@@ -30,11 +30,11 @@ export const AISetupModal: React.FC<AISetupModalProps> = ({
   const [localModel, setLocalModel] = useState(currentOllamaModel || "llama3.2");
 
   // Cloud AI State
-  const [provider, setProvider] = useState<"groq" | "openai" | "openrouter" | "custom">("groq");
+  const [provider, setProvider] = useState<"gemini" | "groq" | "openai" | "openrouter" | "custom">("gemini");
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [cloudBaseUrl, setCloudBaseUrl] = useState("https://api.groq.com/openai/v1");
-  const [cloudModel, setCloudModel] = useState("llama-3.3-70b-versatile");
+  const [cloudBaseUrl, setCloudBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai");
+  const [cloudModel, setCloudModel] = useState("gemini-2.5-flash");
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [showDisclosure, setShowDisclosure] = useState(false);
@@ -73,10 +73,13 @@ export const AISetupModal: React.FC<AISetupModalProps> = ({
   }, [isOpen, currentOllamaUrl, showDisclosure, onClose]);
 
   // Update preset defaults when provider changes
-  const handleProviderChange = (p: "groq" | "openai" | "openrouter" | "custom") => {
+  const handleProviderChange = (p: "gemini" | "groq" | "openai" | "openrouter" | "custom") => {
     setProvider(p);
     setConnectionError(null);
-    if (p === "groq") {
+    if (p === "gemini") {
+      setCloudBaseUrl("https://generativelanguage.googleapis.com/v1beta/openai");
+      setCloudModel("gemini-2.5-flash");
+    } else if (p === "groq") {
       setCloudBaseUrl("https://api.groq.com/openai/v1");
       setCloudModel("llama-3.3-70b-versatile");
     } else if (p === "openai") {
@@ -368,7 +371,20 @@ export const AISetupModal: React.FC<AISetupModalProps> = ({
                   <label className="block text-[11px] font-medium text-[var(--text-muted)] mb-1.5">
                     Select Online Provider
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleProviderChange("gemini")}
+                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        provider === "gemini"
+                          ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold"
+                          : "border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-muted)]"
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">Gemini</span>
+                      <span className="text-[9px] text-emerald-400 font-medium">Free AI Studio</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => handleProviderChange("groq")}
@@ -414,8 +430,18 @@ export const AISetupModal: React.FC<AISetupModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[11px] font-medium text-[var(--text-muted)]">
-                      {provider === "groq" ? "Groq API Key" : provider === "openai" ? "OpenAI API Key" : "API Key"}
+                      {provider === "gemini" ? "Google Gemini API Key" : provider === "groq" ? "Groq API Key" : provider === "openai" ? "OpenAI API Key" : "API Key"}
                     </label>
+                    {provider === "gemini" && (
+                      <a 
+                        href="https://aistudio.google.com/app/apikey" 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[10px] text-violet-400 hover:text-violet-300 underline font-medium inline-flex items-center gap-0.5"
+                      >
+                        Get Free Gemini Key <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
                     {provider === "groq" && (
                       <a 
                         href="https://console.groq.com/keys" 

@@ -4,7 +4,7 @@ import { Shield, Eye, Lock, ExternalLink, AlertTriangle, X, Check, ArrowRight, L
 
 interface CloudPrivacyDisclosureModalProps {
   isOpen: boolean;
-  provider: "groq" | "openai" | "openrouter" | "custom";
+  provider: "gemini" | "groq" | "openai" | "openrouter" | "custom";
   model: string;
   onConfirm: () => void;
   onCancel: () => void;
@@ -65,6 +65,7 @@ export const CloudPrivacyDisclosureModal: React.FC<CloudPrivacyDisclosureModalPr
   if (!isOpen) return null;
 
   const providerNames: Record<string, string> = {
+    gemini: "Google Gemini",
     groq: "Groq Cloud",
     openai: "OpenAI",
     openrouter: "OpenRouter",
@@ -72,6 +73,11 @@ export const CloudPrivacyDisclosureModal: React.FC<CloudPrivacyDisclosureModalPr
   };
 
   const providerPolicies: Record<string, { url: string; label: string; costNotice: string }> = {
+    gemini: {
+      url: "https://policies.google.com/privacy",
+      label: "Google Privacy Policy",
+      costNotice: "Google AI Studio provides a free tier with high rate limits without requiring a credit card.",
+    },
     groq: {
       url: "https://groq.com/privacy-policy/",
       label: "Groq Privacy Policy",
