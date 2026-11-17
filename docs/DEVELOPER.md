@@ -550,4 +550,111 @@ To ensure offline environments or stopped Ollama daemons never hang or freeze th
 * If Ollama is offline or returns `ECONNREFUSED`, all inference methods fail fast immediately without waiting for standard 30-second socket timeouts.
 * Continuous mode workers detect the offline state and sleep without hammering loopback ports or producing log storms.
 
+---
+
+## 10. Knowledge Vault & Autonomous LLM Wiki Architecture (`vault.rs`)
+
+LifeMirror Desktop integrates a local Markdown Knowledge Vault and Autonomous LLM Wiki inspired by Andrej Karpathy's LLM Wiki architecture and Steve Krug's *Don't Make Me Think* design principles. It translates transient focus metrics and SQLCipher memory nodes into a permanent, readable Markdown wiki stored on the local disk.
+
+```
++-------------------------------------------------------+
+|                 LifeMirror Desktop GUI                |
+|  [TimelinePanel]       [WikiVaultView]   [Drawer]     |
++---------+--------------------+---------------+--------+
+          |                    |               |
+          | IPC Commands       | Read / Write  | Enrich
+          v                    v               v
++-------------------------------------------------------+
+|                    Tauri IPC Core                     |
+|           (src-tauri/src/vault.rs, lib.rs)            |
++--------------------------+----------------------------+
+                           |
+            +--------------+--------------+
+            |                             |
+            v                             v
++-----------------------+     +-----------------------+
+|   SQLCipher Database  |     | Plain Markdown Vault  |
+|  (Memory Nodes, Logs, |     | (~/Documents/         |
+|   Projects, Settings) |     |  LifeMirror Vault/)   |
++-----------------------+     |  ├── index.md         |
+                              |  ├── log.md           |
+                              |  ├── projects/        |
+                              |  ├── topics/          |
+                              |  ├── sessions/        |
+                              |  ├── periodic/        |
+                              |  └── .trash/          |
+                              +-----------------------+
+```
+
+### 1. Storage Location & Safe Directory Initialization
+* **Default Directory:** `resolve_vault_path` retrieves `vault_directory` from the `settings` table, falling back to `~/Documents/LifeMirror Vault/` (created with `0755` permissions).
+* **Initialization (`ensure_vault_initialized`):** Creates the required standard folders (`projects/`, `topics/`, `sessions/`, `periodic/`, `.trash/`) and seeds:
+  * `index.md`: Central navigational hub with standard YAML frontmatter and `[[wikilinks]]`.
+  * `log.md`: Chronological master append log.
+* **Auto-Syncing:** Startup routines invoke `sync_projects_to_vault` and `sync_recent_sessions_to_vault` to synchronize database projects and recent sessions into markdown stubs.
+
+### 2. Path Sanitization & Symlink Traversal Defenses
+To prevent directory traversal attacks or malicious relative paths from writing outside the vault boundary:
+* **`sanitize_relative_path(path: &str)`**:
+  * Strips leading/trailing slashes, normalizes backslashes to `/`.
+  * Rejects empty or whitespace-only paths.
+  * Rejects any path component matching `..` or containing null bytes (`\0`).
+* **`resolve_safe_vault_path(vault_dir: &Path, rel_path: &str)`**:
+  * Resolves the target path against the vault root.
+  * For existing files or directories, calls `fs::canonicalize` on both paths and asserts `canonical_path.starts_with(&canonical_vault)`.
+  * Blocks symlink escapes where a symlink inside the vault points to sensitive outside directories (e.g. `/etc/`, `~/.ssh/`).
+
+### 3. "Don't Make Me Think" 3-Tier Periodic Compilation
+`compile_period_note(period_type, period_id)` strictly partitions temporal data to eliminate cognitive noise:
+* **Monthly Review (`monthly_YYYY-MM`):**
+  * Parses year/month bounds with bounds checking (`1..=12`, `1970..=2200`) to guarantee no runtime panic.
+  * Calculates ISO week spans using `get_weeks_for_month`.
+  * Links **strictly to Weekly Reviews** (`[[periodic/weekly_2026-W47|Week 47 (Nov 16 – Nov 22)]]`) with duration and top project badges. Micro-sessions are completely excluded.
+* **Weekly Review (`weekly_YYYY-Www`):**
+  * Computes exact Monday-through-Sunday date ranges using `get_days_for_week`.
+  * Links **strictly to the 7 Daily Reviews** (`[[periodic/daily_2026-11-16|Monday, Nov 16]]`). Rest or zero-activity days are gently labeled (`*(Offline / Rest)*`).
+* **Daily Review (`daily_YYYY-MM-DD`):**
+  * Curates major work sessions (>120s) and generates human-readable links:
+    `[[sessions/20261116_0930_backend-refactor|09:30 AM – Backend Refactor (45m)]]`.
+* **Executive KPI Dashboard Strips:**
+  * Outputs standardized markdown metadata (`<!-- executive-kpi -->`) parsed by the frontend to render high-contrast summary tiles: Active Time, Top Project, Review Horizon, and Coverage.
+  * Outputs breadcrumb navigation markup (`> [[index|🏠 Knowledge Vault]] > ...`) for 1-click drill-up.
+
+### 4. Safe Note Deletion & Reference Scrubbing
+* **`delete_vault_file(relative_path)`**:
+  * Never hard-deletes files immediately. Moves them into the `.trash/` folder with an ISO timestamp prefix (`YYYYMMDD_HHMMSS_filename.md`).
+  * Calls `scrub_references_from_file`, which walks all `.md` files in the vault and safely removes both direct wikilinks (`[[target]]`) and aliased wikilinks (`[[target|alias]]`, `[[target\|alias]]`) to prevent dangling links.
+* **`clear_and_archive_vault()`**:
+  * Archives all user notes into `.trash/archive_YYYYMMDD_HHMMSS/`.
+  * Resets `index.md` and `log.md` to clean initial stubs while preserving the vault directory.
+
+### 5. Frontend Markdown Rendering & URL Security (`markdownRenderer.tsx`)
+* **Scheme Whitelist:** External links clicked within markdown notes are checked via `URL` parsing against a strict whitelist: `http:` and `https:` only. Dangerous URI schemes (`file:`, `javascript:`, `data:`, `ms-msdt:`, `smb:`) are rejected and logged, preventing arbitrary execution via `@tauri-apps/plugin-opener`.
+* **Native Table Parser:** Automatically detects markdown tables and renders responsive HTML tables with zebra striping, aligned text, and pipe-escaped wikilinks.
+* **Wikilink Routing:** Clicking internal `[[target]]` links triggers in-app navigation within `WikiVaultView`. If the target note does not exist, an automatic creation modal prompts the user to initialize it.
+
+### 6. Registered Tauri IPC API Surface
+| Command | Arguments | Description |
+| :--- | :--- | :--- |
+| `get_vault_directory` | None | Returns the active vault path string |
+| `set_vault_directory` | `directory: String` | Updates and persists the custom vault path |
+| `list_vault_files` | None | Scans vault and returns structured file tree with metadata |
+| `read_vault_file` | `relativePath: String` | Safely reads file contents as UTF-8 |
+| `write_vault_file` | `relativePath: String`, `content: String` | Atomically writes file to vault |
+| `compile_session_markdown` | `node: ActivityNode` | Generates formatted markdown for a work session |
+| `save_session_to_vault` | `relativeFilename: String`, `content: String`, `title: String` | Writes session note and appends entry to `log.md` |
+| `enrich_session_note` | `content: String` | Triggers local LLM inference to summarize breakthroughs |
+| `sync_vault_all` | None | Re-syncs projects, sessions, and vault file index |
+| `compile_period_note` | `periodType: String`, `periodId: String` | Compiles 3-tier daily, weekly, or monthly review |
+| `delete_vault_file` | `relativePath: String` | Safely moves note to `.trash/` and scrubs references |
+| `clear_and_archive_vault`| None | Archives vault contents to `.trash/archive_*` and resets index |
+
+### 7. Fluid Resizable Sidepanels & Persistence
+To ensure comfortable reading and editing across displays of all sizes:
+* **WikiVault Explorer Sidebar (`WikiVaultView.tsx`):** Draggable divider (`cursor-col-resize`) between file list and note reader, resizable between 220px and 600px (default 280px), persisted in `localStorage["lifemirror_vault_sidebar_width"]`.
+* **Main Application Sidepanel (`App.tsx` & `index.css`):** Draggable splitter bar between `TimelinePanel` and `sidebar-panel-wrapper`, resizable between 320px and 750px (default 460px), persisted in `localStorage["lifemirror_main_sidepanel_width"]`.
+* **Session Drawer (`TimelineSidebar.tsx`):** Left-edge drag handle, resizable between 360px and 850px (default 440px), persisted in `localStorage["lifemirror_session_drawer_width"]`.
+* During dragging, `cursor: col-resize` and `user-select: none` are applied to `document.body` to eliminate text highlighting and cursor jitter.
+
+
 

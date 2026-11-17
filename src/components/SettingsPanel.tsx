@@ -1,9 +1,10 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen } from "lucide-react";
 import { CloudPrivacyDisclosureModal } from "./CloudPrivacyDisclosureModal";
+import { ConfirmModal } from "./ConfirmModal";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
 import { ExclusionEntry, PurgePreview, PurgeReport, JournalEntry } from "../types";
 import { normalizeDomain } from "../utils/domainRules";
@@ -118,6 +119,68 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Cloud AI & Mode states
   const [selectedAiMode, setSelectedAiMode] = React.useState<"local" | "cloud" | "off">(aiMode);
   const [localCloudProvider, setLocalCloudProvider] = React.useState<"groq" | "openai" | "openrouter" | "custom">(cloudProvider);
+
+  // Knowledge Vault states
+  const [vaultPathInput, setVaultPathInput] = React.useState("");
+  const [isSavingVaultPath, setIsSavingVaultPath] = React.useState(false);
+  const [vaultSaveMessage, setVaultSaveMessage] = React.useState<string | null>(null);
+  const [isClearVaultModalOpen, setIsClearVaultModalOpen] = React.useState(false);
+  const [isClearingVault, setIsClearingVault] = React.useState(false);
+
+  const handleClearVault = async () => {
+    setIsClearingVault(true);
+    try {
+      const archiveRel = await invoke<string>("clear_and_archive_vault");
+      setVaultSaveMessage(`Vault safely archived to ${archiveRel} and reset.`);
+      setTimeout(() => setVaultSaveMessage(null), 5000);
+      setIsClearVaultModalOpen(false);
+    } catch (err) {
+      console.error("Failed to clear vault:", err);
+    } finally {
+      setIsClearingVault(false);
+    }
+  };
+
+  React.useEffect(() => {
+    invoke<string>("get_vault_directory")
+      .then((p) => setVaultPathInput(p))
+      .catch((err) => console.error("Failed to get vault dir:", err));
+  }, []);
+
+  const handleSaveVaultPath = async () => {
+    setIsSavingVaultPath(true);
+    setVaultSaveMessage(null);
+    try {
+      const saved = await invoke<string>("set_vault_directory", { path: vaultPathInput });
+      setVaultPathInput(saved);
+      setVaultSaveMessage("Vault location updated successfully!");
+      setTimeout(() => setVaultSaveMessage(null), 3000);
+    } catch (err) {
+      console.error("Failed to set vault dir:", err);
+      setVaultSaveMessage("Failed to update vault path");
+    } finally {
+      setIsSavingVaultPath(false);
+    }
+  };
+
+  const handleOpenVaultFolder = async () => {
+    try {
+      await openPath(vaultPathInput);
+    } catch (err) {
+      console.error("Failed to open vault folder:", err);
+    }
+  };
+
+  const handleResetVaultPath = async () => {
+    try {
+      const def = await invoke<string>("set_vault_directory", { path: "" });
+      setVaultPathInput(def);
+      setVaultSaveMessage("Reset to default location.");
+      setTimeout(() => setVaultSaveMessage(null), 3000);
+    } catch (err) {
+      console.error("Failed to reset vault dir:", err);
+    }
+  };
   const [localCloudKey, setLocalCloudKey] = React.useState(cloudApiKey);
   const [showCloudKey, setShowCloudKey] = React.useState(false);
   const [localCloudUrl, setLocalCloudUrl] = React.useState(cloudBaseUrl);
@@ -674,6 +737,83 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <span>{autostartError}</span>
               </p>
             )}
+          </div>
+
+          {/* Knowledge Vault & LLM Wiki Directory Card */}
+          <div className="p-4 rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 via-[var(--bg-color)]/20 to-transparent">
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-[var(--text-color)]">Knowledge Vault Directory</h4>
+                  <p className="text-[11px] text-[var(--text-muted)]">Obsidian-compatible Markdown second brain</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                Local Markdown
+              </span>
+            </div>
+
+            <p className="text-xs text-[var(--text-muted)] mb-3 leading-relaxed">
+              LifeMirror compiles your high-dwell activity sessions into an interlinked Markdown wiki. You can target your existing Obsidian vault or keep the default location.
+            </p>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={vaultPathInput}
+                  onChange={(e) => setVaultPathInput(e.target.value)}
+                  placeholder="e.g. /home/user/Documents/LifeMirror Vault"
+                  className="flex-1 px-3 py-1.5 text-xs font-mono rounded-xl bg-[var(--bg-color)] border border-[var(--border-color)] text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+                <button
+                  onClick={handleSaveVaultPath}
+                  disabled={isSavingVaultPath}
+                  className="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0"
+                >
+                  Save
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                <button
+                  onClick={handleOpenVaultFolder}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Open Folder in File Manager</span>
+                </button>
+
+                <button
+                  onClick={handleResetVaultPath}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
+                >
+                  Reset to Default
+                </button>
+              </div>
+
+              {vaultSaveMessage && (
+                <p className="text-[11px] text-emerald-500 font-medium">{vaultSaveMessage}</p>
+              )}
+
+              {/* Danger Zone: Reset Vault */}
+              <div className="mt-3 pt-3 border-t border-[var(--border-color)] flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-red-500/90">Danger Zone: Reset Vault</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">Archives all notes into .trash/ and resets vault index. SQLite history is 100% untouched.</div>
+                </div>
+                <button
+                  onClick={() => setIsClearVaultModalOpen(true)}
+                  disabled={isClearingVault}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {isClearingVault ? "Archiving..." : "Clear & Archive"}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Browser Companion Extension Card */}
@@ -1985,6 +2125,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* Confirm Modal: Clear & Archive Vault */}
+      <ConfirmModal
+        isOpen={isClearVaultModalOpen}
+        title="Clear & Archive Vault"
+        message="This will archive all current notes (projects, topics, sessions, periodic) into a timestamped snapshot in .trash/ and reset your vault index. Your encrypted SQLite database history is completely untouched. Are you sure you want to proceed?"
+        onConfirm={handleClearVault}
+        onCancel={() => setIsClearVaultModalOpen(false)}
+      />
     </div>
   );
 };

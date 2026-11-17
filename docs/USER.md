@@ -165,3 +165,86 @@ In the AI sidebar on the right:
   * **Boundaries & Scope:** LifeMirror manages its own local records and does not touch Chrome's internal browsing history. External authentication providers (OAuth, SAML) and payment gateways redirect through separate domains and must be excluded individually.
   * **Bidirectional Sync:** Exclusions synchronize automatically between the Chrome extension and desktop app via Native Messaging. If changes occur offline, they reconcile safely on reconnect using Last-Writer-Wins (exclusions win ties) and tombstones.
 * **Deep Work Enforcement (Active Interdiction):** Transition from passive tracking to active focus defense. Define blacklisted keywords and regex rules in the Settings to instantly block distracting windows with a glassmorphic overlay. Take it a step further by setting an **Active Intention Goal** (e.g., "Writing a project proposal") on the main dashboard; the app will use your Local AI to asynchronously evaluate new windows on the fly and block anything that pulls you away from your active goal.
+
+---
+
+## 5. Knowledge Vault & Autonomous LLM Wiki
+
+LifeMirror Desktop includes an autonomous **Knowledge Vault & LLM Wiki** inspired by Andrej Karpathy's personal LLM Wiki architecture and Steve Krug's classic usability handbook *Don't Make Me Think*. It bridges the gap between passive computer activity tracking and active personal knowledge management.
+
+### Local-First & Obsidian-Native
+All notes are stored directly on your computer's filesystem in standard Markdown with YAML frontmatter:
+* **Default Directory:** `~/Documents/LifeMirror Vault/` (on Windows: `C:\Users\<User>\Documents\LifeMirror Vault\`).
+* **Open Format:** 100% interoperable with [Obsidian](https://obsidian.md), Logseq, VS Code, iA Writer, or any plain-text tool.
+* **Bidirectional Linking:** Uses standard Obsidian `[[wikilinks]]` and aliased links (`[[projects/lifemirror|LifeMirror]]`) throughout.
+* **1-Click External Editing:** Click **"Open in Obsidian"** in the top-right header to instantly launch your vault or active note in your default markdown editor.
+
+### Vault Directory Hierarchy
+```text
+~/Documents/LifeMirror Vault/
+├── index.md             # Hub linking all projects, topics, and periodic reviews
+├── log.md               # Master chronological activity append log
+├── projects/            # Project hubs auto-synced from memory nodes and custom notes
+│   ├── lifemirror-desktop.md
+│   └── website.md
+├── topics/              # Concept and research synthesis pages
+│   ├── rust-tauri.md
+│   └── sqlcipher-encryption.md
+├── sessions/            # Deep-dive work session notes compiled from timeline events
+│   ├── 20261116_0930_backend-refactor.md
+│   └── 20261116_1430_timeline-geometry.md
+├── periodic/            # 3-tier hierarchical periodic reviews
+│   ├── daily_2026-11-16.md
+│   ├── weekly_2026-W47.md
+│   └── monthly_2026-11.md
+└── .trash/              # Safe staging folder for archived or deleted notes
+```
+
+---
+
+### "Don't Make Me Think" 3-Tier Drill-Down Hierarchy
+A common failure of automated journaling is dumping dozens of raw, fragmented session links into macro reviews, resulting in visual clutter and cognitive fatigue. LifeMirror implements a strict, 3-tier progressive disclosure hierarchy:
+
+1. 🗓️ **Monthly Reviews (`periodic/monthly_YYYY-MM.md`)**:
+   * Features an **Executive Synthesis** card summarizing month-long momentum, top projects, and active focus hours.
+   * Links **exclusively to the Weekly Reviews** contained in that month (`[[periodic/weekly_2026-W47|Week 47 (Nov 16 – Nov 22)]]`) with duration badges.
+   * **Zero micro-sessions**: Macro reviews remain high-level, readable, and clutter-free.
+2. 📅 **Weekly Reviews (`periodic/weekly_YYYY-Www.md`)**:
+   * Summarizes weekly accomplishments and highlights key focus patterns.
+   * Links **exclusively to the 7 Daily Reviews** of that week (`[[periodic/daily_2026-11-16|Monday, Nov 16]]`) with active durations and primary projects. Offline or rest days are gently labeled (`*(Offline / Rest)*`).
+   * **Zero micro-sessions**: Keeps weekly planning and retrospectives fast and scannable.
+3. ☀️ **Daily Reviews (`periodic/daily_YYYY-MM-DD.md`)**:
+   * Summarizes the day's focus, top applications, and focus duration.
+   * Curates and links only **Major Work Sessions** (>2 minutes) using clean, human-readable labels:
+     `[[sessions/20261116_0930_backend-refactor|09:30 AM – Backend Refactor (45m)]]`.
+   * Completely eliminates raw filenames and noisy sub-second clicks.
+
+### Executive KPI Dashboards & Interactive Breadcrumbs
+Every periodic note opens with a clean executive dashboard strip:
+* ⏱️ **Active Duration:** Formatted time (e.g. `5h 24m`).
+* 🚀 **Top Project:** Primary project name with icon.
+* 📅 **Review Horizon:** `Daily Review`, `Weekly Review`, or `Monthly Review`.
+* ✨ **Coverage:** Metric showing active days, weeks, or curated sessions.
+* **Interactive Breadcrumbs:** A clickable navigation bar at the top of every note (`> [[index|🏠 Hub]] > [[periodic/weekly_2026-W47|📅 Week 47]] > **Day Review**`) allows instant 1-click drill-up.
+* **Native Markdown Tables:** Automatically renders clean tables with column alignment, hover states, and wikilink integration.
+
+---
+
+### Timeline Integration & Session Drawer
+You can compile and interact with notes without ever leaving your workflow:
+* **1-Click Period Note Button:** In the timeline header, click the dedicated button (**"Day Note"**, **"Week Note"**, or **"Month Note"**) to instantly synthesize the currently selected period into the Knowledge Vault and view it immediately.
+* **Session Drawer (`TimelineSidebar`):** Click any activity node on your serpentine timeline:
+  * **Activity Breakdown Tab:** View non-overlapping time slices, sub-events, domains, and durations.
+  * **Session Note Tab:** Click to generate a structured markdown note.
+  * **✨ Enrich with AI:** Summarize key breakthroughs and context using your local model.
+  * **Inline Editor:** Edit markdown directly with a built-in monospace editor.
+  * **Safe Deletion:** Move the note to the vault `.trash/` staging folder with a confirmation prompt.
+
+---
+
+### Knowledge Vault Explorer (`WikiVaultView`)
+Click **"Knowledge Vault"** in the top navigation tab to enter the full-screen vault browser:
+* **Category Filters:** 1-click filter pills (`All`, `Projects`, `Topics`, `Sessions`, `Periodic`, `Index / Log`) wrap neatly across rows with zero ugly horizontal scrollbars.
+* **Periodic Sub-Filters:** Selecting `Periodic` unveils instant sub-filter pills: `[ All | ☀️ Day | 📅 Week | 🗓️ Month ]` to jump directly to the desired horizon.
+* **Note Management:** Create new notes (`+ New Note`), search titles and content with real-time filtering, edit raw markdown, or clear/archive the vault safely to `.trash/`.
+* **Flexible Width Sidepanels:** Drag the vertical divider bar (`cursor-col-resize`) to adjust the sidebar explorer width (220px–600px). Your custom width is automatically saved and remembered.

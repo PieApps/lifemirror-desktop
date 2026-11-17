@@ -177,9 +177,19 @@ Persistent key-value configuration store shared across the desktop GUI and headl
 | `min_log_duration` | `'60'` | Minimum seconds an app must be focused to be recorded |
 | `min_sub_session_duration` | `'60'` | Minimum seconds a browser tab must be focused to be recorded |
 | `excluded_domains_version` | `'0'` | Atomic synchronization clock for excluded domain cache invalidation |
+| `vault_directory` | `''` | Custom directory path for the Knowledge Vault (defaults to `~/Documents/LifeMirror Vault`) |
 
 > [!NOTE]
 > In the Rust backend (`src-tauri/src/db.rs`), `ai_provider` and `ai_processing_mode` are mapped to strongly-typed enums (`AiProviderMode` and `AiProcessingMode`) via `DbState::get_ai_provider_mode()` and `DbState::get_ai_processing_mode()`. They implement `FromStr` and `Display` to guarantee safe compile-time checked fallbacks and prevent stringly-typed configuration bugs.
+
+---
+
+## 4. Bridge to Local Markdown Knowledge Vault (`vault.rs`)
+
+While operational focus logs and vector embeddings remain securely encrypted inside SQLCipher, high-level entities and semantic reflections bridge directly into the filesystem-based **Knowledge Vault** (`~/Documents/LifeMirror Vault/`):
+* **`projects` table $\rightarrow$ `projects/*.md`:** Project entities extracted during semantic clustering are synchronized into human-readable Markdown notes with YAML frontmatter.
+* **`memory_nodes` table $\rightarrow$ `sessions/*.md` & `periodic/*.md`:** Work sessions and daily/weekly/monthly summaries can be compiled on-demand into standalone Markdown files with bidirectional `[[wikilinks]]`.
+* **Append Log $\rightarrow$ `log.md`:** Important saved sessions and milestone reflections are permanently appended to the master chronological work log.
 
 ### `chat_history`
 Stores multi-turn conversational history with the local AI keyed by date.

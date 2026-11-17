@@ -22,7 +22,7 @@ KEY FEATURES
 • Dedicated Chrome Side Panel: Keep your daily reflection open side-by-side as you work without interrupting your browsing flow.
 • Domain Exclusion & Blacklisting: Excluded sites are never recorded. Permanently blacklist sensitive websites (banking, healthcare, private portals). Purge existing history in 1 click and sync bidirectionally with LifeMirror Desktop.
 • URL & Search Query Sanitization: Strips query parameters and hash fragments (e.g. auth tokens, reset codes) from URLs by default. Sanitizes major search engine titles to prevent search query leakage.
-• Automated Meta Descriptions: Extracts page summaries (<meta name="description">) so you immediately remember what you were reading without mental effort.
+• Automated Meta Descriptions: Extracts page summaries so you immediately remember what you were reading without mental effort.
 • Smart Auto-Tags & 1-Click Revise: Automatically categorizes sites into Development, Research & Docs, Media / Learning, Communications, and Leisure. Reclassify any site in 1 click with zero typing.
 • Accurate Inactivity Tracking: Uses idle detection to automatically pause focus accumulation when you step away from your computer.
 • 100% On-Device & Zero-Cloud: All browsing data is stored in your local browser storage with an automatic 48-hour rolling purge. Zero analytics, zero telemetry.

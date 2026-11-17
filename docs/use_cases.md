@@ -69,7 +69,22 @@ LifeMirror completely eliminates the "What was I doing?" problem that occurs aft
 - **Result:** The system aggregates your most recent session summaries, the files you last touched (like `db.rs`), and relevant journal notes. The LLM instantly generates a comprehensive brief.
 - **Outcome:** A polished UI card appears telling you that your current status is "Refactoring the IPC Engine", your confidence-rated next task is "Handle the stale socket cleanup", and provides clickable links directly back to `src-tauri/src/ai_ipc.rs` and the Rust standard library documentation you had open. You are back in flow in under 30 seconds.
 
+## 8. Local Markdown Knowledge Vault & LLM Wiki (Karpathy Architecture)
+LifeMirror bridges the gap between passive OS tracking and active second-brain note-taking by synthesizing your workday into a structured, Obsidian-compatible local Markdown vault stored in `~/Documents/LifeMirror Vault/`.
+
+**Example Use Case:**
+- **Scenario:** You want to maintain a rich personal wiki in Obsidian documenting your engineering breakthroughs, but you constantly forget to write daily notes or manually link files.
+- **Action:** 
+  1. Click **"Day Note"** in the timeline header to compile today's review.
+  2. Click on a 2-hour coding session on the S-Curve timeline, open the **Session Note** tab, and click **"✨ Enrich with AI"**.
+  3. Click **"Open in Obsidian"** in the header.
+- **Result:** 
+  - LifeMirror compiles an executive daily review (`periodic/daily_2026-11-16.md`) with an Executive KPI strip (Active Duration, Top Project, Coverage) and clean human-readable links to your major work sessions.
+  - Your deep-dive session is saved to `sessions/20261116_1430_backend-refactor.md` with an AI-synthesized breakthrough summary, touched files, and an append entry in `log.md`.
+  - When reviewing your month, `periodic/monthly_2026-11.md` links cleanly to Weekly reviews (`[[periodic/weekly_2026-W47|Week 47]]`) with zero micro-session noise, preserving mental clarity ("Don't Make Me Think").
+- **Outcome:** You have a complete, interlinked Markdown knowledge vault that you own 100% on your local disk.
+
 ---
 
 ### Summary
-LifeMirror is now a fully functional, privacy-first, autonomous time-tracking engine. It handles the raw data collection, the AI semantic processing, the vector search, and the UI visualization—all while ensuring your data never leaves your local machine.
+LifeMirror is now a fully functional, privacy-first, autonomous time-tracking engine and personal knowledge system. It handles the raw data collection, the AI semantic processing, the vector search, the UI visualization, and the structured Markdown wiki synthesis—all while ensuring your data never leaves your local machine.

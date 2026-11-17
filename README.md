@@ -1,8 +1,8 @@
 # 📋 LifeMirror Desktop
 
-LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, and visualizes your day as a beautiful serpentine "S-Curve" timeline infographic.
+LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, visualizes your day as a beautiful serpentine "S-Curve" timeline infographic, and automatically synthesizes your work into a 100% offline, Obsidian-compatible **Knowledge Vault & Autonomous LLM Wiki**.
 
-Additionally, LifeMirror interfaces with an intelligent reflection engine to compile daily mindfulness reflection cards. By default, it operates 100% offline using a locally running AI model (Ollama) so no analytical data ever leaves your computer, while also offering an optional, strictly-disclosed Bring-Your-Own-Key (BYOK) cloud mode for instant setup on lighter hardware.
+Additionally, LifeMirror interfaces with an intelligent reflection engine to compile daily mindfulness reflection cards and multi-tier periodic reviews. By default, it operates 100% offline using a locally running AI model (Ollama) so no analytical data ever leaves your computer, while also offering an optional, strictly-disclosed Bring-Your-Own-Key (BYOK) cloud mode for instant setup on lighter hardware.
 
 ---
 
@@ -226,6 +226,21 @@ For cross-OS local setup and model management, see the [Ollama Configuration Gui
 
 ---
 
+## 📚 Knowledge Vault & Autonomous LLM Wiki
+
+Inspired by Andrej Karpathy's LLM Wiki philosophy and Steve Krug's *Don't Make Me Think* design principles, LifeMirror transforms ephemeral screen time into a structured, persistent knowledge base stored locally in plain Markdown:
+
+* **100% Local & Obsidian-Compatible**: Vault stored in `~/Documents/LifeMirror Vault/` with standard YAML frontmatter and bidirectional `[[wikilinks]]`. Open, search, and edit your notes directly inside LifeMirror, Obsidian, Logseq, or VS Code.
+* **3-Tier Periodic Notes Hierarchy**:
+  * 🗓️ **Monthly Reviews** (`periodic/monthly_YYYY-MM.md`): Executive synthesis summarizing monthly momentum, linking strictly to Weekly reviews with zero cognitive noise.
+  * 📅 **Weekly Reviews** (`periodic/weekly_YYYY-Www.md`): Summarizes productivity, top projects, and links strictly to the 7 Daily reviews.
+  * ☀️ **Daily Reviews** (`periodic/daily_YYYY-MM-DD.md`): Summarizes daily focus and links to curated key work sessions (>2m) with human-readable timestamps and titles.
+* **Executive KPI Dashboards**: Every periodic note renders a formatted executive KPI strip (Active Time, Top Project, Review Horizon, Coverage) and interactive breadcrumb navigation (`> [[index|🏠 Hub]] > [[weekly|Week 47]] > **Day Review**`).
+* **Deep Work Session Notes**: Click any activity block on your timeline to open the Session Drawer, compile markdown notes, run 1-click AI enrichment, edit inline, or move to `.trash/`.
+* **Flexible Sidepanel Width**: Fluid draggable splitter bars (`cursor-col-resize`) across the Knowledge Vault explorer, main AI/Settings sidepanel, and session activity drawer with persisted width settings.
+
+---
+
 ## 📦 Packaging & Distribution
 
 LifeMirror uses Tauri's native bundler to create installers for each platform.
@@ -270,9 +285,10 @@ Output: `src-tauri/target/release/bundle/dmg/lifemirror-desktop_x.x.x_x64.dmg`
 
 | Document | Description |
 |----------|-------------|
-| [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) | Initial installation, Chrome extension setup, and settings |
+| [User Guide](file:///var/www/pieapps/lifemirror-desktop/docs/USER.md) | Initial installation, Chrome extension setup, Knowledge Vault, and settings |
+| [Core Use Cases](file:///var/www/pieapps/lifemirror-desktop/docs/use_cases.md) | Autonomous semantic memory graph, Knowledge Vault, distraction defense, and workflow automation |
 | [AI Integration](file:///var/www/pieapps/lifemirror-desktop/docs/AI_INTEGRATION.md) | Inference engine architecture, local & cloud provider specifications, and privacy boundaries |
 | [Ollama Setup](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md) | Model management and environment variable configuration |
-| [Database Schema](file:///var/www/pieapps/lifemirror-desktop/docs/database_schema.md) | SQLCipher encrypted tables, indexes, and settings key-value definitions |
-| [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | IPC commands, Wayland focus hooks, S-curve geometry, packaging |
+| [Database Schema](file:///var/www/pieapps/lifemirror-desktop/docs/database_schema.md) | SQLCipher encrypted tables, indexes, memory graph, and settings key-value definitions |
+| [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | IPC commands, Knowledge Vault architecture, Wayland focus hooks, S-curve geometry, packaging |
 | [Workflow Guide](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md) | Step-by-step instructions for safely implementing future changes |

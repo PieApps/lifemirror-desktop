@@ -134,22 +134,22 @@ html.app-hidden *::after {
 @media screen and (min-width: 640px) {
   .main-app-container {
     flex-direction: row;
-    gap: 1.5rem;
+    gap: 1rem;
     padding: 1.5rem;
     overflow: hidden;
     height: 100%;
   }
 
   .timeline-panel-wrapper {
-    flex: 3;
-    width: 60%;
+    flex: 1 1 0%;
+    min-width: 0;
+    width: auto;
     height: 100%;
     min-height: 0;
   }
 
   .sidebar-panel-wrapper {
-    flex: 2;
-    width: 40%;
+    flex: 0 0 auto;
     height: 100%;
     min-height: 0;
     overflow: hidden;

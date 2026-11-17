@@ -44,6 +44,51 @@ function App() {
   const [isAISetupOpen, setIsAISetupOpen] = useState(false);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"general" | "focus" | "ai" | "about">("general");
 
+  // Resizable main sidepanel state (min 320px, max 750px, persisted)
+  const [sidepanelWidth, setSidepanelWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("lifemirror_main_sidepanel_width");
+      return saved ? Math.max(320, Math.min(750, parseInt(saved, 10))) : 460;
+    } catch {
+      return 460;
+    }
+  });
+  const [isResizingSidepanel, setIsResizingSidepanel] = useState<boolean>(false);
+
+  const startResizingSidepanel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingSidepanel(true);
+  };
+
+  useEffect(() => {
+    if (!isResizingSidepanel) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const container = document.getElementById("main-app-layout-container");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const newWidth = Math.max(320, Math.min(Math.min(750, rect.width - 480), rect.right - e.clientX));
+      setSidepanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidepanel(false);
+      localStorage.setItem("lifemirror_main_sidepanel_width", String(sidepanelWidth));
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingSidepanel, sidepanelWidth]);
+
   const handleAILockedClick = (featureName: string) => {
     setLockedFeatureName(featureName);
   };
@@ -243,8 +288,11 @@ function App() {
         </div>
       )}
 
-      {/* Main Grid Layout */}
-      <div className="main-app-container flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-5 gap-3 sm:gap-6 sm:overflow-hidden">
+      {/* Main Layout */}
+      <div 
+        id="main-app-layout-container"
+        className="main-app-container flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 sm:overflow-hidden relative"
+      >
         <TimelinePanel
           viewMode={data.viewMode}
           setViewMode={data.setViewMode}
@@ -273,11 +321,28 @@ function App() {
           onDeleteLog={data.handleDeleteLog}
           onDeleteMemoryNode={data.handleDeleteMemoryNode}
           activeNodeStartTime={data.activeActivity?.start_time}
-
         />
 
+        {/* Flexible Resizer Divider Bar between Timeline and Sidepanel */}
+        <div
+          onMouseDown={startResizingSidepanel}
+          className={`hidden sm:flex items-center justify-center w-2 -mx-1 cursor-col-resize select-none shrink-0 transition-colors z-20 group relative ${
+            isResizingSidepanel ? "bg-violet-600/30" : "hover:bg-violet-500/20"
+          }`}
+          title="Drag to resize sidepanel width"
+        >
+          <div className={`w-0.5 h-12 rounded-full transition-colors ${
+            isResizingSidepanel ? "bg-violet-600" : "bg-[var(--border-color)] group-hover:bg-violet-500"
+          }`} />
+          {/* Invisible hit padding */}
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+        </div>
+
         {/* Sidebar */}
-        <div className="sidebar-panel-wrapper sm:col-span-2 space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6">
+        <div 
+          style={{ width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${sidepanelWidth}px` : undefined }}
+          className="sidebar-panel-wrapper space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6"
+        >
           {settings.showSettings ? (
             <SettingsPanel
               isIncognito={settings.isIncognito}

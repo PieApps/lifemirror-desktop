@@ -8,6 +8,7 @@ pub mod providers;
 pub mod tracker;
 pub mod window_provider;
 pub mod memory_engine;
+pub mod vault;
 
 use db::{ActivityLog, AiProcessingMode, AiProviderMode, ChatMessage, DailySummary, DbState, HourlyMetric, JournalEntry};
 use std::path::PathBuf;
@@ -1314,6 +1315,12 @@ pub fn run() {
     // Spawn Memory Engine Background Queue
     crate::memory_engine::queue::MemoryQueue::new(db_arc.clone()).start();
 
+    // Initialize Knowledge Vault directory if needed
+    let vault_path = vault::resolve_vault_path(&db_arc);
+    let _ = vault::ensure_vault_initialized(&vault_path);
+    let _ = vault::sync_projects_to_vault(&db_arc, &vault_path);
+    let _ = vault::sync_recent_sessions_to_vault(&db_arc, &vault_path);
+
     let db_arc_setup = db_arc.clone();
     let incognito_state_tracker = incognito_state.clone();
 
@@ -1456,7 +1463,19 @@ pub fn run() {
             test_cloud_connection,
             get_recent_preview_payload,
             clear_cloud_ai_key,
-            run_cloud_ai_completion
+            run_cloud_ai_completion,
+            vault::get_vault_directory,
+            vault::set_vault_directory,
+            vault::list_vault_files,
+            vault::read_vault_file,
+            vault::write_vault_file,
+            vault::compile_session_markdown,
+            vault::save_session_to_vault,
+            vault::enrich_session_note,
+            vault::sync_vault_all,
+            vault::compile_period_note,
+            vault::delete_vault_file,
+            vault::clear_and_archive_vault
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,11 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
-import { X, Edit2, Check, MessageSquare, Trash2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { X, Edit2, Check, MessageSquare, Trash2, FileText, Sparkles, Copy, ExternalLink, FolderOpen, CheckCheck } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { openUrl, openPath } from '@tauri-apps/plugin-opener';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
 import AppIcon, { extractDomain } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
 import { formatDurationFull, formatDuration, formatTime } from '../utils/formatDuration';
+import { MarkdownRenderer } from '../utils/markdownRenderer';
+import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
 
 /**
  * Full-precision duration formatter (e.g. "3m 12s").
@@ -36,8 +38,57 @@ interface TimelineSidebarProps {
 }
 
 export default function TimelineSidebar({ node, onClose, onDeleteLog }: TimelineSidebarProps) {
+  const [activeTab, setActiveTab] = useState<"breakdown" | "note">("breakdown");
   const [isEditing, setIsEditing] = useState(false);
   const [summaryText, setSummaryText] = useState("");
+  const [markdownContent, setMarkdownContent] = useState("");
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [isDeleteNoteModalOpen, setIsDeleteNoteModalOpen] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("lifemirror_session_drawer_width");
+      return saved ? Math.max(360, Math.min(850, parseInt(saved, 10))) : 440;
+    } catch {
+      return 440;
+    }
+  });
+  const [isResizingDrawer, setIsResizingDrawer] = useState<boolean>(false);
+
+  const startResizingDrawer = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingDrawer(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizingDrawer) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(360, Math.min(Math.min(900, window.innerWidth - 60), window.innerWidth - e.clientX));
+      setDrawerWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingDrawer(false);
+      localStorage.setItem("lifemirror_session_drawer_width", String(drawerWidth));
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingDrawer, drawerWidth]);
+
   const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void, onCancel: () => void}>({
     isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {}
   });
@@ -45,8 +96,12 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
   useEffect(() => {
     if (node?.isMemoryNode && node.memoryData) {
       setSummaryText(node.memoryData.summary || "");
+    } else {
+      setSummaryText("");
     }
     setIsEditing(false);
+    setIsEditingNote(false);
+    setSavedPath(null);
   }, [node]);
 
   // Escape key closes the panel
@@ -234,6 +289,139 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
 
   const activeDuration = totalDuration > 0 ? Math.min(rawActiveSum, totalDuration) : rawActiveSum;
 
+  const compileMarkdown = useCallback(async (summaryOverride?: string) => {
+    if (!node) return;
+    setIsCompiling(true);
+    try {
+      const title = getGroupedSessionTitle(node);
+      const payload = {
+        session_id: node.isMemoryNode ? node.memoryData?.id : null,
+        title,
+        start_time: node.start_time,
+        duration_seconds: activeDuration || node.duration || 0,
+        app_name: node.app_name || "Application",
+        category: CATEGORIES[mapAppToCategory(node.app_name, node.domain_tag)]?.name || "General",
+        activities: (node.originalActivities || []).map(a => ({
+          title: formatCleanTitle(a.window_title, a.app_name, a.domain_tag, a.url),
+          app_name: a.app_name,
+          duration: a.duration,
+          url: a.url || undefined,
+        })),
+        sub_events: (node.subEvents || []).map(s => ({
+          title: formatCleanTitle(s.title, s.parent_app_name, s.context_tag, s.primary_uri),
+          primary_uri: s.primary_uri || undefined,
+          metadata: s.metadata || undefined,
+          timestamp: s.timestamp,
+        })),
+        ai_summary: summaryOverride ?? (summaryText || (node.isMemoryNode ? node.memoryData?.summary : undefined)),
+      };
+      const md = await invoke<string>("compile_session_markdown", { payload });
+      setMarkdownContent(md);
+
+      // Auto-persist session note to the Knowledge Vault
+      try {
+        const datePart = (node.start_time.split("T")[0] || "session").replace(/-/g, "");
+        const timePart = (node.start_time.split("T")[1] || "00-00").substring(0, 5).replace(":", "");
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").substring(0, 30) || "session";
+        const filename = `${datePart}_${timePart}_${slug}.md`;
+
+        const relPath = await invoke<string>("save_session_to_vault", {
+          relativeFilename: filename,
+          content: md,
+          title,
+        });
+        setSavedPath(relPath);
+      } catch (saveErr) {
+        console.warn("Could not auto-save session note to vault:", saveErr);
+      }
+    } catch (err) {
+      console.error("Failed to compile session markdown:", err);
+    } finally {
+      setIsCompiling(false);
+    }
+  }, [node, activeDuration, summaryText]);
+
+  useEffect(() => {
+    if (node) {
+      compileMarkdown();
+    }
+  }, [node, compileMarkdown]);
+
+  const handleEnrichWithAI = async () => {
+    if (!node || isEnriching) return;
+    setIsEnriching(true);
+    try {
+      const sessionTitle = getGroupedSessionTitle(node);
+      const activitiesSummary = timelineItems.map(it => `- ${it.app}: ${it.title} (${getFormatDuration(it.duration)})`).join("\n");
+      const enriched = await invoke<string>("enrich_session_note", {
+        sessionTitle,
+        activitiesSummary: activitiesSummary || sessionTitle,
+      });
+      setSummaryText(enriched);
+      if (node.isMemoryNode && node.memoryData?.id) {
+        await invoke("update_memory_node_summary", { id: node.memoryData.id, summary: enriched });
+        node.memoryData.summary = enriched;
+      }
+      await compileMarkdown(enriched);
+    } catch (err) {
+      console.error("AI enrichment failed:", err);
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
+  const handleSaveAndOpen = async () => {
+    if (!node || !markdownContent) return;
+    try {
+      const title = getGroupedSessionTitle(node);
+      const datePart = (node.start_time.split("T")[0] || "session").replace(/-/g, "");
+      const timePart = (node.start_time.split("T")[1] || "00-00").substring(0, 5).replace(":", "");
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").substring(0, 30) || "session";
+      const filename = `${datePart}_${timePart}_${slug}.md`;
+
+      const relPath = await invoke<string>("save_session_to_vault", {
+        relativeFilename: filename,
+        content: markdownContent,
+        title,
+      });
+
+      const vaultDir = await invoke<string>("get_vault_directory");
+      const fullFilePath = `${vaultDir.replace(/[\\\/]$/, "")}/${relPath}`;
+      setSavedPath(relPath);
+      await openPath(fullFilePath);
+    } catch (err) {
+      console.error("Failed to save and open markdown:", err);
+    }
+  };
+
+  const handleSaveEditedNote = async () => {
+    if (!node || !markdownContent) return;
+    try {
+      const title = getGroupedSessionTitle(node);
+      const datePart = (node.start_time.split("T")[0] || "session").replace(/-/g, "");
+      const timePart = (node.start_time.split("T")[1] || "00-00").substring(0, 5).replace(":", "");
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").substring(0, 30) || "session";
+      const filename = savedPath || `${datePart}_${timePart}_${slug}.md`;
+
+      const relPath = await invoke<string>("save_session_to_vault", {
+        relativeFilename: filename,
+        content: markdownContent,
+        title,
+      });
+      setSavedPath(relPath);
+      setIsEditingNote(false);
+    } catch (err) {
+      console.error("Failed to save edited note:", err);
+    }
+  };
+
+  const handleCopyMarkdown = async () => {
+    if (!markdownContent) return;
+    await navigator.clipboard.writeText(markdownContent);
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
+
   if (!node) return null;
 
   return (
@@ -245,7 +433,24 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
       />
       
       {/* Sidebar Panel */}
-      <div className="fixed inset-y-0 right-0 w-[420px] glass bg-[var(--bg-color)]/95 backdrop-blur-3xl border-l border-[var(--border-color)] shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 translate-x-0">
+      <div 
+        style={{ width: `${drawerWidth}px`, maxWidth: '92vw' }}
+        className="fixed inset-y-0 right-0 glass bg-[var(--bg-color)]/95 backdrop-blur-3xl border-l border-[var(--border-color)] shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 translate-x-0"
+      >
+        {/* Left Edge Draggable Resizer Bar */}
+        <div
+          onMouseDown={startResizingDrawer}
+          className={`absolute left-0 inset-y-0 w-2 -translate-x-1/2 cursor-col-resize select-none z-20 group flex items-center justify-center transition-colors ${
+            isResizingDrawer ? "bg-violet-600/40" : "hover:bg-violet-500/30"
+          }`}
+          title="Drag to resize session panel width"
+        >
+          <div className={`w-0.5 h-12 rounded-full transition-colors ${
+            isResizingDrawer ? "bg-violet-600" : "bg-[var(--border-color)] group-hover:bg-violet-500"
+          }`} />
+          {/* Hit area expander */}
+          <div className="absolute inset-y-0 -left-1 -right-1 cursor-col-resize" />
+        </div>
         <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)]">
           <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={getGroupedSessionTitle(node)}>
             {getGroupedSessionTitle(node)}
@@ -255,8 +460,40 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
           </button>
         </div>
 
+        {/* Tab Switcher: Breakdown vs Session Note */}
+        <div className="flex border-b border-[var(--border-color)] bg-[var(--bg-color)]/50 px-5 pt-3 gap-2 shrink-0">
+          <button
+            onClick={() => setActiveTab("breakdown")}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "breakdown"
+                ? "border-violet-600 text-violet-600 dark:text-violet-400 font-bold"
+                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-color)]"
+            }`}
+          >
+            <span>Activity Breakdown</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10">{timelineItems.length}</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("note");
+              if (!markdownContent) compileMarkdown();
+            }}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === "note"
+                ? "border-violet-600 text-violet-600 dark:text-violet-400 font-bold"
+                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-color)]"
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Session Note</span>
+            {summaryText && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-          <div className="mb-6 flex items-center gap-4">
+          {activeTab === "breakdown" ? (
+            <>
+              <div className="mb-6 flex items-center gap-4">
             <AppIcon
               appName={node.app_name}
               url={node.url}
@@ -490,9 +727,122 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
               </div>
             </div>
           )}
+          </>
+        ) : (
+          /* Session Note View */
+          <div className="space-y-4">
+            {/* Action Toolbar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--bg-color)]/60 border border-[var(--border-color)] shadow-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={handleEnrichWithAI}
+                  disabled={isEnriching}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  title="Synthesize session accomplishments and key takeaways with AI"
+                >
+                  {isEnriching ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isEnriching ? "Enriching..." : "Enrich with AI"}</span>
+                </button>
+
+                <button
+                  onClick={handleSaveAndOpen}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--card-bg)] hover:bg-[var(--border-color)] text-[var(--text-color)] border border-[var(--border-color)] transition-colors cursor-pointer"
+                  title="Save to vault and open in external editor (Obsidian / VS Code)"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-violet-500" />
+                  <span>Open in Editor</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end gap-1">
+                {isEditingNote ? (
+                  <button
+                    onClick={handleSaveEditedNote}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer shadow-xs"
+                    title="Save Changes to Vault"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save</span>
+                  </button>
+                ) : null}
+                <button
+                  onClick={handleCopyMarkdown}
+                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--border-color)] transition-colors cursor-pointer"
+                  title="Copy Markdown"
+                >
+                  {copySuccess ? <CheckCheck className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => setIsEditingNote(!isEditingNote)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isEditingNote ? "bg-violet-500/20 text-violet-500" : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--border-color)]"
+                  }`}
+                  title={isEditingNote ? "Cancel Editing" : "Edit Markdown"}
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                {savedPath && (
+                  <button
+                    onClick={() => setIsDeleteNoteModalOpen(true)}
+                    className="p-1.5 rounded-lg text-red-500/80 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                    title="Move Session Note to Trash (.trash/)"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {savedPath && (
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between">
+                <span>Saved to: <code className="font-mono font-semibold">{savedPath}</code></span>
+                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+              </div>
+            )}
+
+            {/* Note Content */}
+            {isCompiling ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs text-[var(--text-muted)]">
+                <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                <span>Compiling session note...</span>
+              </div>
+            ) : isEditingNote ? (
+              <textarea
+                value={markdownContent}
+                onChange={(e) => setMarkdownContent(e.target.value)}
+                className="w-full h-[450px] p-3 text-xs font-mono rounded-xl bg-[var(--bg-color)] border border-[var(--border-color)] text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none custom-scrollbar"
+                placeholder="Write or edit markdown..."
+              />
+            ) : (
+              <div className="p-4 rounded-2xl bg-[var(--bg-color)]/40 border border-[var(--border-color)] shadow-xs">
+                <MarkdownRenderer content={markdownContent} />
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </div>
       <ConfirmModal {...confirmModal} />
+      <ConfirmModal
+        isOpen={isDeleteNoteModalOpen}
+        title="Move Session Note to Trash"
+        message={`Move "${savedPath}" to the vault trash (.trash/)? You can always re-compile it from this activity.`}
+        onConfirm={async () => {
+          if (!savedPath) return;
+          try {
+            await invoke("delete_vault_file", { relativePath: savedPath });
+            setSavedPath(null);
+            setIsDeleteNoteModalOpen(false);
+          } catch (err) {
+            console.error("Failed to delete session note:", err);
+          }
+        }}
+        onCancel={() => setIsDeleteNoteModalOpen(false)}
+      />
     </>
   );
 }
