@@ -51,36 +51,9 @@ pub struct SubEventSummary {
     pub timestamp: String,
 }
 
-/// Resolves the default Vault directory across OSes.
+/// Resolves the default Vault directory across OSes according to environment.
 pub fn get_default_vault_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let base = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("APPDATA"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
-        let docs = base.join("Documents");
-        if docs.exists() {
-            docs.join("LifeMirror Vault")
-        } else {
-            base.join("LifeMirror Vault")
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Ok(home) = std::env::var("HOME") {
-            let home_path = PathBuf::from(home);
-            let docs = home_path.join("Documents");
-            if docs.exists() {
-                docs.join("LifeMirror Vault")
-            } else {
-                home_path.join("LifeMirror Vault")
-            }
-        } else {
-            PathBuf::from("LifeMirror Vault")
-        }
-    }
+    crate::env::AppEnvironment::detect(None).default_vault_path()
 }
 
 /// Resolves the effective vault directory from the database setting or fallback.

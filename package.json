@@ -8,10 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "install-host": "node scripts/install-native-host.mjs",
-    "install-host:release": "node scripts/install-native-host.mjs --release",
-    "archive-extension": "node scripts/archive-extension.mjs",
-    "package-extension": "node scripts/archive-extension.mjs"
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "dev:reset-data": "node scripts/reset-dev-data.mjs",
+    "dev:merge-data": "node scripts/merge-prod-data.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",
