@@ -36,8 +36,6 @@ companion-extension/
 │   ├── icon16.png                   # 16x16 icon (favicon / toolbar)
 │   ├── icon48.png                   # 48x48 icon (extensions manager)
 │   └── icon128.png                  # 128x128 icon (Chrome Web Store / install dialog)
-├── com.lifemirror.desktop.json.template # Template for OS native messaging host manifest
-├── com.lifemirror.desktop.json      # Generated native host descriptor (gitignored)
 ├── CHROMEWEBSTORE.md                # Chrome Web Store submission metadata and store copy
 ├── PRIVACY_POLICY.md                # Privacy policy documentation
 ├── CHANGELOG.md                     # Extension release notes and version history
@@ -51,37 +49,16 @@ companion-extension/
 1. Open Google Chrome (or Chromium / Brave / Edge) and navigate to `chrome://extensions`.
 2. Enable **Developer mode** using the toggle switch in the top-right corner.
 3. Click **Load unpacked** in the top-left corner and select this folder (`companion-extension`).
-4. Note your 32-letter Extension ID (e.g. `hcpagmeofngagbmahpccoajilpndckab`).
-5. Register the native messaging host with your extension ID:
-   ```bash
-   npm run install-host
-   # or
-   EXTENSION_ID=<your-extension-id> npm run install-host
-   ```
+4. The local unpacked extension connects automatically to LifeMirror Desktop via Native Messaging (its development ID is pre-configured in `ALLOWED_NATIVE_ORIGINS` in the desktop backend).
 
 ---
 
-## Creating the Distribution Archive (.zip)
+## Distribution
 
-To package the extension into a clean, ready-to-upload `.zip` archive for the Chrome Web Store:
+The companion extension is officially distributed via the **Chrome Web Store**:
+- [Install from Chrome Web Store](https://chromewebstore.google.com/detail/lifemirror-desktop-compan/pblffjiaheggbamkjaojabdaemkflhmm)
 
-```bash
-# From the repository root:
-npm run archive-extension
-
-# Or directly using the script:
-node scripts/archive-extension.mjs
-
-# Or using the shell script:
-./scripts/archive-extension.sh
-```
-
-The script automatically:
-1. Validates `manifest.json` (syntax, Manifest V3 format, referenced assets).
-2. Verifies that all icons (`icons/icon16.png`, etc.) and `background.js` exist.
-3. Packages **strictly** runtime extension files (`manifest.json`, `background.js`, `domain-rules.js`, `content.js`, `sidepanel.html`, `sidepanel.css`, `sidepanel.js`, `icons/`).
-4. Excludes internal documentation, native messaging host templates, `.git`, `.DS_Store`, and dev artifacts.
-5. Saves the output zip to `dist/lifemirror-desktop-v<version>.zip` (and `dist/lifemirror-desktop.zip`).
+When building an update package for the Chrome Web Store, compress the runtime extension files (`manifest.json`, `background.js`, `native-rpc.js`, `session-tracker.js`, `domain-rules.js`, `content.js`, `sidepanel.*`, and `icons/`) into a `.zip` archive.
 
 ---
 

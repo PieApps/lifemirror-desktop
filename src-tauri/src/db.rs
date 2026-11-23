@@ -318,8 +318,13 @@ pub struct OsKeyStore {
 
 impl OsKeyStore {
     pub fn new() -> Self {
+        let env = crate::env::AppEnvironment::detect(None);
+        Self::with_service(env.keyring_service())
+    }
+
+    pub fn with_service(service: &str) -> Self {
         Self {
-            service: KEYRING_SERVICE.to_string(),
+            service: service.to_string(),
             user: KEYRING_USER.to_string(),
         }
     }

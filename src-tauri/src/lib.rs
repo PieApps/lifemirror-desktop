@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod domain_rules;
+pub mod env;
 #[path = "inference/mod.rs"]
 pub mod inference;
 pub mod db;
@@ -186,6 +187,12 @@ if ($res -eq "Retry") { Write-Output "Retry" } elseif ($res -eq "Ignore") { Writ
 /// The manifest is written with the path of the currently running executable,
 /// which keeps it correct across app updates or directory moves.
 fn install_native_host_manifest() {
+    let current_env = env::AppEnvironment::detect(None);
+    if !current_env.should_register_native_host() {
+        eprintln!("[native-host] Skipping native host manifest registration in {:?} environment", current_env);
+        return;
+    }
+
     let exe_path = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -294,90 +301,79 @@ fn install_native_host_manifest() {
 }
 
 fn get_db_path() -> PathBuf {
+    let current_env = env::AppEnvironment::detect(None);
+    let _ = current_env.ensure_data_dir();
+
     #[cfg(target_os = "windows")]
     {
-        let base = std::env::var("LOCALAPPDATA")
-            .or_else(|_| std::env::var("APPDATA"))
-            .or_else(|_| {
-                std::env::var("USERPROFILE").map(|p| format!(r"{}\AppData\Local", p))
-            })
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("."));
+        if current_env == env::AppEnvironment::Production {
+            let base = std::env::var("LOCALAPPDATA")
+                .or_else(|_| std::env::var("APPDATA"))
+                .or_else(|_| {
+                    std::env::var("USERPROFILE").map(|p| format!(r"{}\AppData\Local", p))
+                })
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("."));
 
-        let canonical_dir = base.join("lifemirror-desktop");
-        let _ = std::fs::create_dir_all(&canonical_dir);
-        let target_db = canonical_dir.join("lifemirror-desktop.db");
+            let canonical_dir = base.join("lifemirror-desktop");
+            let _ = std::fs::create_dir_all(&canonical_dir);
+            let target_db = canonical_dir.join("lifemirror-desktop.db");
 
-        // Existing users migration safeguard:
-        // If the canonical database does not exist yet, look for legacy locations where previous
-        // builds may have stored the DB (e.g. nested relative ./lifemirror-desktop/ or exe dir).
-        if !target_db.exists() {
-            let mut candidates = Vec::new();
+            // Existing users migration safeguard:
+            // If the canonical database does not exist yet, look for legacy locations where previous
+            // builds may have stored the DB (e.g. nested relative ./lifemirror-desktop/ or exe dir).
+            if !target_db.exists() {
+                let mut candidates = Vec::new();
 
-            // Candidate 1: Nested folder from relative CWD launch (e.g. %LOCALAPPDATA%\lifemirror-desktop\lifemirror-desktop\...)
-            candidates.push(canonical_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
+                // Candidate 1: Nested folder from relative CWD launch (e.g. %LOCALAPPDATA%\lifemirror-desktop\lifemirror-desktop\...)
+                candidates.push(canonical_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
 
-            // Candidates 2 & 3: Relative to executable location if known
-            if let Ok(exe_path) = std::env::current_exe() {
-                if let Some(exe_dir) = exe_path.parent() {
-                    candidates.push(exe_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
-                    candidates.push(exe_dir.join("lifemirror-desktop.db"));
+                // Candidates 2 & 3: Relative to executable location if known
+                if let Ok(exe_path) = std::env::current_exe() {
+                    if let Some(exe_dir) = exe_path.parent() {
+                        candidates.push(exe_dir.join("lifemirror-desktop").join("lifemirror-desktop.db"));
+                        candidates.push(exe_dir.join("lifemirror-desktop.db"));
+                    }
                 }
-            }
 
-            // Candidate 4: %USERPROFILE%\.local\share\lifemirror-desktop\lifemirror-desktop.db
-            if let Ok(userprofile) = std::env::var("USERPROFILE") {
-                candidates.push(
-                    PathBuf::from(userprofile)
-                        .join(".local")
-                        .join("share")
-                        .join("lifemirror-desktop")
-                        .join("lifemirror-desktop.db"),
-                );
-            }
-
-            for legacy_path in candidates {
-                if legacy_path.exists() && legacy_path != target_db {
-                    eprintln!(
-                        "[vault] Migrating legacy database from {} to {}",
-                        legacy_path.display(),
-                        target_db.display()
+                // Candidate 4: %USERPROFILE%\.local\share\lifemirror-desktop\lifemirror-desktop.db
+                if let Ok(userprofile) = std::env::var("USERPROFILE") {
+                    candidates.push(
+                        PathBuf::from(userprofile)
+                            .join(".local")
+                            .join("share")
+                            .join("lifemirror-desktop")
+                            .join("lifemirror-desktop.db"),
                     );
-                    if std::fs::copy(&legacy_path, &target_db).is_ok() {
-                        let wal = legacy_path.with_extension("db-wal");
-                        if wal.exists() {
-                            let _ = std::fs::copy(&wal, target_db.with_extension("db-wal"));
+                }
+
+                for legacy_path in candidates {
+                    if legacy_path.exists() && legacy_path != target_db {
+                        eprintln!(
+                            "[vault] Migrating legacy database from {} to {}",
+                            legacy_path.display(),
+                            target_db.display()
+                        );
+                        if std::fs::copy(&legacy_path, &target_db).is_ok() {
+                            let wal = legacy_path.with_extension("db-wal");
+                            if wal.exists() {
+                                let _ = std::fs::copy(&wal, target_db.with_extension("db-wal"));
+                            }
+                            let shm = legacy_path.with_extension("db-shm");
+                            if shm.exists() {
+                                let _ = std::fs::copy(&shm, target_db.with_extension("db-shm"));
+                            }
+                            break;
                         }
-                        let shm = legacy_path.with_extension("db-shm");
-                        if shm.exists() {
-                            let _ = std::fs::copy(&shm, target_db.with_extension("db-shm"));
-                        }
-                        break;
                     }
                 }
             }
+
+            return target_db;
         }
-
-        target_db
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let mut path = if let Ok(data_home) = std::env::var("XDG_DATA_HOME") {
-            PathBuf::from(data_home)
-        } else if let Ok(home) = std::env::var("HOME") {
-            let mut p = PathBuf::from(home);
-            p.push(".local");
-            p.push("share");
-            p
-        } else {
-            PathBuf::from(".")
-        };
-        path.push("lifemirror-desktop");
-        let _ = std::fs::create_dir_all(&path);
-        path.push("lifemirror-desktop.db");
-        path
-    }
+    current_env.db_path()
 }
 
 #[tauri::command]
@@ -860,14 +856,18 @@ fn fix_autostart_registry_path() -> Result<(), String> {
         use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
         use winreg::RegKey;
         const AL_REGKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        const APP_NAME: &str = "lifemirror-desktop";
+        let app_name = match env::AppEnvironment::detect(None) {
+            env::AppEnvironment::Production => "lifemirror-desktop",
+            env::AppEnvironment::Development => "lifemirror-desktop-dev",
+            env::AppEnvironment::Testing => "lifemirror-desktop-test",
+        };
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let run_key = hkcu
             .open_subkey_with_flags(AL_REGKEY, KEY_READ | KEY_SET_VALUE)
             .map_err(|e| e.to_string())?;
 
-        let current: String = run_key.get_value(APP_NAME).map_err(|e| e.to_string())?;
+        let current: String = run_key.get_value(app_name).map_err(|e| e.to_string())?;
 
         // Only rewrite if the path is not already quoted.
         if !current.starts_with('"') {
@@ -911,7 +911,9 @@ async fn sync_day_memories(
 }
 
 fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
-    let open_i = MenuItem::with_id(app, "open", "Open LifeMirror Desktop", true, None::<&str>)?;
+    let current_env = env::AppEnvironment::detect(Some(app.handle()));
+    let open_label = format!("Open {}", current_env.app_display_name());
+    let open_i = MenuItem::with_id(app, "open", &open_label, true, None::<&str>)?;
 
     let db = app.state::<Arc<DbState>>();
     let is_incog = db.get_setting("incognito").unwrap_or_default() == "true";
@@ -941,8 +943,10 @@ fn setup_system_tray(app: &tauri::App) -> Result<TrayMenuState, tauri::Error> {
 
     let icon = Image::from_bytes(default_icon_bytes).unwrap();
 
+    let tray_tooltip = current_env.app_display_name();
     let _tray = TrayIconBuilder::with_id("main-tray")
         .icon(icon)
+        .tooltip(tray_tooltip)
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => {
@@ -1155,6 +1159,11 @@ async fn run_cloud_ai_completion(
         db: state.inner().clone(),
     };
     provider.prompt(&prompt).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_app_environment(app: tauri::AppHandle) -> String {
+    format!("{:?}", env::AppEnvironment::detect(Some(&app)))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1408,14 +1417,16 @@ pub fn run() {
                 window.hide().unwrap();
 
                 let app = window.app_handle();
+                let current_env = env::AppEnvironment::detect(Some(app));
                 let db = app.state::<Arc<DbState>>();
                 let has_shown = db.get_setting("has_shown_close_notification").unwrap_or_default() == "true";
                 if !has_shown {
                     let _ = db.set_setting("has_shown_close_notification", "true");
+                    let title = current_env.app_display_name();
                     #[cfg(target_os = "linux")]
                     {
                         let _ = std::process::Command::new("notify-send")
-                            .args(["LifeMirror Desktop", "LifeMirror Desktop is still running in the background. You can quit from the system tray icon."])
+                            .args([title, &format!("{title} is still running in the background. You can quit from the system tray icon.")])
                             .status();
                     }
                 }
@@ -1483,7 +1494,8 @@ pub fn run() {
             vault::sync_vault_all,
             vault::compile_period_note,
             vault::delete_vault_file,
-            vault::clear_and_archive_vault
+            vault::clear_and_archive_vault,
+            get_app_environment
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

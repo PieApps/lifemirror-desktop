@@ -44,7 +44,14 @@ export const Header: React.FC<HeaderProps> = ({
           alt="LifeMirror Desktop Logo" 
         />
         <div className="hidden min-[480px]:block">
-          <h1 className="text-sm sm:text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
+            {import.meta.env.DEV && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                DEV
+              </span>
+            )}
+          </div>
           <span className="text-[9px] sm:text-[10px] text-[var(--text-muted)] font-medium tracking-wide">Your Mind's River</span>
         </div>
       </div>

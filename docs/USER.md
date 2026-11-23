@@ -57,36 +57,18 @@ The LifeMirror Chrome extension operates in **dual modes**:
 3. Review your **Hourly Focus Rhythm**, filter sessions by intent, and click any tag chip to revise its category in 1 click (no typing required).
 4. Inactivity is detected automatically: if you step away from your keyboard for >60 seconds, time tracking pauses automatically (`chrome.idle`).
 
-### Linking Extension to LifeMirror Desktop (Native Messaging)
-Edit the descriptor template file: `companion-extension/com.lifemirror.desktop.json`
-* Change `"path"` to point to your compiled `lifemirror` binary (usually `/var/www/pieapps/lifemirror-desktop/src-tauri/target/debug/lifemirror`).
-* Keep the configuration `"type": "stdio"`.
+### Linking Extension to LifeMirror Desktop (Automatic Native Sync)
+The desktop application automatically registers the Native Messaging host manifest with your browser (Google Chrome, Chromium, Brave, Microsoft Edge, Vivaldi, Opera) and sets up the required Windows registry keys upon launch.
 
-### Step B: Load the Extension in Chrome
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer Mode** (toggle in top right).
-3. Click **Load unpacked** (top left) and select the `companion-extension/` directory.
-4. Copy the newly generated **Extension ID** (e.g., `aagbofmjdgfcceidclhmdhmgmbpgeifn`).
-5. Open `com.lifemirror.desktop.json` again and ensure your Extension ID is added to the `"allowed_origins"` array:
-   ```json
-   "allowed_origins": [
-     "chrome-extension://<YOUR_EXTENSION_ID>/"
-   ]
-   ```
+To sync browsing sessions with desktop:
+1. Install **LifeMirror Companion** from the [Chrome Web Store](https://chromewebstore.google.com/detail/lifemirror-desktop-compan/pblffjiaheggbamkjaojabdaemkflhmm).
+2. Ensure LifeMirror Desktop is running.
+3. Active tab updates, descriptions, and category tags will now stream automatically into your local encrypted SQLCipher timeline.
 
-### Step C: Register the Native Host in your OS
-Create a symlink or copy your host manifest JSON to your browser's NativeMessagingHosts folder.
-
-* **Linux (Google Chrome)**:
-  ```bash
-  mkdir -p ~/.config/google-chrome/NativeMessagingHosts
-  ln -sf /var/www/pieapps/lifemirror-desktop/companion-extension/com.lifemirror.desktop.json ~/.config/google-chrome/NativeMessagingHosts/com.lifemirror.desktop.json
-  ```
-* **Linux (Chromium)**:
-  ```bash
-  mkdir -p ~/.config/chromium/NativeMessagingHosts
-  ln -sf /var/www/pieapps/lifemirror-desktop/companion-extension/com.lifemirror.desktop.json ~/.config/chromium/NativeMessagingHosts/com.lifemirror.desktop.json
-  ```
+For local unpacked extension development:
+1. Open `chrome://extensions/` and enable **Developer Mode**.
+2. Click **Load unpacked** and select `companion-extension/`.
+3. Development builds of LifeMirror Desktop (`npm run tauri:dev`) will connect without requiring manual manifest copying.
 
 ---
 
