@@ -42,42 +42,25 @@ Pre-compiled desktop binaries are available under GitHub [Releases](../../releas
 npm install
 ```
 
-### 3. Set your Chrome Extension ID
+### 3. Run the Development Server
 
-Load the `companion-extension/` folder as an unpacked extension in Chrome (`chrome://extensions` → enable **Developer Mode** → **Load unpacked**), then copy the generated Extension ID.
-
-Add it to a `.env` file in the project root (create it if it doesn't exist):
-
-```
-EXTENSION_ID=your32characterextensionid
-```
-
-You only need to do this **once**. When the extension is published to the Chrome Web Store, its ID becomes permanent and you can commit it to the template directly.
-
-### 4. Install the Native Messaging Host
-
-This one command works on **Windows, macOS, and Linux**:
+To launch the development version isolated from your installed production application:
 
 ```bash
-npm run install-host
+npm run tauri:dev
 ```
 
-What it does:
-- Reads `EXTENSION_ID` from `.env`
-- Generates `companion-extension/com.lifemirror.desktop.json` from the template
-- **Linux / macOS** — copies the manifest to the browser's `NativeMessagingHosts` folder
-- **Windows** — copies the manifest and writes the required Windows Registry key automatically
+This compiles the Vite frontend and Rust backend in dev mode with an isolated data directory (`~/.local/share/lifemirror-dev`), partitioned OS keyring service (`com.lifemirror.desktop.dev`), and unique app identifier, allowing production and development to run simultaneously without interference.
 
-> [!TIP]
-> If you haven't added `EXTENSION_ID` to `.env`, the script will prompt you to enter it interactively.
-
-### 5. Run the Development Server
+You can also run standard dev mode:
 
 ```bash
 npm run tauri dev
 ```
 
-This compiles the Vite frontend and the Rust/Tauri backend in dev (debug) mode.
+#### Developer Data Scripts
+- **Reset Dev Data**: `npm run dev:reset-data` (safely wipes dev database and webview cache)
+- **Import Production Data**: `npm run dev:merge-data` (safely snapshots your production database and Knowledge Vault notes into dev for real-world testing)
 
 ---
 
@@ -123,40 +106,13 @@ cd lifemirror-desktop
 npm install
 ```
 
-#### Step 6 — Set your Extension ID
-
-Create a `.env` file in the project root:
-
-```
-EXTENSION_ID=your32characterextensionid
-```
-
-*(Find the ID at `chrome://extensions` → enable Developer Mode → load `companion-extension/` as unpacked → copy the ID shown)*
-
-#### Step 7 — Build the app (once) so the binary exists
+#### Step 6 — Run the Development Server
 
 ```powershell
-npm run tauri dev
-```
-Wait until you see the app window open, then press `Ctrl+C` to stop it. This creates the `lifemirror.exe` binary used by the native host.
-
-#### Step 8 — Install the native messaging host
-
-```powershell
-npm run install-host
+npm run tauri:dev
 ```
 
-This automatically:
-- Generates the native host manifest with your extension ID
-- Copies it to `%LOCALAPPDATA%\LifeMirror\NativeMessagingHosts\`
-- Writes the registry key `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop`
-
-> [!NOTE]
-> If the registry step fails (rare), the script prints the exact `reg add` command to run manually. No administrator rights are required for `HKCU` registry keys.
-
-#### Step 9 — Reload the extension
-
-Go to `chrome://extensions`, find **LifeMirror Companion**, and click **↺ Reload**.
+This compiles the Vite frontend and Rust backend in development mode with an isolated dev environment.
 
 ---
 
@@ -168,13 +124,13 @@ The LifeMirror Chrome extension operates in **dual modes**:
 * **Standalone Mode**: Runs directly inside Chrome with zero setup. Captures dwell time, hourly rhythms, top domains, meta descriptions, and smart category tags (`💻 Dev`, `📚 Docs`, `🎬 Media`) in a persistent **Chrome Side Panel** with 1-click easy tag revision.
 * **Desktop Native Sync**: When LifeMirror Desktop is running, tab events stream over a sandboxed stdin/stdout **Native Messaging** channel directly into your encrypted SQLCipher database, displaying full page descriptions in the S-Curve sidebar and enriching local Ollama reflection prompts.
 
-| Platform | After running `npm run install-host`, the manifest is placed at… |
-|----------|------------------------------------------------------------------|
+| Platform | Native messaging host manifest location (registered automatically) |
+|----------|--------------------------------------------------------------------|
 | **Windows** | `%LOCALAPPDATA%\LifeMirror\NativeMessagingHosts\com.lifemirror.desktop.json` |
 | **macOS** | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` |
 | **Linux** | `~/.config/google-chrome/NativeMessagingHosts/` |
 
-The Windows Registry key is also written automatically:
+On Windows, the required registry key is also configured automatically:
 ```
 HKCU\Software\Google\Chrome\NativeMessagingHosts\com.lifemirror.desktop
 ```
@@ -252,11 +208,6 @@ npm run tauri build
 
 Output goes to `src-tauri/target/release/bundle/`.
 
-After building, install the native host pointing at the **release** binary:
-```bash
-npm run install-host:release
-```
-
 ### Platform Outputs
 
 #### 🪟 Windows
@@ -291,4 +242,5 @@ Output: `src-tauri/target/release/bundle/dmg/lifemirror-desktop_x.x.x_x64.dmg`
 | [Ollama Setup](file:///var/www/pieapps/lifemirror-desktop/docs/OLLAMA_SETUP.md) | Model management and environment variable configuration |
 | [Database Schema](file:///var/www/pieapps/lifemirror-desktop/docs/database_schema.md) | SQLCipher encrypted tables, indexes, memory graph, and settings key-value definitions |
 | [Developer Docs](file:///var/www/pieapps/lifemirror-desktop/docs/DEVELOPER.md) | IPC commands, Knowledge Vault architecture, Wayland focus hooks, S-curve geometry, packaging |
+| [Development Environment](file:///var/www/pieapps/lifemirror-desktop/docs/development-environment.md) | Concurrent dev/prod isolation, database paths, and data management scripts |
 | [Workflow Guide](file:///var/www/pieapps/lifemirror-desktop/docs/WORKFLOW.md) | Step-by-step instructions for safely implementing future changes |
