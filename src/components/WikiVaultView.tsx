@@ -4,7 +4,8 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Folder, FileText, Search, Plus, ExternalLink,
   Edit2, Check, RefreshCw, Copy, CheckCheck, BookOpen,
-  ChevronRight, ArrowLeft, Trash2, Calendar, FolderOpen
+  ChevronRight, ArrowLeft, Trash2, Calendar, FolderOpen,
+  Sparkles, Layers, Compass
 } from "lucide-react";
 import { MarkdownRenderer } from "../utils/markdownRenderer";
 import { ConfirmModal } from "./ConfirmModal";
@@ -174,8 +175,7 @@ export const WikiVaultView: React.FC<WikiVaultViewProps> = ({ onBackToTimeline, 
   const [selectedFile, setSelectedFile] = useState<VaultFileItem | null>(null);
   const [content, setContent] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [activeCategory, setActiveCategory] = useState<"all" | "projects" | "topics" | "sessions" | "periodic" | "root">("all");
-  const [periodicSubFilter, setPeriodicSubFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [shelf, setShelf] = useState<"all" | "chronicles" | "craft" | "ideas">("all");
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(false);
@@ -404,6 +404,15 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
+  const chroniclesCount = useMemo(() => files.filter((f) => f.category === "periodic").length, [files]);
+  const craftCount = useMemo(() => files.filter((f) => f.category === "projects" || f.category === "sessions").length, [files]);
+  const ideasCount = useMemo(() => files.filter((f) => f.category === "topics" || f.category === "root").length, [files]);
+
+  const latestChronicle = useMemo(() => {
+    const periodicFiles = files.filter((f) => f.category === "periodic");
+    return periodicFiles.sort((a, b) => b.name.localeCompare(a.name))[0] || null;
+  }, [files]);
+
   const filteredFiles = useMemo(() => {
     return files.filter((f) => {
       const matchesSearch =
@@ -411,20 +420,15 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
         f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         f.relative_path.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesCat =
-        activeCategory === "all" ||
-        (activeCategory === "root" ? f.category === "root" : f.category === activeCategory);
+      const matchesShelf =
+        shelf === "all" ||
+        (shelf === "chronicles" && f.category === "periodic") ||
+        (shelf === "craft" && (f.category === "projects" || f.category === "sessions")) ||
+        (shelf === "ideas" && (f.category === "topics" || f.category === "root"));
 
-      const matchesPeriodicSub =
-        activeCategory !== "periodic" ||
-        periodicSubFilter === "all" ||
-        (periodicSubFilter === "daily" && f.name.startsWith("daily_")) ||
-        (periodicSubFilter === "weekly" && f.name.startsWith("weekly_")) ||
-        (periodicSubFilter === "monthly" && f.name.startsWith("monthly_"));
-
-      return matchesSearch && matchesCat && matchesPeriodicSub;
+      return matchesSearch && matchesShelf;
     });
-  }, [files, searchQuery, activeCategory, periodicSubFilter]);
+  }, [files, searchQuery, shelf]);
 
   return (
     <div className="wiki-vault-container h-full flex flex-col bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden">
@@ -527,49 +531,57 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               />
             </div>
 
-            {/* Category Filter Pills (clean wrapping without ugly scrollbars) */}
-            <div className="flex flex-wrap gap-1 text-[11px]">
-              {([
-                { key: "all", label: "All" },
-                { key: "projects", label: "Projects" },
-                { key: "topics", label: "Topics" },
-                { key: "sessions", label: "Sessions" },
-                { key: "periodic", label: "Periodic" },
-                { key: "root", label: "Index / Log" },
-              ] as const).map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setActiveCategory(key)}
-                  className={`px-2.5 py-1 rounded-lg font-medium text-xs whitespace-nowrap transition-colors cursor-pointer ${
-                    activeCategory === key
-                      ? "bg-violet-600 text-white font-semibold shadow-xs"
-                      : "bg-[var(--border-color)]/40 text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--border-color)]/70"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            {/* The Three Sacred Shelves */}
+            <div className="grid grid-cols-4 gap-1 p-1 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] text-[10px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setShelf("all")}
+                className={`py-1 px-1 rounded-lg transition-all text-center cursor-pointer truncate ${
+                  shelf === "all"
+                    ? "bg-violet-600 text-white shadow-xs"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+                title="All notes"
+              >
+                All ({files.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShelf("chronicles")}
+                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                  shelf === "chronicles"
+                    ? "bg-violet-600 text-white shadow-xs"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+                title="Daily, weekly, and monthly chronicles"
+              >
+                📖 Chronicles ({chroniclesCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShelf("craft")}
+                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                  shelf === "craft"
+                    ? "bg-violet-600 text-white shadow-xs"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+                title="Projects and deep session chapters"
+              >
+                ⚡ Craft ({craftCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShelf("ideas")}
+                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                  shelf === "ideas"
+                    ? "bg-violet-600 text-white shadow-xs"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                }`}
+                title="Topics and knowledge index"
+              >
+                💡 Ideas ({ideasCount})
+              </button>
             </div>
-
-            {/* Periodic Sub-Filter (Don't Make Me Think: instant 1-click drill down) */}
-            {activeCategory === "periodic" && (
-              <div className="flex items-center gap-1 p-1 bg-[var(--bg-color)]/50 rounded-xl border border-[var(--border-color)] text-[10px]">
-                {(["all", "daily", "weekly", "monthly"] as const).map((sub) => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => setPeriodicSubFilter(sub)}
-                    className={`flex-1 py-1 px-1 rounded-lg font-semibold transition-colors cursor-pointer text-center ${
-                      periodicSubFilter === sub
-                        ? "bg-violet-600 text-white shadow-xs"
-                        : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                    }`}
-                  >
-                    {sub === "all" ? "All" : sub === "daily" ? "☀️ Day" : sub === "weekly" ? "📅 Week" : "🗓️ Month"}
-                  </button>
-                ))}
-              </div>
-            )}
 
             <button
               onClick={() => setIsCreatingNew(true)}
@@ -747,10 +759,149 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-3 text-[var(--text-muted)]">
-              <BookOpen className="w-10 h-10 opacity-30 text-violet-500" />
-              <p className="text-sm font-semibold text-[var(--text-color)]">No Note Selected</p>
-              <p className="text-xs max-w-sm">Select a note from the left explorer or create a new project/topic note.</p>
+            <div className="flex-1 overflow-y-auto p-6 sm:p-10 flex flex-col items-center justify-center text-left max-w-4xl mx-auto custom-scrollbar animate-in fade-in duration-300">
+              {/* Distinguished Sanctuary Header */}
+              <div className="w-full text-center mb-8">
+                <div className="inline-flex p-3 rounded-2xl bg-violet-500/10 border border-violet-500/25 text-violet-400 mb-3 shadow-xs">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold text-[var(--text-color)] tracking-tight">Personal Library Sanctuary</h2>
+                <p className="text-xs text-[var(--text-muted)] mt-1 max-w-md mx-auto">
+                  Your private, offline knowledge vault. 100% on-device, encrypted, and curated from the rhythm of your craft.
+                </p>
+              </div>
+
+              {/* Latest Chronicle Hero Card */}
+              {latestChronicle && (
+                <div className="w-full mb-8 p-5 rounded-2xl border border-violet-500/30 bg-gradient-to-r from-violet-500/10 via-indigo-500/5 to-transparent relative overflow-hidden shadow-xs">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Latest Chronicle</span>
+                      </div>
+                      <h3 className="text-base font-bold text-[var(--text-color)] truncate">
+                        {getNoteDisplayInfo(latestChronicle).title}
+                      </h3>
+                      <p className="text-xs text-[var(--text-muted)] font-mono">
+                        {latestChronicle.updated_at || "Recently recorded"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleSelectFile(latestChronicle)}
+                      className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs shadow-md shadow-violet-500/20 transition-all cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Open Chronicle ▶
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Three Collection Showcase Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-8">
+                {/* Shelf 1: Chronicles */}
+                <div
+                  onClick={() => setShelf("chronicles")}
+                  className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-amber-500" />
+                        <span>Chronicles</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        {chroniclesCount}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                      Daily reviews, weekly syntheses, and monthly milestones.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                    Browse Chronicles →
+                  </span>
+                </div>
+
+                {/* Shelf 2: Craft */}
+                <div
+                  onClick={() => setShelf("craft")}
+                  className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-emerald-500" />
+                        <span>Craft & Code</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                        {craftCount}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                      Active projects and focused deep work session chapters.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                    Browse Craft →
+                  </span>
+                </div>
+
+                {/* Shelf 3: Ideas */}
+                <div
+                  onClick={() => setShelf("ideas")}
+                  className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
+                        <Compass className="w-4 h-4 text-sky-500" />
+                        <span>Ideas & Topics</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                        {ideasCount}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                      Topic references, concept notes, and library index.
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                    Browse Ideas →
+                  </span>
+                </div>
+              </div>
+
+              {/* Quick Actions Footer */}
+              <div className="flex items-center gap-2.5 flex-wrap justify-center pt-4 border-t border-[var(--border-color)] w-full">
+                <button
+                  onClick={() => {
+                    setNewNoteCategory("projects");
+                    setIsCreatingNew(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--border-color)] hover:border-violet-500/40 bg-[var(--card-bg)] hover:bg-violet-500/10 text-xs font-semibold text-[var(--text-color)] transition-all cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5 text-violet-400" />
+                  <span>New Project Note</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setNewNoteCategory("topics");
+                    setIsCreatingNew(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--border-color)] hover:border-violet-500/40 bg-[var(--card-bg)] hover:bg-violet-500/10 text-xs font-semibold text-[var(--text-color)] transition-all cursor-pointer shadow-xs"
+                >
+                  <Compass className="w-3.5 h-3.5 text-sky-400" />
+                  <span>New Topic Note</span>
+                </button>
+                <button
+                  onClick={handleOpenInObsidian}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-color)] transition-all cursor-pointer shadow-xs"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Open Folder in Obsidian</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

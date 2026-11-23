@@ -470,6 +470,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             <MonthlyView
               yearMonth={selectedDate.substring(0, 7)}
               summaryData={monthlySummaries}
+              onSelectDate={(dateStr) => {
+                if (onSelectDate) onSelectDate(dateStr);
+                setViewMode("daily");
+              }}
             />
           </div>
         )}
