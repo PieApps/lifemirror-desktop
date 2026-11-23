@@ -1342,13 +1342,24 @@ pub fn run() {
     let incognito_state_tracker = incognito_state.clone();
 
     // Build and run the Tauri app
+    let single_instance_id = match env::AppEnvironment::detect(None) {
+        env::AppEnvironment::Production => "com.lifemirror.desktop",
+        env::AppEnvironment::Development => "com.lifemirror.desktop.dev",
+        env::AppEnvironment::Testing => "com.lifemirror.desktop.test",
+    };
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
+        .plugin(
+            tauri_plugin_single_instance::Builder::new()
+                .dbus_id(single_instance_id)
+                .callback(|app, _args, _cwd| {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .manage(db_arc.clone())
