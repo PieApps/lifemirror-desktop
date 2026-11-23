@@ -147,6 +147,19 @@ class SoundEngine {
       osc.stop(now + 0.03);
     } catch {}
   }
+
+  // Aliases for intuitive semantic calls
+  public playClick() {
+    this.playTactileTick();
+  }
+
+  public playCelebration() {
+    this.playEveningEpilogue();
+  }
+
+  public playFocusIgnite() {
+    this.playIgniteFocus();
+  }
 }
 
 export const sound = new SoundEngine();

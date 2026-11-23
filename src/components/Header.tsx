@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search
 } from "lucide-react";
@@ -28,7 +28,20 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchSelect,
 }) => {
   const search = useSearch();
-  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+
+  // Global ⌘K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSpotlightOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -50,22 +63,26 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       
-      {/* Search Bar */}
-      <div className="flex-1 max-w-md mx-2 sm:mx-8 relative" ref={searchContainerRef}>
-        <div className="relative flex items-center w-full">
-          <Search className="absolute left-3 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search your day..."
-            value={search.searchQuery}
-            onChange={(e) => search.setSearchQuery(e.target.value)}
-            className="w-full bg-[var(--bg-color)]/60 border border-[var(--border-color)] rounded-xl py-1.5 sm:py-2 pl-9 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 focus:border-violet-500/50 placeholder:text-zinc-500/50 transition-all"
-          />
-        </div>
+      {/* Omniscient Spotlight Search Bar Trigger */}
+      <div className="flex-1 max-w-md mx-2 sm:mx-8 relative">
+        <button
+          onClick={() => setIsSpotlightOpen(true)}
+          className="flex items-center justify-between w-full bg-[var(--bg-color)]/60 hover:bg-[var(--bg-color)] border border-[var(--border-color)] hover:border-violet-500/40 rounded-xl py-1.5 sm:py-2 pl-3.5 pr-2.5 text-xs sm:text-sm text-[var(--text-muted)] hover:text-[var(--text-color)] transition-all cursor-pointer group shadow-inner"
+        >
+          <div className="flex items-center gap-2.5">
+            <Search className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
+            <span className="truncate">Search your mind...</span>
+          </div>
+          <kbd className="hidden min-[480px]:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--text-muted)] bg-zinc-800/60 rounded-md border border-white/5">
+            ⌘K
+          </kbd>
+        </button>
         
-        {/* Results Overlay */}
+        {/* The Omniscient Memory Spotlight Modal */}
         <SearchResultsOverlay
+          isOpen={isSpotlightOpen}
           searchQuery={search.searchQuery}
+          setSearchQuery={search.setSearchQuery}
           searchResults={search.searchResults}
           memoryResults={search.memoryResults}
           isSearching={search.isSearching}
@@ -73,7 +90,10 @@ export const Header: React.FC<HeaderProps> = ({
             search.setSearchQuery("");
             onSearchSelect(act);
           }}
-          onClose={() => search.setSearchQuery("")}
+          onClose={() => {
+            setIsSpotlightOpen(false);
+            search.setSearchQuery("");
+          }}
         />
       </div>
 

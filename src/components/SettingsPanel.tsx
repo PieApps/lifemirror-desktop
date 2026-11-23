@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen, ChevronDown, ChevronUp, RefreshCw, Volume2 } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen, ChevronDown, ChevronUp, RefreshCw, Volume2, Clock, ShieldCheck } from "lucide-react";
 import { sound } from "../utils/sound";
 import { CloudPrivacyDisclosureModal } from "./CloudPrivacyDisclosureModal";
 import { ConfirmModal } from "./ConfirmModal";
@@ -593,13 +593,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </span>
       </div>
 
-      {/* Segmented Tab Navigation */}
+      {/* Segmented Tab Navigation: The Sacred Trio + Origin */}
       <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] shrink-0">
         {[
-          { id: "general", label: "General", icon: Sliders },
-          { id: "focus", label: "Focus & Blocks", icon: Target },
-          { id: "ai", label: "AI & Privacy", icon: Sparkles },
-          { id: "about", label: "About & Help", icon: Heart },
+          { id: "general", label: "Rhythm & Senses", icon: Clock },
+          { id: "focus", label: "Sanctum & Privacy", icon: Shield },
+          { id: "ai", label: "The Biographer", icon: Sparkles },
+          { id: "about", label: "Origin & Vault", icon: BookOpen },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -671,33 +671,50 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
 
           {/* Sensorial Sound Chimes */}
-          <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
-            <div className="flex items-center justify-between mb-2">
+          <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20 space-y-2.5">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Volume2 className="w-4 h-4 text-violet-400" />
                 <span className="text-sm font-medium text-[var(--text-color)]">Sensorial Sound Chimes</span>
               </div>
-              <button
-                onClick={() => {
-                  const next = !sound.getEnabled();
-                  sound.setEnabled(next);
-                  setSoundEnabled(next);
-                  if (next) sound.playIgniteFocus();
-                }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                  soundEnabled ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    soundEnabled ? "translate-x-6" : "translate-x-1"
+              <div className="flex items-center gap-2">
+                {soundEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => sound.playFocusIgnite()}
+                    className="px-2.5 py-1 text-[11px] font-medium text-violet-400 hover:text-violet-300 rounded-lg border border-violet-500/30 bg-violet-500/10 cursor-pointer transition-colors"
+                  >
+                    Preview Chime
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const next = !sound.getEnabled();
+                    sound.setEnabled(next);
+                    setSoundEnabled(next);
+                    if (next) sound.playIgniteFocus();
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                    soundEnabled ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
                   }`}
-                />
-              </button>
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      soundEnabled ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
               Plays gentle harmonic Solfeggio chimes when igniting focus and celebratory fanfares for the evening epilogue.
             </p>
+            <div className="pt-2 border-t border-[var(--border-color)]/50 flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span>Zen Immersion Shortcut</span>
+              <kbd className="px-2 py-0.5 text-[10px] font-mono font-bold bg-zinc-800/60 rounded-md border border-white/5 text-[var(--text-color)]">
+                ⌘D / Ctrl+D
+              </kbd>
+            </div>
           </div>
 
           {/* Minimum Session to Log */}
@@ -1134,9 +1151,24 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      {/* TAB 2: FOCUS & RULES */}
+      {/* TAB 2: SANCTUM & PRIVACY */}
       {activeTab === "focus" && (
         <div className="space-y-6 animate-in fade-in duration-150">
+          {/* Cryptographic Sovereign Seal */}
+          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-emerald-400">SQLCipher AES-256 Encrypted Vault</div>
+                <div className="text-[11px] text-[var(--text-muted)]">100% on-device sovereignty · Zero telemetry · Hardware-backed local key</div>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              SEALED
+            </span>
+          </div>
           {/* Deep Work & Distractions */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">
@@ -1876,23 +1908,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     )}
                   </div>
 
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
-                      if (!aiModel || aiModel === "false") setAiModel("llama3.2");
-                      handleTestConnection(true);
-                    }}
-                    disabled={connectionStatus === 'testing'}
-                    className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-900/20"
-                  >
-                    {connectionStatus === 'testing' ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Check className="w-3.5 h-3.5" />
-                    )}
-                    <span>{connectionStatus === 'testing' ? 'Testing Ollama...' : 'Test Local Connection'}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setAiUrl("http://localhost:11434");
+                        if (!aiModel || aiModel === "false") setAiModel("llama3.2");
+                        await handleTestConnection(true);
+                      }}
+                      disabled={connectionStatus === 'testing'}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Reset URL to default localhost:11434 and auto-query running Ollama instance"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Auto-Detect Ollama</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
+                        if (!aiModel || aiModel === "false") setAiModel("llama3.2");
+                        handleTestConnection(true);
+                      }}
+                      disabled={connectionStatus === 'testing'}
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-emerald-900/20"
+                    >
+                      {connectionStatus === 'testing' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      <span>{connectionStatus === 'testing' ? 'Testing...' : 'Test Connection'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Edit2, Check, MessageSquare, Trash2, FileText, Sparkles, Copy, ExternalLink, FolderOpen, CheckCheck, Layers } from 'lucide-react';
+import { X, Edit2, MessageSquare, Trash2, FileText, Sparkles, Copy, FolderOpen, CheckCheck, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl, openPath } from '@tauri-apps/plugin-opener';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
@@ -8,6 +8,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { formatDurationFull, formatDuration, formatTime } from '../utils/formatDuration';
 import { MarkdownRenderer } from '../utils/markdownRenderer';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
+import { sound } from '../utils/sound';
 
 /**
  * Full-precision duration formatter (e.g. "3m 12s").
@@ -40,22 +41,22 @@ interface TimelineSidebarProps {
 }
 
 export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMemoryNode, onUngroup }: TimelineSidebarProps) {
-  const [activeTab, setActiveTab] = useState<"breakdown" | "note">("breakdown");
   const [isEditing, setIsEditing] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [markdownContent, setMarkdownContent] = useState("");
   const [isCompiling, setIsCompiling] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [showCompiledNote, setShowCompiledNote] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isDeleteNoteModalOpen, setIsDeleteNoteModalOpen] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("lifemirror_session_drawer_width");
-      return saved ? Math.max(360, Math.min(850, parseInt(saved, 10))) : 440;
+      return saved ? Math.max(380, Math.min(850, parseInt(saved, 10))) : 460;
     } catch {
-      return 440;
+      return 460;
     }
   });
   const [isResizingDrawer, setIsResizingDrawer] = useState<boolean>(false);
@@ -338,8 +339,10 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
       } catch (saveErr) {
         console.warn("Could not auto-save session note to vault:", saveErr);
       }
+      return md;
     } catch (err) {
       console.error("Failed to compile session markdown:", err);
+      return undefined;
     } finally {
       setIsCompiling(false);
     }
@@ -354,6 +357,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
   const handleEnrichWithAI = async () => {
     if (!node || isEnriching) return;
     setIsEnriching(true);
+    sound.playClick();
     try {
       const sessionTitle = getGroupedSessionTitle(node);
       const activitiesSummary = timelineItems.map(it => {
@@ -370,6 +374,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
         node.memoryData.summary = enriched;
       }
       await compileMarkdown(enriched);
+      sound.playFocusIgnite();
     } catch (err) {
       console.error("AI enrichment failed:", err);
     } finally {
@@ -377,9 +382,15 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
     }
   };
 
-  const handleSaveAndOpen = async () => {
-    if (!node || !markdownContent) return;
+  const handleImmortalizeToVault = async () => {
+    if (!node) return;
+    sound.playFocusIgnite();
     try {
+      let content = markdownContent;
+      if (!content) {
+        const compiled = await compileMarkdown();
+        content = compiled || "";
+      }
       const title = getGroupedSessionTitle(node);
       const datePart = (node.start_time.split("T")[0] || "session").replace(/-/g, "");
       const timePart = (node.start_time.split("T")[1] || "00-00").substring(0, 5).replace(":", "");
@@ -388,16 +399,25 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
 
       const relPath = await invoke<string>("save_session_to_vault", {
         relativeFilename: filename,
-        content: markdownContent,
+        content,
         title,
       });
-
-      const vaultDir = await invoke<string>("get_vault_directory");
-      const fullFilePath = `${vaultDir.replace(/[\\\/]$/, "")}/${relPath}`;
       setSavedPath(relPath);
-      await openPath(fullFilePath);
+      sound.playCelebration();
     } catch (err) {
-      console.error("Failed to save and open markdown:", err);
+      console.error("Failed to immortalize session to vault:", err);
+    }
+  };
+
+  const handleOpenInEditor = async () => {
+    if (!savedPath) return;
+    try {
+      const vaultDir = await invoke<string>("get_vault_directory");
+      const fullFilePath = `${vaultDir.replace(/[\\\/]$/, "")}/${savedPath}`;
+      await openPath(fullFilePath);
+      sound.playClick();
+    } catch (err) {
+      console.error("Failed to open file in editor:", err);
     }
   };
 
@@ -417,6 +437,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
       });
       setSavedPath(relPath);
       setIsEditingNote(false);
+      sound.playClick();
     } catch (err) {
       console.error("Failed to save edited note:", err);
     }
@@ -426,6 +447,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
     if (!markdownContent) return;
     await navigator.clipboard.writeText(markdownContent);
     setCopySuccess(true);
+    sound.playClick();
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
@@ -458,10 +480,16 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
           {/* Hit area expander */}
           <div className="absolute inset-y-0 -left-1 -right-1 cursor-col-resize" />
         </div>
-        <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)]">
-          <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={getGroupedSessionTitle(node)}>
-            {getGroupedSessionTitle(node)}
-          </h2>
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-color)] bg-[var(--card-bg)]/50">
+          <div className="min-w-0 pr-4">
+            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest block mb-0.5">
+              Episode Chronicle
+            </span>
+            <h2 className="text-sm font-bold text-[var(--text-color)] truncate" title={getGroupedSessionTitle(node)}>
+              {getGroupedSessionTitle(node)}
+            </h2>
+          </div>
+
           <div className="flex items-center gap-1 shrink-0">
             {onUngroup && node.isGroupedSession && node.originalActivities.length > 1 && (
               <button
@@ -503,175 +531,171 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
-            <button onClick={onClose} className="p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer">
+            <button
+              onClick={onClose}
+              className="p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer"
+            >
               <X className="w-5 h-5 text-[var(--text-muted)]" />
             </button>
           </div>
         </div>
 
-        {/* Tab Switcher: Timeline Journey vs Reflective Note */}
-        <div className="flex border-b border-[var(--border-color)] bg-[var(--bg-color)]/50 px-5 pt-3 gap-2 shrink-0">
-          <button
-            onClick={() => setActiveTab("breakdown")}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "breakdown"
-                ? "border-violet-600 text-violet-600 dark:text-violet-400 font-bold"
-                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-color)]"
-            }`}
-          >
-            <span>Timeline Journey</span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10">{timelineItems.length}</span>
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("note");
-              if (!markdownContent) compileMarkdown();
-            }}
-            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "note"
-                ? "border-violet-600 text-violet-600 dark:text-violet-400 font-bold"
-                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-color)]"
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Reflective Note</span>
-            {summaryText && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
-          {activeTab === "breakdown" ? (
-            <>
-              <div className="mb-6 flex items-center gap-4">
+        {/* Single Unified Reading Flow */}
+        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-6">
+          
+          {/* Section 1: Hero Episode Card */}
+          <div className="glass rounded-2xl p-4 border border-[var(--border-color)] bg-[var(--card-bg)] flex items-center gap-4">
             <AppIcon
               appName={node.app_name}
               url={node.url}
               iconUrl={node.icon_url}
               domainTag={node.domain_tag}
               source={node.source}
-              className="w-12 h-12 shrink-0"
+              className="w-12 h-12 shrink-0 rounded-xl"
               showBadge={true}
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">
-                <span className="text-xl font-bold text-[var(--text-color)] font-mono whitespace-nowrap">
+                <span className="text-2xl font-bold text-[var(--text-color)] font-mono">
                   {getFormatDuration(activeDuration)}
                 </span>
-                <span className="text-xs text-[var(--text-muted)] font-medium">active</span>
+                <span className="text-xs text-violet-400 font-semibold uppercase tracking-wider">Focused</span>
               </div>
 
-              {(node.isGroupedSession && node.end_time && node.end_time !== node.start_time) ? (
-                <div className="text-xs text-[var(--text-muted)] font-mono opacity-80 flex items-center gap-1.5 flex-wrap mt-1">
-                  <span className="whitespace-nowrap">{formatTime(node.start_time)} – {formatTime(node.end_time)}</span>
-                  {totalDuration > activeDuration && (
-                    <>
-                      <span>•</span>
-                      <span className="whitespace-nowrap" title="Total elapsed session span">
-                        {formatDuration(totalDuration)} total
-                      </span>
-                    </>
-                  )}
-                </div>
-              ) : (
-                totalDuration > activeDuration && (
-                  <div className="text-xs text-[var(--text-muted)] font-mono opacity-80 mt-1 whitespace-nowrap">
-                    {formatDuration(totalDuration)} total
-                  </div>
-                )
-              )}
+              <div className="text-xs text-[var(--text-muted)] font-mono flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span>{formatTime(node.start_time)} – {formatTime(node.end_time || node.start_time)}</span>
+                {totalDuration > activeDuration && (
+                  <>
+                    <span>•</span>
+                    <span title="Total elapsed span">{formatDuration(totalDuration)} span</span>
+                  </>
+                )}
+              </div>
 
-              <div className="mt-2">
-                <span className="text-xs text-[var(--text-muted)] capitalize px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 inline-block">
-                  {node.isMemoryNode ? 'Synthesized Flow Episode' : `${node.source} Episode`}
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-zinc-300 px-2 py-0.5 rounded-full bg-zinc-800/60 border border-white/5 inline-block">
+                  {node.isMemoryNode ? '✨ Synthesized Flow' : `${node.source} Episode`}
                 </span>
+                {node.isGroupedSession && (
+                  <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                    {timelineItems.length} moments
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          {node.isMemoryNode && node.memoryData && (
-            <div className="mb-6 space-y-3">
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent border border-violet-500/25 shadow-sm relative overflow-hidden group">
-                <div className="flex items-center justify-between mb-2.5 relative z-10">
-                  <h3 className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                    <span>Biographer's Synthesis</span>
-                  </h3>
-                  {!isEditing ? (
-                    <button 
-                      onClick={() => setIsEditing(true)}
-                      className="p-1 rounded hover:bg-violet-500/10 text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Edit Summary"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={handleSaveSummary}
-                      className="p-1.5 rounded hover:bg-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400 transition-colors"
-                      title="Save Summary"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                
-                <div className="relative z-10">
-                  {!isEditing ? (
-                    <p className="text-sm text-[var(--text-color)] leading-relaxed min-h-[40px] whitespace-pre-wrap font-medium">
-                      {node.memoryData.summary || "No summary available."}
-                    </p>
-                  ) : (
+          {/* Section 2: The Biographer's Episode Story */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[11px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                <span>Biographer's Narrative</span>
+              </h3>
+              {summaryText && !isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-violet-400 flex items-center gap-1 transition-colors cursor-pointer"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+
+            {summaryText ? (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent border border-violet-500/25 relative">
+                {!isEditing ? (
+                  <p className="text-xs text-[var(--text-color)] leading-relaxed font-serif whitespace-pre-wrap">
+                    "{summaryText}"
+                  </p>
+                ) : (
+                  <div className="space-y-2">
                     <textarea
                       value={summaryText}
                       onChange={(e) => setSummaryText(e.target.value)}
-                      className="w-full text-sm text-[var(--text-color)] leading-relaxed bg-white/50 dark:bg-black/20 border border-violet-500/30 rounded-xl p-2.5 focus:outline-none focus:border-violet-500 custom-scrollbar resize-none"
+                      className="w-full text-xs text-[var(--text-color)] leading-relaxed bg-[var(--bg-color)] border border-violet-500/40 rounded-xl p-3 focus:outline-none focus:border-violet-500 custom-scrollbar resize-none font-serif"
                       rows={4}
                       autoFocus
                     />
-                  )}
-                </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setIsEditing(false)}
+                        className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveSummary}
+                        className="px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="p-4 rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--card-bg)]/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                <div className="text-xs text-[var(--text-muted)]">
+                  Turn this {getFormatDuration(activeDuration)} session into a synthesized literary chronicle.
+                </div>
+                <button
+                  onClick={handleEnrichWithAI}
+                  disabled={isEnriching}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white flex items-center gap-1.5 shrink-0 shadow-sm shadow-violet-600/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isEnriching ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isEnriching ? "Synthesizing..." : "Synthesize Narrative"}</span>
+                </button>
+              </div>
+            )}
+          </div>
 
+          {/* Section 3: User Notes (if manually annotated) */}
           {(node.notes && !node.isMemoryNode) && (
-            <div className="mb-8 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
-              <h3 className="text-[11px] font-semibold text-blue-500 uppercase tracking-widest mb-2">Notes</h3>
-              <p className="text-sm text-[var(--text-color)] leading-relaxed italic">"{node.notes}"</p>
+            <div className="p-3.5 rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs">
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block mb-1">Session Note</span>
+              <p className="text-[var(--text-color)] italic">"{node.notes}"</p>
             </div>
           )}
 
+          {/* Section 4: The Artifact Journey (Touched Windows & Activities) */}
           {node.isGroupedSession && !node.isShield && (
             <div>
-              <h3 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-4 flex items-center gap-2">
-                <span className="w-4 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
-                Journey Trail
-                <span className="flex-1 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                  Artifacts & Windows ({timelineItems.length})
+                </h3>
+              </div>
               
-              <div className="space-y-2.5 relative before:absolute before:inset-y-0 before:left-[19px] before:w-[2px] before:bg-black/5 dark:before:bg-white/5">
+              <div className="space-y-2 relative before:absolute before:inset-y-0 before:left-[19px] before:w-[2px] before:bg-black/5 dark:before:bg-white/5">
                 {timelineItems.map((event, idx) => {
                   const formattedDur = event.duration > 0 ? getFormatDuration(event.duration) : "<1s";
 
                   return (
-                    <div key={event.id ?? idx} className="relative flex items-start gap-4 p-2.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
-                      <div className="relative z-10 w-10 h-10 shrink-0 bg-[var(--bg-primary)] p-0.5 rounded-full shadow-sm">
+                    <div key={event.id ?? idx} className="relative flex items-start gap-3.5 p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                      <div className="relative z-10 w-9 h-9 shrink-0 bg-[var(--bg-primary)] p-0.5 rounded-xl shadow-xs">
                         <AppIcon
                           appName={event.app || node.app_name}
                           url={event.url}
                           iconUrl={event.icon}
                           domainTag={event.context}
                           source={event.source}
-                          className="w-full h-full"
+                          className="w-full h-full rounded-lg"
                           showBadge={false}
                         />
                       </div>
                       <div className="flex flex-col flex-1 min-w-0 pt-0.5">
-                        <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-start justify-between gap-2">
                           <span className="text-xs font-semibold text-[var(--text-color)] truncate" title={event.title}>
                             {event.title}
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 shrink-0">
                             {(event.isActivity || event.activityId) && onDeleteLog && (
                               <button
                                 onClick={() => {
@@ -686,24 +710,20 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                                     });
                                   }
                                 }}
-                                className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 cursor-pointer"
+                                className="p-1 rounded text-rose-500 hover:bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                 title="Delete activity"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             )}
-                            <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0 bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded group-hover:bg-black/10 dark:group-hover:bg-white/10 transition-colors">
+                            <span className="text-[10px] font-mono text-[var(--text-muted)] bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
                               {formattedDur}
                             </span>
                           </div>
                         </div>
-                        <span className="text-[11px] text-[var(--text-muted)] truncate flex items-center gap-1.5 flex-wrap">
-                          <span>{extractDomain(event.url) || event.app}</span>
-                          {event.context && event.context !== extractDomain(event.url) && event.context !== event.app && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium border border-emerald-500/20">
-                              {event.context}
-                            </span>
-                          )}
+
+                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] mt-0.5">
+                          <span className="truncate">{extractDomain(event.url) || event.app}</span>
                           {event.url && event.url.startsWith("http") && (
                             <button
                               type="button"
@@ -714,21 +734,17 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                                   openUrl(event.url).catch((err) => console.warn("Failed to open external url:", err));
                                 }
                               }}
-                              className="text-blue-500 hover:underline px-1 py-0.5 rounded hover:bg-blue-500/10 transition-colors cursor-pointer text-[11px]"
+                              className="text-violet-400 hover:underline px-1 py-0.5 rounded hover:bg-violet-500/10 transition-colors cursor-pointer text-[10px]"
                               title={`Open ${event.url}`}
                             >
                               ↗
                             </button>
                           )}
-                        </span>
-                        {event.metadata && (
-                          <p className="mt-1 text-[11px] text-[var(--text-muted)] bg-black/5 dark:bg-white/5 px-2 py-1 rounded border-l-2 border-emerald-500 italic line-clamp-2 leading-relaxed">
-                            "{event.metadata}"
-                          </p>
-                        )}
+                        </div>
+
                         {event.notes && (
-                          <div className="mt-1.5 p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[11px] text-violet-600 dark:text-violet-300 italic flex items-center gap-1.5">
-                            <MessageSquare className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                          <div className="mt-1 p-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[11px] text-violet-300 italic flex items-center gap-1.5">
+                            <MessageSquare className="w-3 h-3 text-violet-400 shrink-0" />
                             <span>"{event.notes}"</span>
                           </div>
                         )}
@@ -736,130 +752,126 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                     </div>
                   );
                 })}
-                
-                {timelineItems.length === 0 && (
-                  <div className="text-sm text-[var(--text-muted)] italic text-center py-8">No granular events recorded</div>
-                )}
               </div>
             </div>
           )}
 
           {node.isShield && (
             <div>
-              <h3 className="text-[11px] font-semibold text-red-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <span className="w-1 h-1 rounded-full bg-red-500"></span>
-                Blocked Distractions
+              <h3 className="text-[11px] font-bold text-red-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                Interdicted Distractions
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {node.distractionEvents?.map((event, idx) => (
-                  <div key={event.id || idx} className="flex flex-col gap-1.5 p-3 rounded-lg bg-red-500/5 border border-red-500/10">
+                  <div key={event.id || idx} className="flex flex-col gap-1 p-3 rounded-xl bg-red-500/5 border border-red-500/15">
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-xs font-semibold text-red-500 dark:text-red-400 truncate">{event.app_name}: {event.window_title}</span>
+                      <span className="text-xs font-semibold text-red-400 truncate">{event.app_name}: {event.window_title}</span>
                       <span className="text-[10px] font-mono text-red-400/80 bg-red-500/10 px-1.5 py-0.5 rounded">{getFormatDuration(event.duration_blocked)}</span>
                     </div>
-                    <span className="text-[11px] text-red-400/80 italic">"{event.interception_reason}"</span>
+                    <span className="text-[11px] text-red-400/70 italic">"{event.interception_reason}"</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-          </>
-        ) : (
-          /* Session Note View */
-          <div className="space-y-4">
-            {/* Action Toolbar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-[var(--bg-color)]/60 border border-[var(--border-color)] shadow-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  onClick={handleEnrichWithAI}
-                  disabled={isEnriching}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                  title="Synthesize session accomplishments and key takeaways with AI"
-                >
-                  {isEnriching ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isEnriching ? "Enriching..." : "Enrich with AI"}</span>
-                </button>
 
-                <button
-                  onClick={handleSaveAndOpen}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--card-bg)] hover:bg-[var(--border-color)] text-[var(--text-color)] border border-[var(--border-color)] transition-colors cursor-pointer"
-                  title="Save to vault and open in external editor (Obsidian / VS Code)"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-violet-500" />
-                  <span>Open in Editor</span>
-                </button>
+          {/* Section 5: Collapsible Markdown Note Preview */}
+          <div className="pt-2 border-t border-[var(--border-color)]">
+            <button
+              onClick={() => setShowCompiledNote(!showCompiledNote)}
+              className="flex items-center justify-between w-full py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-violet-400" />
+                <span>Vault Note Source</span>
               </div>
+              {showCompiledNote ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
 
-              <div className="flex items-center justify-end gap-1">
+            {showCompiledNote && (
+              <div className="mt-2 space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                    {savedPath ? `Vault: ${savedPath}` : "Draft ready to immortalize"}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleCopyMarkdown}
+                      className="px-2 py-1 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors text-[10px] flex items-center gap-1 cursor-pointer"
+                    >
+                      {copySuccess ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copySuccess ? "Copied" : "Copy"}</span>
+                    </button>
+                    {isEditingNote ? (
+                      <button
+                        onClick={handleSaveEditedNote}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[10px] cursor-pointer"
+                      >
+                        Save Edits
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setIsEditingNote(true)}
+                        className="px-2 py-1 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors text-[10px] cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {isEditingNote ? (
-                  <button
-                    onClick={handleSaveEditedNote}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer shadow-xs"
-                    title="Save Changes to Vault"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Save</span>
-                  </button>
-                ) : null}
-                <button
-                  onClick={handleCopyMarkdown}
-                  className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--border-color)] transition-colors cursor-pointer"
-                  title="Copy Markdown"
-                >
-                  {copySuccess ? <CheckCheck className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => setIsEditingNote(!isEditingNote)}
-                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                    isEditingNote ? "bg-violet-500/20 text-violet-500" : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--border-color)]"
-                  }`}
-                  title={isEditingNote ? "Cancel Editing" : "Edit Markdown"}
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                {savedPath && (
-                  <button
-                    onClick={() => setIsDeleteNoteModalOpen(true)}
-                    className="p-1.5 rounded-lg text-red-500/80 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                    title="Move Session Note to Trash (.trash/)"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <textarea
+                    value={markdownContent}
+                    onChange={(e) => setMarkdownContent(e.target.value)}
+                    className="w-full h-64 p-3 text-xs font-mono rounded-xl bg-[var(--bg-color)] border border-[var(--border-color)] text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none custom-scrollbar"
+                  />
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-[var(--bg-color)]/60 border border-[var(--border-color)] text-xs">
+                    <MarkdownRenderer content={markdownContent} />
+                  </div>
                 )}
-              </div>
-            </div>
-
-            {savedPath && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center justify-between">
-                <span>Saved to: <code className="font-mono font-semibold">{savedPath}</code></span>
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-              </div>
-            )}
-
-            {/* Note Content */}
-            {isCompiling ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-2 text-xs text-[var(--text-muted)]">
-                <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-                <span>Compiling session note...</span>
-              </div>
-            ) : isEditingNote ? (
-              <textarea
-                value={markdownContent}
-                onChange={(e) => setMarkdownContent(e.target.value)}
-                className="w-full h-[450px] p-3 text-xs font-mono rounded-xl bg-[var(--bg-color)] border border-[var(--border-color)] text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500 resize-none custom-scrollbar"
-                placeholder="Write or edit markdown..."
-              />
-            ) : (
-              <div className="p-4 rounded-2xl bg-[var(--bg-color)]/40 border border-[var(--border-color)] shadow-xs">
-                <MarkdownRenderer content={markdownContent} />
               </div>
             )}
           </div>
-        )}
+        </div>
+
+        {/* Sticky Immortalize Action Footer */}
+        <div className="p-4 border-t border-[var(--border-color)] bg-[var(--bg-color)]/90 backdrop-blur-md flex items-center justify-between gap-3">
+          {savedPath ? (
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                <span className="text-xs font-semibold text-emerald-400">Immortalized to Vault</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenInEditor}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--card-bg)] hover:bg-[var(--border-color)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-color)] flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Open in Vault</span>
+                </button>
+                <button
+                  onClick={handleCopyMarkdown}
+                  className="p-1.5 rounded-xl bg-[var(--card-bg)] hover:bg-[var(--border-color)] border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-colors"
+                  title="Copy Markdown"
+                >
+                  {copySuccess ? <CheckCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleImmortalizeToVault}
+              disabled={isCompiling}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white shadow-lg shadow-violet-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Immortalize to Personal Vault</span>
+            </button>
+          )}
         </div>
       </div>
       <ConfirmModal {...confirmModal} />
