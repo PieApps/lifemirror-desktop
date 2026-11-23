@@ -259,7 +259,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
 
                     {isSelected && (
                       <div className="shrink-0 flex items-center gap-1 text-[11px] font-mono text-violet-400 font-semibold self-center">
-                        <span>Jump</span>
+                        <span>Inspect</span>
                         <CornerDownLeft className="w-3.5 h-3.5" />
                       </div>
                     )}
@@ -324,7 +324,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
 
                   {isSelected && (
                     <div className="shrink-0 flex items-center gap-1 text-[11px] font-mono text-violet-400 font-semibold self-center">
-                      <span>Jump</span>
+                      <span>Inspect</span>
                       <CornerDownLeft className="w-3.5 h-3.5" />
                     </div>
                   )}
@@ -344,7 +344,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
             </span>
             <span className="flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-white/5">↵</kbd>
-              <span>warp to river</span>
+              <span>inspect & warp</span>
             </span>
           </div>
 

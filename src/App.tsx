@@ -21,8 +21,121 @@ import { FirstLogCelebration } from "./components/FirstLogCelebration";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
 import TimelineSidebar from "./components/TimelineSidebar";
-import type { TimelineNode } from "./components/SCurveTimeline";
+import { type TimelineNode, type SubSessionEvent, formatCleanTitle } from "./components/SCurveTimeline";
 import { calculateNonOverlappingDuration } from "./utils/formatDuration";
+
+function createTimelineNodeFromSearchResult(
+  node: ActivityNode | MemoryNode,
+  subSessionEvents: SubSessionEvent[] = []
+): TimelineNode {
+  // Case 1: MemoryNode (Semantic Episode)
+  if ('node_type' in node || !('app_name' in node)) {
+    const mn = node as MemoryNode;
+    let dominantAppName = mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory');
+    let dominantIcon: string | undefined = undefined;
+    let dominantUrl: string | undefined = undefined;
+    let dominantSource = 'AI Memory';
+    
+    if (mn.activities && mn.activities.length > 0) {
+      const durations: Record<string, number> = {};
+      mn.activities.forEach(a => {
+        durations[a.app_name] = (durations[a.app_name] || 0) + a.duration;
+      });
+      let maxApp = mn.activities[0].app_name;
+      let maxDur = 0;
+      for (const [app, dur] of Object.entries(durations)) {
+        if (dur > maxDur) { maxDur = dur; maxApp = app; }
+      }
+      const dominant = mn.activities.find(a => a.app_name === maxApp) || mn.activities[0];
+      dominantAppName = dominant.app_name;
+      dominantIcon = dominant.icon_url;
+      dominantUrl = dominant.url;
+      dominantSource = dominant.source;
+    }
+
+    let displayTitle = mn.title;
+    if (displayTitle.startsWith("Session involving ") || displayTitle.endsWith(" Session") || displayTitle.startsWith("Chrome (http")) {
+      if (dominantUrl) {
+        try {
+          const parsed = new URL(dominantUrl.startsWith("http") ? dominantUrl : `https://${dominantUrl}`);
+          const host = parsed.hostname.replace(/^www\./, "");
+          displayTitle = `${host.charAt(0).toUpperCase() + host.slice(1)} Flow`;
+        } catch {
+          displayTitle = `${dominantAppName} Flow`;
+        }
+      } else {
+        displayTitle = `${dominantAppName} Flow`;
+      }
+    }
+
+    const actStarts = (mn.activities || []).map(a => new Date(a.start_time).getTime());
+    const actEnds = (mn.activities || []).map(a => new Date(a.start_time).getTime() + a.duration * 1000);
+    const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
+    const mnTime = new Date(mn.timestamp).getTime();
+    const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
+    let calculatedDuration = calculateNonOverlappingDuration(mn.activities || []);
+    if (calculatedDuration === 0 && mn.sub_events && mn.sub_events.length > 0) {
+      if (mn.sub_events.length > 1) {
+        const span = Math.round((Math.max(...subTimes) - Math.min(...subTimes)) / 1000);
+        calculatedDuration = Math.max(60, Math.min(span, mn.sub_events.length * 60));
+      } else {
+        calculatedDuration = 60;
+      }
+    }
+    const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
+    const spanSeconds = Math.max(0, Math.round((endMs - startMs) / 1000));
+    const totalDur = Math.max(calculatedDuration, spanSeconds);
+
+    return {
+      isGroupedSession: true,
+      id: mn.id || Math.abs(String(mn.timestamp).split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0)),
+      app_name: dominantAppName,
+      window_title: displayTitle,
+      start_time: new Date(startMs).toISOString(),
+      end_time: new Date(endMs).toISOString(),
+      duration: Math.min(calculatedDuration, totalDur > 0 ? totalDur : calculatedDuration),
+      total_duration: totalDur,
+      source: dominantSource,
+      url: dominantUrl,
+      icon_url: dominantIcon,
+      notes: mn.summary,
+      originalActivities: mn.activities ? [...mn.activities] : [],
+      subEvents: mn.sub_events ? [...mn.sub_events] : [],
+      isMemoryNode: true,
+      memoryData: mn
+    };
+  }
+
+  // Case 2: ActivityNode (Granular OS Window / Moment)
+  const act = node as ActivityNode;
+  const actStartMs = new Date(act.start_time).getTime();
+  const actDuration = act.duration || 60;
+  const actEndMs = actStartMs + actDuration * 1000;
+
+  const matchedSubEvents = subSessionEvents.filter(s => {
+    const t = new Date(s.timestamp).getTime();
+    return t >= actStartMs - 5000 && t <= actEndMs + 5000;
+  });
+
+  return {
+    isGroupedSession: false,
+    id: act.id,
+    app_name: act.app_name,
+    window_title: formatCleanTitle(act.window_title, act.app_name, act.domain_tag, act.url),
+    start_time: act.start_time,
+    end_time: new Date(actEndMs).toISOString(),
+    duration: actDuration,
+    total_duration: actDuration,
+    source: act.source || "OS",
+    url: act.url,
+    icon_url: act.icon_url,
+    domain_tag: act.domain_tag,
+    notes: act.notes,
+    originalActivities: [act],
+    subEvents: matchedSubEvents,
+    isMemoryNode: false
+  };
+}
 
 function App() {
   const settings = useSettings();
@@ -42,6 +155,7 @@ function App() {
   const [lockedFeatureName, setLockedFeatureName] = useState<string | null>(null);
   const [isAISetupOpen, setIsAISetupOpen] = useState(false);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"general" | "focus" | "ai" | "about">("general");
+  const [searchSelectedTimelineNode, setSearchSelectedTimelineNode] = useState<TimelineNode | null>(null);
 
   // Zen Mode state (⌘D / Ctrl+D to toggle, persisted)
   const [isZenMode, setIsZenMode] = useState<boolean>(() => {
@@ -241,7 +355,8 @@ function App() {
           const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
           data.setSelectedDate(dateStr);
           data.setViewMode("daily");
-          data.setSelectedActivity(node);
+          const timelineNode = createTimelineNodeFromSearchResult(node, data.subSessionEvents);
+          setSearchSelectedTimelineNode(timelineNode);
         }}
       />
 
@@ -452,83 +567,26 @@ function App() {
         </div>
       )}
 
-      {data.selectedActivity && 'app_name' in data.selectedActivity && (
+      {data.selectedActivity && (
         <JournalModal
-          activity={data.selectedActivity as ActivityNode}
+          activity={data.selectedActivity}
           onSave={data.handleSaveJournal}
           onClose={() => data.setSelectedActivity(null)}
         />
       )}
 
-      {data.selectedActivity && !('app_name' in data.selectedActivity) && (
+      {searchSelectedTimelineNode && (
         <TimelineSidebar
-          node={(() => {
-            const mn = data.selectedActivity as MemoryNode;
-            let dominantAppName = mn.node_type === 'session' ? 'Semantic Session' : (mn.node_type || 'Memory');
-            let dominantIcon = undefined;
-            let dominantUrl = undefined;
-            let dominantSource = 'AI Memory';
-            
-            if (mn.activities && mn.activities.length > 0) {
-               const durations: Record<string, number> = {};
-               mn.activities.forEach(a => {
-                 durations[a.app_name] = (durations[a.app_name] || 0) + a.duration;
-               });
-               let maxApp = mn.activities[0].app_name;
-               let maxDur = 0;
-               for (const [app, dur] of Object.entries(durations)) {
-                 if (dur > maxDur) { maxDur = dur; maxApp = app; }
-               }
-               const dominant = mn.activities.find(a => a.app_name === maxApp) || mn.activities[0];
-               dominantAppName = dominant.app_name;
-               dominantIcon = dominant.icon_url;
-               dominantUrl = dominant.url;
-               dominantSource = dominant.source;
-            }
-
-            let displayTitle = mn.title;
-            if (displayTitle.startsWith("Session involving ")) {
-              displayTitle = `${dominantAppName} Session`;
-            }
-
-            const actStarts = (mn.activities || []).map(a => new Date(a.start_time).getTime());
-            const actEnds = (mn.activities || []).map(a => new Date(a.start_time).getTime() + a.duration * 1000);
-            const subTimes = (mn.sub_events || []).map(s => new Date(s.timestamp).getTime());
-            const mnTime = new Date(mn.timestamp).getTime();
-            const startMs = actStarts.length > 0 ? Math.min(...actStarts) : (subTimes.length > 0 ? Math.min(...subTimes, mnTime) : mnTime);
-            let calculatedDuration = calculateNonOverlappingDuration(mn.activities || []);
-            if (calculatedDuration === 0 && mn.sub_events && mn.sub_events.length > 0) {
-              if (mn.sub_events.length > 1) {
-                const span = Math.round((Math.max(...subTimes) - Math.min(...subTimes)) / 1000);
-                calculatedDuration = Math.max(60, Math.min(span, mn.sub_events.length * 60));
-              } else {
-                calculatedDuration = 60;
-              }
-            }
-            const endMs = actEnds.length > 0 ? Math.max(...actEnds) : (subTimes.length > 0 ? Math.max(...subTimes, startMs + calculatedDuration * 1000) : startMs + calculatedDuration * 1000);
-            const spanSeconds = Math.max(0, Math.round((endMs - startMs) / 1000));
-            const totalDur = Math.max(calculatedDuration, spanSeconds);
-
-            return {
-              isGroupedSession: true,
-              id: mn.id || Math.abs(String(mn.timestamp).split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0)),
-              app_name: dominantAppName,
-              window_title: displayTitle,
-              start_time: new Date(startMs).toISOString(),
-              end_time: new Date(endMs).toISOString(),
-              duration: Math.min(calculatedDuration, totalDur > 0 ? totalDur : calculatedDuration),
-              total_duration: totalDur,
-              source: dominantSource,
-              url: dominantUrl,
-              icon_url: dominantIcon,
-              notes: mn.summary,
-              originalActivities: mn.activities ? [...mn.activities] : [],
-              subEvents: mn.sub_events ? [...mn.sub_events] : [],
-              isMemoryNode: true,
-              memoryData: mn
-            } as TimelineNode;
-          })()}
-          onClose={() => data.setSelectedActivity(null)}
+          node={searchSelectedTimelineNode}
+          onClose={() => setSearchSelectedTimelineNode(null)}
+          onDeleteLog={(id) => {
+            data.handleDeleteLog(id);
+            setSearchSelectedTimelineNode(null);
+          }}
+          onDeleteMemoryNode={(id) => {
+            data.handleDeleteMemoryNode(id);
+            setSearchSelectedTimelineNode(null);
+          }}
         />
       )}
       {/* Support & Community Modals */}
