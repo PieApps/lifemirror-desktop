@@ -4,7 +4,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Folder, FileText, Search, Plus, ExternalLink,
   Edit2, Check, RefreshCw, Copy, CheckCheck, BookOpen,
-  ChevronRight, ArrowLeft, Trash2, Calendar
+  ChevronRight, ArrowLeft, Trash2, Calendar, FolderOpen
 } from "lucide-react";
 import { MarkdownRenderer } from "../utils/markdownRenderer";
 import { ConfirmModal } from "./ConfirmModal";
@@ -439,13 +439,24 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               <h2 className="text-sm sm:text-base font-bold text-[var(--text-color)] truncate">
                 Knowledge Vault
               </h2>
-              <span className="text-[10px] font-semibold font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                Karpathy LLM Wiki
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                Personal Library
               </span>
             </div>
-            <p className="text-xs text-[var(--text-muted)] truncate" title={vaultPath}>
-              {vaultPath || "Loading vault..."}
-            </p>
+            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span>100% On-Device · Encrypted & Offline</span>
+              {vaultPath && (
+                <button
+                  type="button"
+                  onClick={() => openPath(vaultPath).catch((err) => console.warn("Failed to open vault directory:", err))}
+                  className="p-0.5 hover:text-violet-400 transition-colors cursor-pointer ml-1"
+                  title={`Open folder: ${vaultPath}`}
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

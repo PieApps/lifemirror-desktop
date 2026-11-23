@@ -418,12 +418,17 @@ fn add_journal(
     state: State<'_, Arc<DbState>>,
     notes: String,
     activity_id: Option<i64>,
+    activity_ids: Option<Vec<i64>>,
 ) -> Result<i64, String> {
     if notes.len() > 65536 {
         return Err("Journal note exceeds maximum length (64KB)".to_string());
     }
     let timestamp = chrono::Utc::now().to_rfc3339();
-    if let Some(id) = activity_id {
+    if let Some(ids) = activity_ids {
+        for id in ids {
+            let _ = state.update_activity_notes(id, &notes);
+        }
+    } else if let Some(id) = activity_id {
         let _ = state.update_activity_notes(id, &notes);
     }
     state

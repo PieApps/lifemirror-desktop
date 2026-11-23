@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import {
-  ShieldAlert, Settings as SettingsIcon, RefreshCw, Sun, Moon, Search, LifeBuoy, Heart, Lock
+  ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search, Lock, Sparkles
 } from "lucide-react";
 import { useSearch } from "../hooks/useSearch";
 import { SearchResultsOverlay } from "./SearchResultsOverlay";
@@ -14,11 +14,8 @@ interface HeaderProps {
   activeAppName?: string;
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
-  onRefresh: () => void;
   onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
   onResumeClick: () => void;
-  onSupportClick: () => void;
-  onDonateClick: () => void;
   isAiAvailable?: boolean;
   onAILockedClick?: (featureName: string) => void;
 }
@@ -31,27 +28,24 @@ export const Header: React.FC<HeaderProps> = ({
   activeAppName,
   showSettings,
   setShowSettings,
-  onRefresh,
   onSearchSelect,
   onResumeClick,
-  onSupportClick,
-  onDonateClick,
   isAiAvailable = true,
   onAILockedClick,
 }) => {
   const search = useSearch();
   const searchContainerRef = useRef<HTMLDivElement>(null);
   return (
-    <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
+    <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <img 
           src="/icon.png" 
-          className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
+          className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-xl shadow-lg shadow-violet-500/10" 
           alt="LifeMirror Desktop Logo" 
         />
         <div className="hidden min-[480px]:block">
           <h1 className="text-sm sm:text-base font-bold tracking-tight text-[var(--text-color)] leading-none">LifeMirror Desktop</h1>
-          <span className="text-[9px] sm:text-[10px] text-[var(--text-muted)] font-medium tracking-wide">KNOW WHERE YOUR TIME WENT</span>
+          <span className="text-[9px] sm:text-[10px] text-[var(--text-muted)] font-medium tracking-wide">Your Mind's River</span>
         </div>
       </div>
       
@@ -61,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Search className="absolute left-3 w-4 h-4 text-[var(--text-muted)] pointer-events-none" />
           <input
             type="text"
-            placeholder="Search timeline..."
+            placeholder="Search your day..."
             value={search.searchQuery}
             onChange={(e) => search.setSearchQuery(e.target.value)}
             className="w-full bg-[var(--bg-color)]/60 border border-[var(--border-color)] rounded-xl py-1.5 sm:py-2 pl-9 sm:pl-10 pr-3 sm:pr-4 text-xs sm:text-sm text-[var(--text-color)] focus:outline-none focus:ring-1 focus:ring-violet-500/50 focus:border-violet-500/50 placeholder:text-zinc-500/50 transition-all"
@@ -82,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
         />
       </div>
 
-      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {/* Unified tracking status pill */}
         {isIncognito ? (
           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-950/40 border border-amber-800/40 text-amber-400 text-[10px] sm:text-xs font-semibold">
@@ -101,23 +95,24 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
+        {/* Elevated Hero Feature: Resume Flow */}
         <button
-          onClick={isAiAvailable === false && onAILockedClick ? () => onAILockedClick("Where was I? (Resume Context)") : onResumeClick}
+          onClick={isAiAvailable === false && onAILockedClick ? () => onAILockedClick("Resume Flow") : onResumeClick}
           aria-haspopup={isAiAvailable === false ? "dialog" : undefined}
-          aria-label={isAiAvailable === false ? "Where was I? - Locked, AI Engine required" : "Resume where you left off"}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl transition-all border text-xs sm:text-sm cursor-pointer ${
+          aria-label={isAiAvailable === false ? "Resume Flow - Locked, AI Engine required" : "Resume Flow where you left off"}
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl transition-all border text-xs sm:text-sm cursor-pointer shadow-sm ${
             isAiAvailable === false
               ? "border-zinc-300 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 group"
-              : "border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-semibold"
+              : "border-indigo-500/30 bg-gradient-to-r from-indigo-500/15 to-violet-500/15 hover:from-indigo-500/25 hover:to-violet-500/25 text-indigo-500 dark:text-indigo-300 font-semibold shadow-indigo-500/10"
           }`}
-          title={isAiAvailable === false ? "Where was I? (Locked - Requires AI Engine to be active)" : "Resume where you left off"}
+          title={isAiAvailable === false ? "Resume Flow (Requires AI Engine to be active)" : "Reconstruct context and resume where you left off"}
         >
           {isAiAvailable === false ? (
-            <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-500 dark:text-zinc-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" />
+            <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" />
           ) : (
-            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
           )}
-          <span className="hidden min-[640px]:inline">Where was I?</span>
+          <span className="hidden min-[640px]:inline">Resume Flow</span>
           {isAiAvailable === false && (
             <span className="text-[9px] uppercase px-1.5 py-0.5 font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-md shrink-0">
               Locked
@@ -125,45 +120,17 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Motivate / Support Developer Button */}
-        <button
-          onClick={onDonateClick}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-semibold text-xs cursor-pointer group"
-          title="Support LifeMirror's creator"
-        >
-          <Heart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400 fill-rose-400/20 group-hover:scale-110 transition-transform" />
-          <span className="hidden xl:inline">Donate</span>
-        </button>
-
-        {/* Support & Assistance Button */}
-        <button
-          onClick={onSupportClick}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-semibold text-xs cursor-pointer group"
-          title="Help & Feedback (vrpieapps@gmail.com)"
-        >
-          <LifeBuoy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400 group-hover:rotate-45 transition-transform" />
-          <span className="hidden xl:inline">Help & Support</span>
-        </button>
-
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          className="p-2.5 rounded-xl transition-all border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
+          className="p-2 sm:p-2.5 rounded-xl transition-all border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
           title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
         >
           {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-violet-600" />}
         </button>
 
         <button
-          onClick={onRefresh}
-          className="p-2.5 rounded-xl transition-all border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
-          title="Refresh database"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-
-        <button
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-2.5 rounded-xl transition-all border cursor-pointer ${
+          className={`p-2 sm:p-2.5 rounded-xl transition-all border cursor-pointer ${
             showSettings 
               ? "bg-violet-600 border-violet-500 text-white shadow-lg shadow-violet-500/20" 
               : "hover:bg-zinc-500/10 border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)]"

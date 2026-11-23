@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  ShieldAlert, Sparkles, Send, Trash2, MessageSquare, ArrowRight, Info, Lock
+  ShieldAlert, Sparkles, Send, Trash2, MessageSquare, ArrowRight, Lock
 } from "lucide-react";
 import type { ChatMessage } from "../types";
 import { ProductivityDashboard } from "./ProductivityDashboard";
@@ -86,17 +86,9 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 <span>AI Offline</span>
               </button>
             ) : activeAiTab === "chat" ? (
-              <>
-                <span className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-sm">
-                  {getPeriodLabel()}
-                </span>
-                <div 
-                  className="flex items-center"
-                  title="Note: Context is limited to your 50 most recent focus and tab events to ensure fast, stable local AI performance."
-                >
-                  <Info className="w-4 h-4 text-[var(--text-muted)] hover:text-violet-500 transition-colors cursor-help" />
-                </div>
-              </>
+              <span className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/30 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-sm">
+                {getPeriodLabel()}
+              </span>
             ) : null}
           </div>
         </div>
@@ -169,8 +161,8 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 </span>
               </div>
             ) : (
-              <p className="text-[var(--text-muted)] text-center text-xs">
-                Click reflect to compile your active log focus nodes into an AI productivity reflection.
+              <p className="text-[var(--text-muted)] text-center text-xs leading-relaxed max-w-[240px]">
+                Synthesize your day into a clear, mindful reflection.
               </p>
             )}
           </div>
@@ -235,7 +227,7 @@ export const AISidebar: React.FC<AISidebarProps> = ({
                 <div className="flex flex-col items-center justify-center h-full text-center p-4">
                   <MessageSquare className="w-8 h-8 text-[var(--text-muted)] opacity-30 mb-2" />
                   <p className="text-xs text-[var(--text-muted)] mb-3">
-                    Ask anything about your focus logs or productivity today!
+                    Ask anything about your day, projects, or focus.
                   </p>
                   
                   {/* Suggestion Pills */}

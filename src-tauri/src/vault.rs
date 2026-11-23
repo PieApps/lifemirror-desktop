@@ -33,6 +33,8 @@ pub struct SessionMarkdownPayload {
     pub activities: Vec<ActivitySummary>,
     pub sub_events: Vec<SubEventSummary>,
     pub ai_summary: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +43,8 @@ pub struct ActivitySummary {
     pub app_name: String,
     pub duration: i64,
     pub url: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -571,13 +575,22 @@ pub fn compile_session_markdown(
     md.push_str("---\n\n");
 
     // 2. Title & Overview
-    md.push_str(&format!("# Session: {}\n\n", payload.title));
+    md.push_str(&format!("# {}\n\n", payload.title));
     md.push_str(&format!("- **App / Context**: {}\n", payload.app_name));
     md.push_str(&format!("- **Duration**: {}\n", dur_formatted));
     md.push_str(&format!("- **Category**: {}\n", payload.category));
     md.push_str(&format!("- **Started**: {}\n\n", payload.start_time));
 
-    // 3. AI Reflection / Summary
+    // 3. User Reflection Notes (if recorded)
+    if let Some(user_notes) = &payload.notes {
+        if !user_notes.trim().is_empty() {
+            md.push_str("## 💭 Personal Reflections\n\n");
+            md.push_str(user_notes.trim());
+            md.push_str("\n\n");
+        }
+    }
+
+    // 4. AI Reflection / Summary
     md.push_str("## 🧠 Reflection & Synthesis\n\n");
     if let Some(summary) = &payload.ai_summary {
         if !summary.trim().is_empty() {
@@ -590,8 +603,8 @@ pub fn compile_session_markdown(
         md.push_str("*No AI reflection recorded yet for this session. Use the \"Enrich with AI\" button to synthesize key takeaways.*\n\n");
     }
 
-    // 4. Chronological Breakdown
-    md.push_str("## ⏱️ Activity Breakdown\n\n");
+    // 5. Chronological Breakdown
+    md.push_str("## ⏱️ Timeline Journey\n\n");
     if payload.activities.is_empty() && payload.sub_events.is_empty() {
         md.push_str("*Single continuous session block.*\n\n");
     } else {
@@ -602,10 +615,17 @@ pub fn compile_session_markdown(
                 if let Some(url) = &act.url {
                     if !url.is_empty() {
                         md.push_str(&format!("- **{}** ({}): [{}]({})\n", act.app_name, d_str, act.title, url));
-                        continue;
+                    } else {
+                        md.push_str(&format!("- **{}** ({}): {}\n", act.app_name, d_str, act.title));
+                    }
+                } else {
+                    md.push_str(&format!("- **{}** ({}): {}\n", act.app_name, d_str, act.title));
+                }
+                if let Some(n) = &act.notes {
+                    if !n.trim().is_empty() {
+                        md.push_str(&format!("  > 💭 *Reflection: \"{}\"*\n", n.trim()));
                     }
                 }
-                md.push_str(&format!("- **{}** ({}): {}\n", act.app_name, d_str, act.title));
             }
             md.push_str("\n");
         }
@@ -1351,16 +1371,19 @@ mod tests {
                     app_name: "Antigravity IDE".to_string(),
                     duration: 1800,
                     url: None,
+                    notes: None,
                 },
                 ActivitySummary {
                     title: "Web Store Package Info".to_string(),
                     app_name: "Google-chrome".to_string(),
                     duration: 1800,
                     url: Some("https://chrome.google.com/webstore".to_string()),
+                    notes: None,
                 },
             ],
             sub_events: vec![],
             ai_summary: Some("Refactored native host communication.".to_string()),
+            notes: None,
         };
 
         let md = compile_session_markdown(payload).unwrap();
@@ -1368,7 +1391,7 @@ mod tests {
         assert!(md.contains("duration: \"60m\""));
         assert!(md.contains("## 🧠 Reflection & Synthesis"));
         assert!(md.contains("Refactored native host communication."));
-        assert!(md.contains("## ⏱️ Activity Breakdown"));
+        assert!(md.contains("## ⏱️ Timeline Journey"));
         assert!(md.contains("[Web Store Package Info](https://chrome.google.com/webstore)"));
     }
 

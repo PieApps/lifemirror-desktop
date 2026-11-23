@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { formatDuration, type ProductivityMetrics } from "../services/analytics";
-import { Zap, Code, MessageCircle, AlertTriangle, Layers, TrendingUp, X, Clock, ChevronDown } from "lucide-react";
+import { Zap, Code, MessageCircle, Compass, Layers, TrendingUp, X, Clock, ChevronDown } from "lucide-react";
 
 interface ProductivityDashboardProps {
   metrics: ProductivityMetrics;
@@ -55,31 +55,23 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
     );
   }
 
-  // Score color logic
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return "text-emerald-500";
-    if (score >= 75) return "text-blue-500";
-    if (score >= 60) return "text-amber-500";
-    return "text-rose-500";
-  };
-
-  const scoreColor = getScoreColor(metrics.score);
+  // Creative Momentum qualitative flow state
+  const momentumLabel = metrics.score >= 80 ? "Deep Flow" : metrics.score >= 60 ? "Steady Rhythm" : "Active Flow";
+  const momentumColor = metrics.score >= 80 ? "text-violet-500 dark:text-violet-400" : metrics.score >= 60 ? "text-indigo-500 dark:text-indigo-400" : "text-sky-500 dark:text-sky-400";
+  const ringColor = metrics.score >= 80 ? "text-violet-500" : metrics.score >= 60 ? "text-indigo-500" : "text-sky-500";
 
   return (
     <div className="flex flex-col gap-4 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {/* Top Header: Score */}
+      {/* Top Header: Creative Momentum */}
       <div className="rounded-2xl glass border border-[var(--border-color)] shadow-sm overflow-hidden">
         <div className="flex items-center justify-between p-4">
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-              Productivity Score
+            <span className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-wider mb-1">
+              Creative Momentum
             </span>
             <div className="flex items-baseline gap-2">
-              <span className={`text-4xl font-black tracking-tight ${scoreColor}`}>
-                {metrics.score}
-              </span>
-              <span className="text-sm font-semibold text-[var(--text-muted)]">
-                / 100
+              <span className={`text-2xl sm:text-3xl font-black tracking-tight ${momentumColor}`}>
+                {momentumLabel}
               </span>
             </div>
             <button
@@ -91,13 +83,13 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
             </button>
           </div>
 
-          {/* Visual Score Ring */}
-          <div className="relative w-16 h-16 flex items-center justify-center">
+          {/* Visual Momentum Ring */}
+          <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
             <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 36 36">
               <path className="text-zinc-500/20" strokeWidth="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-              <path className={`${scoreColor} transition-all duration-1000 ease-out`} strokeDasharray={`${metrics.score}, 100`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              <path className={`${ringColor} transition-all duration-1000 ease-out`} strokeDasharray={`${metrics.score}, 100`} strokeWidth="4" strokeLinecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
             </svg>
-            <Zap className={`absolute w-5 h-5 ${scoreColor}`} />
+            <Zap className={`absolute w-5 h-5 ${ringColor}`} />
           </div>
         </div>
 
@@ -105,9 +97,9 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
         {showBreakdown && (
           <div className="px-4 pb-4 pt-1 border-t border-[var(--border-color)] space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
             {[
-              { label: "Focus ratio", pts: focusScorePts, max: 40, color: "bg-violet-500" },
-              { label: "Context switching", pts: switchScorePts, max: 30, color: "bg-blue-500" },
-              { label: "Distraction time", pts: distractionScorePts, max: 20, color: "bg-amber-500" },
+              { label: "Focus Harmony", pts: focusScorePts, max: 40, color: "bg-violet-500" },
+              { label: "Rhythm Stability", pts: switchScorePts, max: 30, color: "bg-indigo-500" },
+              { label: "Immersion Depth", pts: distractionScorePts, max: 20, color: "bg-emerald-500" },
             ].map(({ label, pts, max, color }) => (
               <div key={label}>
                 <div className="flex justify-between items-center mb-0.5">
@@ -125,14 +117,14 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
 
       {/* Grid of Metrics */}
       <div className="grid grid-cols-2 gap-3">
-        {/* Deep Work */}
+        {/* Deep Focus */}
         <div 
-          className="flex flex-col p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-violet-500/20"
+          className="flex flex-col p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-violet-500/15"
           onClick={() => setActiveModal("deepWork")}
         >
           <div className="flex items-center gap-1.5 mb-1 text-violet-500">
             <Code className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Deep Work</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Deep Focus</span>
           </div>
           <span className="text-lg font-bold text-[var(--text-color)]">
             {formatDuration(metrics.deepWorkTime)}
@@ -142,9 +134,9 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
           </span>
         </div>
 
-        {/* Meetings & Comms */}
+        {/* Communication */}
         <div 
-          className="flex flex-col p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-blue-500/20"
+          className="flex flex-col p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-blue-500/15"
           onClick={() => setActiveModal("communication")}
         >
           <div className="flex items-center gap-1.5 mb-1 text-blue-500">
@@ -155,46 +147,43 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
             {formatDuration(metrics.communicationTime)}
           </span>
           <span className="text-[10px] text-[var(--text-muted)]">
-            Teams, Slack, Mail
+            {metrics.communicationTime === 0 ? "Quiet day · Zero interruptions" : "Teams, Slack, Mail"}
           </span>
         </div>
 
-        {/* Distractions */}
+        {/* Exploration / Open Browsing */}
         <div 
-          className="flex flex-col p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-rose-500/20"
+          className="flex flex-col p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-amber-500/15"
           onClick={() => setActiveModal("distractions")}
         >
-          <div className="flex items-center gap-1.5 mb-1 text-rose-500">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Distractions</span>
+          <div className="flex items-center gap-1.5 mb-1 text-amber-500">
+            <Compass className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Exploration</span>
           </div>
           <span className="text-lg font-bold text-[var(--text-color)]">
             {formatDuration(metrics.distractionTime)}
           </span>
           <span className="text-[10px] text-[var(--text-muted)] truncate" title={metrics.biggestDistraction}>
-            {metrics.biggestDistraction ? `Mostly ${metrics.biggestDistraction}` : "Clean focus"}
+            {metrics.biggestDistraction ? `Research in ${metrics.biggestDistraction}` : "Pure immersion"}
           </span>
         </div>
 
-        {/* Context Switches */}
+        {/* Transitions & Rhythm */}
         <div
-          className="flex flex-col p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-amber-500/20"
+          className="flex flex-col p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform hover:bg-indigo-500/15"
           onClick={() => setActiveModal("switches")}
         >
-          <div className="flex items-center gap-1.5 mb-1 text-amber-500">
+          <div className="flex items-center gap-1.5 mb-1 text-indigo-500">
             <Layers className="w-3.5 h-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Switches</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Transitions</span>
           </div>
           <span className="text-lg font-bold text-[var(--text-color)]">
             {metrics.contextSwitches}
           </span>
-          <span className={`text-[10px] font-medium ${
-            switchesPerHour <= 8 ? 'text-emerald-500' :
-            switchesPerHour <= 15 ? 'text-amber-500' : 'text-rose-500'
-          }`}>
+          <span className="text-[10px] font-medium text-[var(--text-muted)]">
             {metrics.totalActiveTime > 0
-              ? `${switchesPerHour}/hr · ${switchesPerHour <= 8 ? 'focused' : switchesPerHour <= 15 ? 'moderate' : 'high'}`
-              : 'App transitions'}
+              ? `${switchesPerHour}/hr · ${switchesPerHour <= 8 ? 'steady pace' : switchesPerHour <= 15 ? 'balanced pace' : 'active pace'}`
+              : 'Flow transitions'}
           </span>
         </div>
       </div>
@@ -208,10 +197,10 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
           </span>
           <span className="text-[11px] font-bold text-violet-400">
             {fmtHour(peakFocusHour)}–{fmtHour((peakFocusHour + 1) % 24)}
-
           </span>
         </div>
       )}
+
       {/* Drill-down Modal */}
       {activeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -222,14 +211,14 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
               <div className="flex items-center gap-2">
                 {activeModal === "deepWork" && <Code className="w-5 h-5 text-violet-500" />}
                 {activeModal === "communication" && <MessageCircle className="w-5 h-5 text-blue-500" />}
-                {activeModal === "distractions" && <AlertTriangle className="w-5 h-5 text-rose-500" />}
-                {activeModal === "switches" && <Layers className="w-5 h-5 text-amber-500" />}
+                {activeModal === "distractions" && <Compass className="w-5 h-5 text-amber-500" />}
+                {activeModal === "switches" && <Layers className="w-5 h-5 text-indigo-500" />}
                 
                 <h3 className="text-lg font-semibold text-[var(--text-color)]">
-                  {activeModal === "deepWork" && "Deep Work Sessions"}
+                  {activeModal === "deepWork" && "Deep Focus Sessions"}
                   {activeModal === "communication" && "Communication"}
-                  {activeModal === "distractions" && "Distractions"}
-                  {activeModal === "switches" && "Context Switches"}
+                  {activeModal === "distractions" && "Exploration & Open Browsing"}
+                  {activeModal === "switches" && "App Transitions & Flow"}
                 </h3>
               </div>
               <button
@@ -262,7 +251,7 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
               ))}
 
               {activeModal === "communication" && metrics.communicationBlocksList.length === 0 && (
-                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No communication sessions recorded yet.</div>
+                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No communication sessions recorded yet. Quiet day!</div>
               )}
               {activeModal === "communication" && metrics.communicationBlocksList.map((block, idx) => (
                 <div key={idx} className="flex flex-col p-3 rounded-xl bg-blue-500/5 border border-blue-500/10">
@@ -281,19 +270,19 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
               ))}
 
               {activeModal === "distractions" && metrics.distractionEventsList.length === 0 && (
-                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No distractions recorded. Great focus!</div>
+                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No casual browsing recorded. Deep immersion!</div>
               )}
               {activeModal === "distractions" && metrics.distractionEventsList.map((block, idx) => (
-                <div key={idx} className="flex flex-col p-3 rounded-xl bg-rose-500/5 border border-rose-500/10">
+                <div key={idx} className="flex flex-col p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-semibold text-[var(--text-color)] text-sm">{block.appName}</span>
-                    <span className="font-mono text-xs text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded">{formatDuration(block.duration)}</span>
+                    <span className="font-mono text-xs text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded">{formatDuration(block.duration)}</span>
                   </div>
                   {block.windowTitle && (
                     <span className="text-xs text-[var(--text-muted)] truncate" title={block.windowTitle}>{block.windowTitle}</span>
                   )}
                   {block.reason && (
-                    <span className="text-xs text-rose-400/80 italic mt-1 bg-rose-500/10 px-2 py-1 rounded inline-block w-fit">"{block.reason}"</span>
+                    <span className="text-xs text-amber-400/90 italic mt-1 bg-amber-500/10 px-2 py-1 rounded inline-block w-fit">"{block.reason}"</span>
                   )}
                   <div className="flex items-center gap-1 mt-2 text-[10px] text-[var(--text-muted)] opacity-70">
                     <Clock className="w-3 h-3" />
@@ -303,13 +292,13 @@ export const ProductivityDashboard: React.FC<ProductivityDashboardProps> = ({ me
               ))}
 
               {activeModal === "switches" && metrics.switchEventsList.length === 0 && (
-                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No app switches recorded yet.</div>
+                <div className="text-center py-8 text-[var(--text-muted)] text-sm">No app transitions recorded yet.</div>
               )}
               {activeModal === "switches" && metrics.switchEventsList.map((block, idx) => (
-                <div key={idx} className="flex flex-col p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                <div key={idx} className="flex flex-col p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/10">
                   <div className="flex items-center gap-3 text-sm text-[var(--text-color)]">
                     <span className="font-semibold flex-1 truncate text-right text-[var(--text-muted)]">{block.fromApp}</span>
-                    <span className="text-amber-500 shrink-0">→</span>
+                    <span className="text-indigo-400 shrink-0">→</span>
                     <span className="font-semibold flex-1 truncate">{block.toApp}</span>
                   </div>
                   <div className="flex items-center justify-center gap-1 mt-2 text-[10px] text-[var(--text-muted)] opacity-70">

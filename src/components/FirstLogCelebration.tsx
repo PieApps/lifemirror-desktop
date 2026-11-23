@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sparkles, X } from "lucide-react";
 
 const STORAGE_KEY = "first_log_celebrated";
 
@@ -13,7 +14,7 @@ export function FirstLogCelebration({ activityCount }: FirstLogCelebrationProps)
     if (activityCount >= 1 && !localStorage.getItem(STORAGE_KEY)) {
       localStorage.setItem(STORAGE_KEY, "1");
       setVisible(true);
-      const t = setTimeout(() => setVisible(false), 6000);
+      const t = setTimeout(() => setVisible(false), 7000);
       return () => clearTimeout(t);
     }
   }, [activityCount]);
@@ -26,18 +27,20 @@ export function FirstLogCelebration({ activityCount }: FirstLogCelebrationProps)
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-violet-600 text-white shadow-2xl shadow-violet-500/40 border border-violet-400/30">
-        <span className="text-xl">🎉</span>
+      <div className="flex items-center gap-3.5 px-5 py-3.5 rounded-2xl bg-zinc-950/90 text-white shadow-2xl shadow-violet-500/25 border border-violet-500/30 backdrop-blur-xl">
+        <div className="p-2 rounded-xl bg-violet-500/20 text-violet-300 border border-violet-500/30 shrink-0">
+          <Sparkles className="w-5 h-5 text-violet-300 animate-pulse" />
+        </div>
         <div>
-          <p className="text-sm font-bold leading-tight">Your first memory has been captured.</p>
-          <p className="text-[11px] text-violet-200 mt-0.5">LifeMirror is now building your life timeline.</p>
+          <p className="text-sm font-bold text-white tracking-tight">The mirror is clear.</p>
+          <p className="text-xs text-zinc-300 mt-0.5">Your creative journey is now being quietly remembered.</p>
         </div>
         <button
           onClick={() => setVisible(false)}
-          className="ml-2 text-violet-200 hover:text-white transition-colors text-lg leading-none cursor-pointer"
+          className="ml-3 p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
           aria-label="Dismiss"
         >
-          ×
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>

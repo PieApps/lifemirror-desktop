@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./hooks/useSettings";
@@ -43,6 +42,40 @@ function App() {
   const [lockedFeatureName, setLockedFeatureName] = useState<string | null>(null);
   const [isAISetupOpen, setIsAISetupOpen] = useState(false);
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"general" | "focus" | "ai" | "about">("general");
+
+  // Zen Mode state (⌘D / Ctrl+D to toggle, persisted)
+  const [isZenMode, setIsZenMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("lifemirror_zen_mode") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleZenMode = () => {
+    setIsZenMode(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem("lifemirror_zen_mode", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+        const target = e.target as HTMLElement;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        toggleZenMode();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Resizable main sidepanel state (min 320px, max 750px, persisted)
   const [sidepanelWidth, setSidepanelWidth] = useState<number>(() => {
@@ -203,7 +236,6 @@ function App() {
         activeAppName={data.activeActivity?.app_name}
         showSettings={settings.showSettings}
         setShowSettings={settings.setShowSettings}
-        onRefresh={data.loadData}
         onSearchSelect={(node) => {
           const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
           const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
@@ -212,35 +244,9 @@ function App() {
           data.setSelectedActivity(node);
         }}
         onResumeClick={handleResumeProject}
-        onSupportClick={() => setIsSupportOpen(true)}
-        onDonateClick={() => setIsDonateOpen(true)}
         isAiAvailable={settings.isAiAvailable}
         onAILockedClick={handleAILockedClick}
       />
-
-      {/* One-time informative notice for users about the On-Demand battery & thermal optimization */}
-      {!settings.hasSeenOnDemandNotice && (
-        <div 
-          role="status" 
-          aria-live="polite"
-          className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border-b border-emerald-500/30 text-emerald-800 dark:text-emerald-200 px-4 py-2.5 text-xs shadow-sm flex items-center justify-between gap-4 z-50 animate-in fade-in slide-in-from-top-2 duration-300"
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="p-1 rounded-md bg-emerald-500/20 text-emerald-400 shrink-0">
-              <Sparkles className="w-3.5 h-3.5" />
-            </span>
-            <p className="leading-relaxed">
-              <strong className="font-semibold text-emerald-700 dark:text-emerald-300">Quiet & Battery-Saving Update:</strong> AI Engine is now set to <span className="font-semibold underline decoration-emerald-500/40">On-Demand</span> by default to keep cooling fans silent. Heavy background loops are paused until you request insights. You can customize this anytime in Settings.
-            </p>
-          </div>
-          <button
-            onClick={settings.dismissOnDemandNotice}
-            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors shrink-0 shadow-sm cursor-pointer"
-          >
-            Got it
-          </button>
-        </div>
-      )}
 
       {missingModel && settings.aiProcessingMode === "continuous" && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 text-center text-sm shadow-inner relative">
@@ -321,91 +327,97 @@ function App() {
           onDeleteLog={data.handleDeleteLog}
           onDeleteMemoryNode={data.handleDeleteMemoryNode}
           activeNodeStartTime={data.activeActivity?.start_time}
+          isZenMode={isZenMode}
+          onToggleZenMode={toggleZenMode}
         />
 
-        {/* Flexible Resizer Divider Bar between Timeline and Sidepanel */}
-        <div
-          onMouseDown={startResizingSidepanel}
-          className={`hidden sm:flex items-center justify-center w-2 -mx-1 cursor-col-resize select-none shrink-0 transition-colors z-20 group relative ${
-            isResizingSidepanel ? "bg-violet-600/30" : "hover:bg-violet-500/20"
-          }`}
-          title="Drag to resize sidepanel width"
-        >
-          <div className={`w-0.5 h-12 rounded-full transition-colors ${
-            isResizingSidepanel ? "bg-violet-600" : "bg-[var(--border-color)] group-hover:bg-violet-500"
-          }`} />
-          {/* Invisible hit padding */}
-          <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-        </div>
+        {!isZenMode && (
+          <>
+            {/* Flexible Resizer Divider Bar between Timeline and Sidepanel */}
+            <div
+              onMouseDown={startResizingSidepanel}
+              className={`hidden sm:flex items-center justify-center w-2 -mx-1 cursor-col-resize select-none shrink-0 transition-colors z-20 group relative ${
+                isResizingSidepanel ? "bg-violet-600/30" : "hover:bg-violet-500/20"
+              }`}
+              title="Drag to resize sidepanel width"
+            >
+              <div className={`w-0.5 h-12 rounded-full transition-colors ${
+                isResizingSidepanel ? "bg-violet-600" : "bg-[var(--border-color)] group-hover:bg-violet-500"
+              }`} />
+              {/* Invisible hit padding */}
+              <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+            </div>
 
-        {/* Sidebar */}
-        <div 
-          style={{ width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${sidepanelWidth}px` : undefined }}
-          className="sidebar-panel-wrapper space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6"
-        >
-          {settings.showSettings ? (
-            <SettingsPanel
-              isIncognito={settings.isIncognito}
-              onToggleIncognito={settings.handleToggleIncognito}
-              aiUrl={settings.ollamaUrl}
-              setAiUrl={settings.updateOllamaUrl}
-              aiModel={settings.ollamaModel}
-              setAiModel={settings.updateOllamaModel}
-              aiProcessingMode={settings.aiProcessingMode}
-              setAiProcessingMode={settings.updateAiProcessingMode}
-              trackingActive={settings.trackingActive}
-              setTrackingActive={settings.handleToggleTracking}
-              minLogDuration={settings.minLogDuration}
-              setMinLogDuration={settings.updateMinLogDuration}
-              minSubSessionDuration={settings.minSubSessionDuration}
-              updateMinSubSessionDuration={settings.updateMinSubSessionDuration}
-              isAutostartEnabled={settings.isAutostartEnabled}
-              toggleAutostart={settings.toggleAutostart}
-              onSupportClick={() => setIsSupportOpen(true)}
-              onDonateClick={() => setIsDonateOpen(true)}
-              initialTab={settingsDefaultTab}
-              onAiConnectionTested={settings.setIsAiAvailable}
-              excludedDomains={settings.excludedDomains}
-              unattachedNotes={settings.unattachedNotes}
-              onAddExcludedDomain={settings.addExcludedDomain}
-              onRemoveExcludedDomain={settings.removeExcludedDomain}
-              onPreviewPurge={settings.previewDomainPurge}
-              onRefreshUnattachedNotes={settings.loadUnattachedNotes}
-              aiMode={settings.aiMode}
-              onUpdateAiMode={settings.updateAiMode}
-              cloudProvider={settings.cloudProvider}
-              cloudApiKey={settings.cloudApiKey}
-              cloudBaseUrl={settings.cloudBaseUrl}
-              cloudModel={settings.cloudModel}
-              cloudDisclosureAccepted={settings.cloudDisclosureAccepted}
-              onSaveCloudConfig={settings.saveCloudConfig}
-              onRevokeCloudAccess={settings.revokeCloudAccess}
-            />
-          ) : (
-            <AISidebar
-              metrics={metrics}
-              isIncognito={settings.isIncognito}
-              getPeriodLabel={data.getPeriodLabel}
-              aiReflection={localAI.aiReflection}
-              aiLoading={localAI.aiLoading}
-              generateAIReflection={localAI.generateAIReflection}
-              activeAiTab={localAI.activeAiTab}
-              setActiveAiTab={localAI.setActiveAiTab}
-              chatMessages={data.chatMessages}
-              volatileChatHistory={localAI.volatileChatHistory}
-              chatInput={localAI.chatInput}
-              setChatInput={localAI.setChatInput}
-              chatLoading={localAI.chatLoading}
-              chatSuggestions={localAI.chatSuggestions}
-              loadingSuggestions={localAI.loadingSuggestions}
-              handleSendChat={localAI.handleSendChat}
-              handleGenerateSuggestions={localAI.handleGenerateSuggestions}
-              clearChat={localAI.clearChat}
-              isAiAvailable={settings.isAiAvailable}
-              onAILockedClick={handleAILockedClick}
-            />
-          )}
-        </div>
+            {/* Sidebar */}
+            <div 
+              style={{ width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${sidepanelWidth}px` : undefined }}
+              className="sidebar-panel-wrapper space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6"
+            >
+              {settings.showSettings ? (
+                <SettingsPanel
+                  isIncognito={settings.isIncognito}
+                  onToggleIncognito={settings.handleToggleIncognito}
+                  aiUrl={settings.ollamaUrl}
+                  setAiUrl={settings.updateOllamaUrl}
+                  aiModel={settings.ollamaModel}
+                  setAiModel={settings.updateOllamaModel}
+                  aiProcessingMode={settings.aiProcessingMode}
+                  setAiProcessingMode={settings.updateAiProcessingMode}
+                  trackingActive={settings.trackingActive}
+                  setTrackingActive={settings.handleToggleTracking}
+                  minLogDuration={settings.minLogDuration}
+                  setMinLogDuration={settings.updateMinLogDuration}
+                  minSubSessionDuration={settings.minSubSessionDuration}
+                  updateMinSubSessionDuration={settings.updateMinSubSessionDuration}
+                  isAutostartEnabled={settings.isAutostartEnabled}
+                  toggleAutostart={settings.toggleAutostart}
+                  onSupportClick={() => setIsSupportOpen(true)}
+                  onDonateClick={() => setIsDonateOpen(true)}
+                  initialTab={settingsDefaultTab}
+                  onAiConnectionTested={settings.setIsAiAvailable}
+                  excludedDomains={settings.excludedDomains}
+                  unattachedNotes={settings.unattachedNotes}
+                  onAddExcludedDomain={settings.addExcludedDomain}
+                  onRemoveExcludedDomain={settings.removeExcludedDomain}
+                  onPreviewPurge={settings.previewDomainPurge}
+                  onRefreshUnattachedNotes={settings.loadUnattachedNotes}
+                  aiMode={settings.aiMode}
+                  onUpdateAiMode={settings.updateAiMode}
+                  cloudProvider={settings.cloudProvider}
+                  cloudApiKey={settings.cloudApiKey}
+                  cloudBaseUrl={settings.cloudBaseUrl}
+                  cloudModel={settings.cloudModel}
+                  cloudDisclosureAccepted={settings.cloudDisclosureAccepted}
+                  onSaveCloudConfig={settings.saveCloudConfig}
+                  onRevokeCloudAccess={settings.revokeCloudAccess}
+                />
+              ) : (
+                <AISidebar
+                  metrics={metrics}
+                  isIncognito={settings.isIncognito}
+                  getPeriodLabel={data.getPeriodLabel}
+                  aiReflection={localAI.aiReflection}
+                  aiLoading={localAI.aiLoading}
+                  generateAIReflection={localAI.generateAIReflection}
+                  activeAiTab={localAI.activeAiTab}
+                  setActiveAiTab={localAI.setActiveAiTab}
+                  chatMessages={data.chatMessages}
+                  volatileChatHistory={localAI.volatileChatHistory}
+                  chatInput={localAI.chatInput}
+                  setChatInput={localAI.setChatInput}
+                  chatLoading={localAI.chatLoading}
+                  chatSuggestions={localAI.chatSuggestions}
+                  loadingSuggestions={localAI.loadingSuggestions}
+                  handleSendChat={localAI.handleSendChat}
+                  handleGenerateSuggestions={localAI.handleGenerateSuggestions}
+                  clearChat={localAI.clearChat}
+                  isAiAvailable={settings.isAiAvailable}
+                  onAILockedClick={handleAILockedClick}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modals */}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Edit2, Check, MessageSquare, Trash2, FileText, Sparkles, Copy, ExternalLink, FolderOpen, CheckCheck } from 'lucide-react';
+import { X, Edit2, Check, MessageSquare, Trash2, FileText, Sparkles, Copy, ExternalLink, FolderOpen, CheckCheck, Layers } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl, openPath } from '@tauri-apps/plugin-opener';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
@@ -35,9 +35,11 @@ interface TimelineSidebarProps {
   node: TimelineNode | null;
   onClose: () => void;
   onDeleteLog?: (id: number) => void;
+  onDeleteMemoryNode?: (id: number) => void;
+  onUngroup?: () => void;
 }
 
-export default function TimelineSidebar({ node, onClose, onDeleteLog }: TimelineSidebarProps) {
+export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMemoryNode, onUngroup }: TimelineSidebarProps) {
   const [activeTab, setActiveTab] = useState<"breakdown" | "note">("breakdown");
   const [isEditing, setIsEditing] = useState(false);
   const [summaryText, setSummaryText] = useState("");
@@ -306,6 +308,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
           app_name: a.app_name,
           duration: a.duration,
           url: a.url || undefined,
+          notes: a.notes || undefined,
         })),
         sub_events: (node.subEvents || []).map(s => ({
           title: formatCleanTitle(s.title, s.parent_app_name, s.context_tag, s.primary_uri),
@@ -314,6 +317,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
           timestamp: s.timestamp,
         })),
         ai_summary: summaryOverride ?? (summaryText || (node.isMemoryNode ? node.memoryData?.summary : undefined)),
+        notes: node.notes || undefined,
       };
       const md = await invoke<string>("compile_session_markdown", { payload });
       setMarkdownContent(md);
@@ -352,7 +356,10 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
     setIsEnriching(true);
     try {
       const sessionTitle = getGroupedSessionTitle(node);
-      const activitiesSummary = timelineItems.map(it => `- ${it.app}: ${it.title} (${getFormatDuration(it.duration)})`).join("\n");
+      const activitiesSummary = timelineItems.map(it => {
+        const noteStr = it.notes ? ` [User Note: "${it.notes}"]` : "";
+        return `- ${it.app}: ${it.title} (${getFormatDuration(it.duration)})${noteStr}`;
+      }).join("\n");
       const enriched = await invoke<string>("enrich_session_note", {
         sessionTitle,
         activitiesSummary: activitiesSummary || sessionTitle,
@@ -455,12 +462,54 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
           <h2 className="text-sm font-semibold text-[var(--text-color)] truncate pr-4" title={getGroupedSessionTitle(node)}>
             {getGroupedSessionTitle(node)}
           </h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors shrink-0">
-            <X className="w-5 h-5 text-[var(--text-muted)]" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {onUngroup && node.isGroupedSession && node.originalActivities.length > 1 && (
+              <button
+                onClick={onUngroup}
+                className="p-1.5 hover:bg-violet-500/10 text-[var(--text-muted)] hover:text-violet-400 rounded-lg transition-colors cursor-pointer"
+                title="Expand into individual moments on timeline"
+              >
+                <Layers className="w-4 h-4" />
+              </button>
+            )}
+            {onDeleteLog && (
+              <button
+                onClick={() => {
+                  setConfirmModal({
+                    isOpen: true,
+                    title: "Remove Episode",
+                    message: "Remove this focus episode and its recorded timeline trail?",
+                    onConfirm: () => {
+                      if (node.isShield) {
+                        node.distractionEvents?.forEach(ev => onDeleteLog(-ev.id));
+                      } else if (node.isGroupedSession) {
+                        node.originalActivities.forEach(act => {
+                          if (act.id) onDeleteLog(act.id);
+                        });
+                        if (node.isMemoryNode && onDeleteMemoryNode && node.id) {
+                          onDeleteMemoryNode(node.id);
+                        }
+                      } else if (node.id) {
+                        onDeleteLog(node.id);
+                      }
+                      onClose();
+                    },
+                    onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                  });
+                }}
+                className="p-1.5 hover:bg-rose-500/10 text-[var(--text-muted)] hover:text-rose-500 rounded-lg transition-colors cursor-pointer"
+                title="Remove Episode"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full transition-colors shrink-0 cursor-pointer">
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
+            </button>
+          </div>
         </div>
 
-        {/* Tab Switcher: Breakdown vs Session Note */}
+        {/* Tab Switcher: Timeline Journey vs Reflective Note */}
         <div className="flex border-b border-[var(--border-color)] bg-[var(--bg-color)]/50 px-5 pt-3 gap-2 shrink-0">
           <button
             onClick={() => setActiveTab("breakdown")}
@@ -470,7 +519,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                 : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-color)]"
             }`}
           >
-            <span>Activity Breakdown</span>
+            <span>Timeline Journey</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10">{timelineItems.length}</span>
           </button>
           <button
@@ -485,7 +534,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>Session Note</span>
+            <span>Reflective Note</span>
             {summaryText && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
           </button>
         </div>
@@ -533,37 +582,24 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
 
               <div className="mt-2">
                 <span className="text-xs text-[var(--text-muted)] capitalize px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/5 inline-block">
-                  {node.isMemoryNode ? 'AI Processed Session' : node.source}
+                  {node.isMemoryNode ? 'Synthesized Flow Episode' : `${node.source} Episode`}
                 </span>
               </div>
             </div>
           </div>
 
           {node.isMemoryNode && node.memoryData && (
-            <div className="mb-8 space-y-4">
-              <div className="flex flex-wrap gap-2 text-xs font-mono">
-                <span className="bg-violet-500/10 text-violet-500 dark:text-violet-400 px-2.5 py-1.5 rounded border border-violet-500/20 flex items-center gap-1.5">
-                  <span className="opacity-70">Score:</span> {(node.memoryData.importance_score || 0).toFixed(1)}
-                </span>
-                <span className="bg-blue-500/10 text-blue-500 dark:text-blue-400 px-2.5 py-1.5 rounded border border-blue-500/20 flex items-center gap-1.5">
-                  <span className="opacity-70">Conf:</span> {(node.memoryData.confidence || 0).toFixed(2)}
-                </span>
-                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1.5 rounded border border-emerald-500/20 capitalize">
-                  {node.memoryData.status}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-violet-500/5 dark:bg-violet-500/10 border border-violet-500/20 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-16 h-16 bg-violet-500/10 rounded-bl-full -mr-8 -mt-8" />
-                <div className="flex items-center justify-between mb-3 relative z-10">
-                  <h3 className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="w-1 h-1 rounded-full bg-violet-500"></span>
-                    AI Summary
+            <div className="mb-6 space-y-3">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent border border-violet-500/25 shadow-sm relative overflow-hidden group">
+                <div className="flex items-center justify-between mb-2.5 relative z-10">
+                  <h3 className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                    <span>Executive Summary</span>
                   </h3>
                   {!isEditing ? (
                     <button 
                       onClick={() => setIsEditing(true)}
-                      className="p-1.5 rounded hover:bg-violet-500/10 text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="p-1 rounded hover:bg-violet-500/10 text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Edit Summary"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -581,14 +617,14 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
                 
                 <div className="relative z-10">
                   {!isEditing ? (
-                    <p className="text-sm text-[var(--text-color)] leading-relaxed min-h-[40px] whitespace-pre-wrap">
+                    <p className="text-sm text-[var(--text-color)] leading-relaxed min-h-[40px] whitespace-pre-wrap font-medium">
                       {node.memoryData.summary || "No summary available."}
                     </p>
                   ) : (
                     <textarea
                       value={summaryText}
                       onChange={(e) => setSummaryText(e.target.value)}
-                      className="w-full text-sm text-[var(--text-color)] leading-relaxed bg-white/50 dark:bg-black/20 border border-violet-500/30 rounded p-2 focus:outline-none focus:border-violet-500 custom-scrollbar resize-none"
+                      className="w-full text-sm text-[var(--text-color)] leading-relaxed bg-white/50 dark:bg-black/20 border border-violet-500/30 rounded-xl p-2.5 focus:outline-none focus:border-violet-500 custom-scrollbar resize-none"
                       rows={4}
                       autoFocus
                     />
@@ -609,7 +645,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog }: Timeline
             <div>
               <h3 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-4 flex items-center gap-2">
                 <span className="w-4 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
-                Event Timeline ({timelineItems.length})
+                Journey Trail
                 <span className="flex-1 h-[1px] bg-[var(--text-muted)] opacity-30"></span>
               </h3>
               

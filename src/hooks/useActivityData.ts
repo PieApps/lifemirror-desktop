@@ -120,7 +120,7 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   // Journal selection
-  const [selectedActivity, setSelectedActivity] = useState<ActivityNode | MemoryNode | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
 
   // ─── Navigation ────────────────────────────────────────
 
@@ -316,9 +316,16 @@ export function useActivityData({ trackingActive, isIncognito, setIsIncognito }:
     }
   };
 
-  const handleSaveJournal = async (notes: string) => {
+  const handleSaveJournal = async (notes: string, activityIds?: number[]) => {
     try {
-      await invoke("add_journal", { notes, activityId: selectedActivity?.id || null });
+      const ids = activityIds && activityIds.length > 0
+        ? activityIds
+        : (selectedActivity?.id ? [selectedActivity.id] : null);
+      await invoke("add_journal", {
+        notes,
+        activityId: ids && ids.length === 1 ? ids[0] : null,
+        activityIds: ids,
+      });
       await loadData();
     } catch (e) {
       console.error("Failed to save journal entry:", e);

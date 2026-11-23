@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   Clock, Plus, 
-  Trash2, ShieldAlert, MessageSquare, ExternalLink
+  ShieldAlert, MessageSquare, ExternalLink
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -65,6 +65,18 @@ export function formatCleanTitle(
     .replace(/\s*[-–—:]\s*(Google Chrome|Chrome|Mozilla Firefox|Firefox|Brave|Edge|Safari|Opera|Visual Studio Code|VS Code|Antigravity IDE|Antigravity)$/i, "")
     .replace(/^Session involving\s+/i, "");
 
+  // Strip trailing author / channel trailers (e.g. "| By Author", "| Channel Name")
+  title = title.replace(/\s*\|\s*(By\s+.*|.*Channel.*)$/i, "");
+  // Strip YouTube suffix
+  title = title.replace(/\s*[-–—:]\s*YouTube$/i, "");
+  // If multiple pipes exist (e.g. "Primary Title | Secondary Trailer | By ..."), keep the primary title
+  if (title.includes(" | ")) {
+    const parts = title.split(" | ").map(p => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      title = parts[0];
+    }
+  }
+
   if (appName) {
     const escapedApp = appName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     title = title.replace(new RegExp(`\\s*[-–—:]\\s*${escapedApp}\\s*[-–—:]\\s*`, 'i'), ' - ');
@@ -76,38 +88,58 @@ export function formatCleanTitle(
   if (!title.trim()) {
     if (domainTag) return domainTag;
     if (appName) return appName;
-    return "Activity Session";
+    return "Creative Flow";
   }
 
   return title.trim();
 }
 
 export function getGroupedSessionTitle(node: TimelineNode): string {
-  if (node.isShield) return "Distraction Shield";
+  if (node.isShield) return "Shielded Flow";
   if (node.isMemoryNode && node.window_title && !node.window_title.toLowerCase().endsWith(" session") && !node.window_title.toLowerCase().startsWith("session involving")) {
     return formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
   }
 
   if (node.originalActivities && node.originalActivities.length > 0) {
-    let topAct = node.originalActivities[0];
-    for (const act of node.originalActivities) {
-      if (act.duration > topAct.duration) {
-        topAct = act;
+    if (node.originalActivities.length === 1) {
+      const single = node.originalActivities[0];
+      const cleaned = formatCleanTitle(single.window_title, single.app_name, single.domain_tag, single.url);
+      if (cleaned && cleaned !== single.app_name && !cleaned.toLowerCase().endsWith(" session")) {
+        return cleaned;
       }
-    }
-    const cleaned = formatCleanTitle(topAct.window_title, topAct.app_name, topAct.domain_tag, topAct.url);
-    if (cleaned && cleaned !== topAct.app_name && !cleaned.toLowerCase().endsWith(" session")) {
-      return cleaned;
+    } else {
+      // Multi-activity episode synthesis:
+      // Sort activities by duration descending
+      const sortedByDur = [...node.originalActivities].sort((a, b) => b.duration - a.duration);
+      const cleanedTitles = sortedByDur
+        .map(a => formatCleanTitle(a.window_title, a.app_name, a.domain_tag, a.url))
+        .filter((t): t is string => !!t && t !== node.app_name && !t.toLowerCase().endsWith(" session") && t !== "Creative Flow");
+      
+      const uniqueTitles = Array.from(new Set(cleanedTitles));
+
+      if (uniqueTitles.length >= 2) {
+        return uniqueTitles.length > 2
+          ? `${uniqueTitles[0]} & ${uniqueTitles.length - 1} more`
+          : `${uniqueTitles[0]} + ${uniqueTitles[1]}`;
+      } else if (uniqueTitles.length === 1) {
+        return `${uniqueTitles[0]} · ${node.originalActivities.length} activities`;
+      }
     }
   }
 
   if (node.subEvents && node.subEvents.length > 0) {
     const topSub = node.subEvents[0];
     const cleaned = formatCleanTitle(topSub.title, topSub.parent_app_name || node.app_name, topSub.context_tag, topSub.primary_uri);
-    if (cleaned) return cleaned;
+    if (cleaned) {
+      return node.subEvents.length > 1 ? `${cleaned} & ${node.subEvents.length - 1} tabs` : cleaned;
+    }
   }
 
-  return formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
+  const baseCleaned = formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
+  if (baseCleaned.toLowerCase().endsWith(" session")) {
+    return baseCleaned.replace(/\s+session$/i, " Flow");
+  }
+  return baseCleaned;
 }
 
 
@@ -152,10 +184,12 @@ interface SCurveTimelineProps {
   activities: ActivityNode[];
   subSessionEvents: SubSessionEvent[];
   distractionEvents: DistractionEvent[];
-  onAddJournal: (activity: ActivityNode) => void;
+  onAddJournal: (activity: any) => void;
   onDeleteLog: (id: number) => void;
   onDeleteMemoryNode?: (id: number) => void;
   activeNodeStartTime?: string;
+  isGrouped?: boolean;
+  onToggleGrouped?: (grouped: boolean) => void;
 }
 
 export interface TimelineNode {
@@ -183,8 +217,6 @@ export interface TimelineNode {
 
 // extractDomain moved to AppIcon.tsx
 
-import { ConfirmModal } from './ConfirmModal';
-
 export function SCurveTimeline({ 
   memoryNodes,
   activities, 
@@ -193,7 +225,9 @@ export function SCurveTimeline({
   onAddJournal, 
   onDeleteLog,
   onDeleteMemoryNode,
-  activeNodeStartTime
+  activeNodeStartTime,
+  isGrouped = true,
+  onToggleGrouped,
 }: SCurveTimelineProps) {
   const rowHeight = 200;
   const width = 800;
@@ -202,12 +236,64 @@ export function SCurveTimeline({
 
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
   const [_isHovering, setIsHovering] = useState<number | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, title: string, message: string, onConfirm: () => void, onCancel: () => void}>({
-    isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {}
-  });
 
-  // Group consecutive browser/editor usages together
+  // Group consecutive browser/editor usages together or show unbundled moments
   const processedNodes = useMemo(() => {
+    // If ungrouped / Moments mode is explicitly requested by user:
+    if (isGrouped === false) {
+      const unbundled: TimelineNode[] = [];
+      const allEvents = [
+        ...activities.map(a => ({ type: 'activity', time: new Date(a.start_time).getTime(), data: a as ActivityNode })),
+        ...distractionEvents.map(d => ({ type: 'distraction', time: new Date(d.timestamp).getTime(), data: d as DistractionEvent }))
+      ].sort((a, b) => a.time - b.time);
+
+      allEvents.forEach(ev => {
+        if (ev.type === 'activity') {
+          const act = ev.data as ActivityNode;
+          const actStartMs = new Date(act.start_time).getTime();
+          const actEndMs = actStartMs + act.duration * 1000;
+          unbundled.push({
+            isGroupedSession: false,
+            id: act.id,
+            app_name: act.app_name,
+            window_title: formatCleanTitle(act.window_title, act.app_name, act.domain_tag, act.url),
+            start_time: act.start_time,
+            end_time: new Date(actEndMs).toISOString(),
+            duration: act.duration,
+            total_duration: act.duration,
+            source: act.source,
+            url: act.url,
+            icon_url: act.icon_url,
+            domain_tag: act.domain_tag,
+            notes: act.notes,
+            originalActivities: [act],
+            subEvents: subSessionEvents.filter(s => {
+              const t = new Date(s.timestamp).getTime();
+              return t >= actStartMs - 5000 && t <= actEndMs + 5000;
+            }),
+          });
+        } else {
+          const dEvent = ev.data as DistractionEvent;
+          unbundled.push({
+            isGroupedSession: false,
+            id: -dEvent.id,
+            app_name: "Shielded Flow",
+            window_title: "Distraction Blocked",
+            start_time: dEvent.timestamp,
+            end_time: new Date(new Date(dEvent.timestamp).getTime() + (dEvent.duration_blocked || 0) * 1000).toISOString(),
+            duration: dEvent.duration_blocked,
+            source: "Shield",
+            originalActivities: [],
+            subEvents: [],
+            isShield: true,
+            distractionEvent: dEvent,
+            distractionEvents: [dEvent],
+          });
+        }
+      });
+      return unbundled;
+    }
+
     // 1. HYBRID APPROACH: If we have Semantic Memory Nodes, display them!
     if (memoryNodes && memoryNodes.length > 0) {
       const initialNodes: TimelineNode[] = memoryNodes.map(mn => {
@@ -255,9 +341,9 @@ export function SCurveTimeline({
         if (displayTitle.startsWith("Session involving ") || displayTitle.endsWith(" Session") || displayTitle.startsWith("Chrome (http")) {
           if (dominantUrl) {
             const domain = extractDomain(dominantUrl);
-            displayTitle = domain ? `${domain.charAt(0).toUpperCase() + domain.slice(1)} Session` : `${dominantAppName} Session`;
+            displayTitle = domain ? `${domain.charAt(0).toUpperCase() + domain.slice(1)} Flow` : `${dominantAppName} Flow`;
           } else {
-            displayTitle = `${dominantAppName} Session`;
+            displayTitle = `${dominantAppName} Flow`;
           }
         }
 
@@ -511,7 +597,7 @@ export function SCurveTimeline({
               isGroupedSession: true,
               id: activity.id,
               app_name: activity.app_name,
-              window_title: `${activity.app_name} Session`,
+              window_title: formatCleanTitle(activity.window_title, activity.app_name, activity.domain_tag, activity.url) || `${activity.app_name} Flow`,
               start_time: activity.start_time,
               end_time: new Date(actEndMs).toISOString(),
               duration: activity.duration,
@@ -708,33 +794,41 @@ export function SCurveTimeline({
     <div className="relative w-full h-full flex">
       <div className="flex-1 relative w-full h-full overflow-y-auto py-10 px-4 select-none flex justify-center">
         {processedNodes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[340px] px-6 py-12 text-center">
-            <div className="glass-card rounded-3xl p-8 max-w-sm w-full mx-auto">
-              <div className="w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-5">
-                <Clock className="w-7 h-7 text-violet-400" />
+          <div className="flex flex-col items-center justify-center h-full min-h-[360px] px-6 py-12 text-center">
+            <div className="glass-card rounded-3xl p-8 max-w-md w-full mx-auto border border-violet-500/20 shadow-2xl backdrop-blur-xl">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-violet-600/20 to-fuchsia-600/10 border border-violet-500/30 flex items-center justify-center mx-auto mb-5 shadow-[0_0_25px_rgba(139,92,246,0.2)]">
+                <Clock className="w-8 h-8 text-violet-400 animate-pulse" />
               </div>
-              <h3 className="text-base font-bold text-[var(--text-color)] mb-1">Just use your computer.</h3>
-              <p className="text-sm text-[var(--text-muted)] mb-6">
-                LifeMirror records your activity automatically — no "Start" button needed.
+              <h3 className="text-lg font-bold text-[var(--text-color)] mb-2 tracking-tight">Your day is a clean river.</h3>
+              <p className="text-xs text-[var(--text-muted)] mb-6 leading-relaxed max-w-xs mx-auto">
+                Work, explore, and create. LifeMirror quietly preserves the rhythm of your flow.
               </p>
-              <div className="space-y-3 text-left">
+              <div className="space-y-2.5 text-left">
                 {[
-                  { icon: "🟢", label: "Tracking is active", sub: "Your OS windows are being watched." },
-                  { icon: "⏱️", label: "Stay in a window for 60 s", sub: "Short switches are filtered to reduce noise." },
+                  { 
+                    icon: "🔒", 
+                    label: "100% Offline & Private", 
+                    sub: "Your thoughts and creative work never leave this machine." 
+                  },
+                  { 
+                    icon: "🌊", 
+                    label: "Passive & Unobtrusive", 
+                    sub: "No start buttons or timers. Meaningful focus sessions emerge naturally." 
+                  },
                   { 
                     icon: "🌐", 
-                    label: "Browser tabs are tracked too", 
-                    sub: "Install companion extension (Chrome, Brave, Edge, Arc, Opera, Vivaldi).",
+                    label: "Web & Desktop Harmony", 
+                    sub: "Companion extension bridges browser tabs with native apps.",
                     link: "https://chromewebstore.google.com/detail/lifemirror-desktop/pblffjiaheggbamkjaojabdaemkflhmm" 
                   },
                 ].map(({ icon, label, sub, link }) => (
                   <div 
                     key={label} 
-                    className={`flex items-start gap-3 p-2 rounded-xl transition-colors ${
-                      link ? "hover:bg-violet-500/10 cursor-pointer group border border-transparent hover:border-violet-500/20" : ""
+                    className={`flex items-start gap-3 p-2.5 rounded-xl transition-all ${
+                      link ? "hover:bg-violet-500/10 cursor-pointer group border border-transparent hover:border-violet-500/20" : "bg-black/5 dark:bg-white/5"
                     }`}
                     onClick={() => { if (link) openUrl(link); }}
-                    title={link ? "Click to install extension from Chrome Web Store" : undefined}
+                    title={link ? "Click to install companion extension from Chrome Web Store" : undefined}
                   >
                     <span className="text-base mt-0.5 shrink-0">{icon}</span>
                     <div className="flex-1 min-w-0">
@@ -742,7 +836,7 @@ export function SCurveTimeline({
                         <p className={`text-xs font-semibold text-[var(--text-color)] ${link ? "group-hover:text-violet-400" : ""}`}>{label}</p>
                         {link && <ExternalLink className="w-3 h-3 text-violet-400 opacity-60 group-hover:opacity-100 transition-opacity" />}
                       </div>
-                      <p className="text-[11px] text-[var(--text-muted)]">{sub}</p>
+                      <p className="text-[11px] text-[var(--text-muted)] leading-tight mt-0.5">{sub}</p>
                     </div>
                   </div>
                 ))}
@@ -770,19 +864,37 @@ export function SCurveTimeline({
                 )
               );
 
+              // Volumetric sizing & aura based on deep work duration
+              const durationSecs = node.duration || 0;
+              const isEpicSession = durationSecs >= 3600; // >= 1 hour
+              const isDeepSession = durationSecs >= 1800; // >= 30 mins
+              const anchorSize = isEpicSession ? "w-11 h-11" : isDeepSession ? "w-10 h-10" : "w-9 h-9";
+              const anchorAura = isEpicSession
+                ? "shadow-[0_0_24px_rgba(139,92,246,0.5)] ring-2 ring-violet-400/50 border-violet-400"
+                : isDeepSession
+                ? "shadow-[0_0_16px_rgba(139,92,246,0.35)] ring-1 ring-violet-500/30 border-violet-500"
+                : node.isShield
+                ? "border-amber-500/70"
+                : "border-violet-500/80";
+
               return (
                 <React.Fragment key={node.id || index}>
                   <div
-                    className={`absolute z-20 w-9 h-9 rounded-full border-2 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform duration-300 hover:scale-125 ${
-                      node.isShield ? 'border-red-500' : 'border-violet-500'
-                    }`}
+                    className={`absolute z-20 ${anchorSize} rounded-full border-2 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 hover:scale-125 ${anchorAura}`}
                     style={{ left: colPercentages[col], top: `${nodeY}px` }}
                     onClick={() => setSelectedNode(node)}
                     onMouseEnter={() => setIsHovering(index)}
                     onMouseLeave={() => setIsHovering(null)}
                   >
+                    {isNodeActive && (
+                      <>
+                        <div className="absolute -inset-2.5 rounded-full bg-violet-500/25 animate-ping pointer-events-none" />
+                        <div className="absolute -inset-1 rounded-full bg-violet-400/30 blur-sm pointer-events-none animate-pulse" />
+                        <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping pointer-events-none" />
+                      </>
+                    )}
                     {node.isShield ? (
-                      <ShieldAlert className="w-5 h-5 text-red-500" />
+                      <ShieldAlert className="w-5 h-5 text-amber-500" />
                     ) : (
                       <AppIcon 
                         appName={String(node.app_name)} 
@@ -790,26 +902,40 @@ export function SCurveTimeline({
                         iconUrl={node.icon_url || (node.originalActivities[0] && node.originalActivities[0].icon_url)} 
                         domainTag={node.domain_tag || (node.originalActivities[0] && node.originalActivities[0].domain_tag)}
                         source={node.source} 
-                        className="w-5 h-5" 
+                        className={isEpicSession ? "w-6 h-6" : "w-5 h-5"} 
                         showBadge={true}
                       />
                     )}
                   </div>
 
-                  {/* NOW badge — shown on the live active node */}
+                  {/* LIVE badge — shown on the live active node */}
                   {isNodeActive && (
                     <div
-                      className="absolute z-30 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
-                      style={{ left: colPercentages[col], top: `${nodeY + 10}px`, transform: 'translateX(-50%)' }}
+                      className="absolute z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 backdrop-blur-sm shadow-sm"
+                      style={{ left: colPercentages[col], top: `${nodeY + 12}px`, transform: 'translateX(-50%)' }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.8)] animate-pulse" />
                       <span className="text-[9px] font-bold tracking-wider">LIVE</span>
                     </div>
                   )}
 
+                  {/* Organic connector stem from river anchor to memory island */}
+                  <div
+                    className="absolute z-0 w-0.5 bg-gradient-to-b from-violet-500/50 to-violet-500/15 pointer-events-none transform -translate-x-1/2"
+                    style={{
+                      left: colPercentages[col],
+                      top: `${nodeY + 12}px`,
+                      height: '11px',
+                    }}
+                  />
+
                   <div
                     className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
-                      node.isGroupedSession ? 'cursor-pointer hover:border-violet-500/50' : ''
+                      isEpicSession ? 'border-violet-500/40 shadow-violet-500/10' : isDeepSession ? 'border-violet-500/25' : ''
+                    } ${
+                      node.isGroupedSession 
+                        ? 'cursor-pointer hover:border-violet-500/60 hover:-translate-y-1.5 hover:shadow-[0_16px_36px_rgba(139,92,246,0.18)]' 
+                        : 'hover:border-violet-500/40'
                     }`}
                     style={{
                       left: colPercentages[col],
@@ -829,6 +955,9 @@ export function SCurveTimeline({
                       }
                     }}
                   >
+                    {/* Subtle specular top sheen on hover */}
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/0 to-transparent group-hover:via-white/30 dark:group-hover:via-white/20 transition-all duration-300 pointer-events-none rounded-t-xl" />
+
                     {/* Category color pip — top-right corner */}
                     {!node.isShield && (() => {
                       const cat = mapAppToCategory(
@@ -845,12 +974,12 @@ export function SCurveTimeline({
                         />
                       );
                     })()}
-                    {/* Visual stack effect for grouped boxes (single blurred top layer, solid translucent stack layers) */}
+                    {/* Visual stack effect for grouped boxes — bidirectional tactile bloom on hover */}
                     {node.isGroupedSession && (node.originalActivities.length + node.subEvents.length > 1 || (node.distractionEvents && node.distractionEvents.length > 1)) && (
                       <>
-                        <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-1 translate-y-1.5 -z-10 opacity-60 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-1.5 group-hover:translate-y-2"></div>
+                        <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-0.5 translate-y-1 -z-10 opacity-70 pointer-events-none shadow-sm origin-top transition-all duration-300 group-hover:-translate-x-2 group-hover:translate-y-1.5 group-hover:-rotate-2 group-hover:border-violet-500/30" />
                         {(node.originalActivities.length + node.subEvents.length > 2 || (node.distractionEvents && node.distractionEvents.length > 2)) && (
-                          <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-2 translate-y-3 -z-20 opacity-30 pointer-events-none shadow-sm transition-transform duration-300 group-hover:translate-x-3 group-hover:translate-y-4"></div>
+                          <div className="absolute inset-0 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] transform translate-x-1.5 translate-y-2 -z-20 opacity-40 pointer-events-none shadow-sm origin-top transition-all duration-300 group-hover:translate-x-2.5 group-hover:translate-y-2 group-hover:rotate-3 group-hover:border-violet-500/20" />
                         )}
                       </>
                     )}
@@ -877,21 +1006,11 @@ export function SCurveTimeline({
                         }`}>
                           {node.isShield
                             ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Distraction Blocked')
-                            : node.isGroupedSession 
-                              ? (() => {
-                                  const subCount = node.subEvents.length;
-                                  const uncoveredActCount = node.originalActivities.filter(act => {
-                                    const aS = new Date(act.start_time).getTime();
-                                    const aE = aS + act.duration * 1000;
-                                    return !node.subEvents.some(s => {
-                                      const sT = new Date(s.timestamp).getTime();
-                                      return sT >= aS - 5000 && sT <= aE + 5000;
-                                    });
-                                  }).length;
-                                  const count = subCount > 0 ? (subCount + uncoveredActCount) : node.originalActivities.length;
-                                  return `${count} item${count === 1 ? '' : 's'}`;
-                                })()
-                              : (node.domain_tag || (node.url ? node.url.split('/')[0] : '')) || node.app_name
+                            : (node.domain_tag || 
+                               (node.url ? extractDomain(node.url) : '') || 
+                               node.originalActivities[0]?.domain_tag || 
+                               (node.originalActivities[0]?.url ? extractDomain(node.originalActivities[0].url) : '') || 
+                               node.app_name)
                           }
                         </span>
                       </div>
@@ -910,6 +1029,24 @@ export function SCurveTimeline({
                       {getGroupedSessionTitle(node)}
                     </h4>
 
+                    {/* Micro-DNA Strand on grouped sessions showing distinct tools/domains */}
+                    {node.isGroupedSession && node.originalActivities.length > 1 && (
+                      <div className="flex items-center gap-1 my-1 overflow-hidden opacity-75 group-hover:opacity-100 transition-opacity duration-300">
+                        {Array.from(new Set(node.originalActivities.map(a => a.domain_tag || (a.url ? extractDomain(a.url) : '') || a.app_name).filter(Boolean)))
+                          .slice(0, 3)
+                          .map((tag, idx) => (
+                            <span key={idx} className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 group-hover:border-violet-500/30 group-hover:bg-violet-500/10 transition-colors truncate max-w-[70px]">
+                              {tag}
+                            </span>
+                          ))}
+                        {node.originalActivities.length > 3 && (
+                          <span className="text-[8px] font-mono text-[var(--text-muted)] group-hover:text-violet-400 group-hover:bg-violet-500/15 px-1 py-0.2 rounded transition-colors">
+                            +{node.originalActivities.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {node.notes && (
                       <div className="mt-1 pt-1 border-t border-[var(--border-color)] text-[10px] text-violet-600 dark:text-violet-300 font-medium italic flex items-center gap-1.5 truncate" title={node.notes}>
                         <MessageSquare className="w-3 h-3 text-violet-500 shrink-0" />
@@ -927,71 +1064,17 @@ export function SCurveTimeline({
                           ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` (${formatDuration(node.total_duration)})` : ''}`
                           : getFormatTime(node.start_time)}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (node.isShield) {
-                              setConfirmModal({
-                                isOpen: true,
-                                title: "Delete Distractions",
-                                message: "Delete all blocked distractions in this group?",
-                                onConfirm: () => {
-                                  node.distractionEvents?.forEach(ev => {
-                                    onDeleteLog(-ev.id);
-                                  });
-                                },
-                                onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                              });
-                            } else if (node.isGroupedSession) {
-                              setConfirmModal({
-                                isOpen: true,
-                                title: "Delete Session",
-                                message: "Delete this session and all its sub-events?",
-                                onConfirm: () => {
-                                  node.originalActivities.forEach(act => {
-                                    if (act.id) onDeleteLog(act.id);
-                                  });
-                                  if (node.isMemoryNode && onDeleteMemoryNode && node.id) {
-                                    onDeleteMemoryNode(node.id);
-                                  }
-                                },
-                                onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                              });
-                            } else {
-                              if (node.id) {
-                                setConfirmModal({
-                                  isOpen: true,
-                                  title: "Delete Event",
-                                  message: "Delete this event?",
-                                  onConfirm: () => onDeleteLog(node.id),
-                                  onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
-                                });
-                              }
-                            }
-                          }}
-                          disabled={!node.id}
-                          className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer"
-                          title="Delete log"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div className="flex items-center gap-1.5">
                         {!node.isShield && !node.isMemoryNode && (
                           <button
-                            onClick={() => {
-                              onAddJournal(node.originalActivities[0] || (node as any));
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddJournal(node);
                             }}
                             className="p-1 rounded text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 transition-colors cursor-pointer"
                             title={node.notes ? "Edit Note" : "Reflect"}
                           >
                             <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {(node.isGroupedSession || node.isMemoryNode) && (
-                          <button
-                            onClick={() => setSelectedNode(node)}
-                            className="text-[9px] font-medium text-violet-500 hover:text-violet-400 transition-colors px-1 cursor-pointer"
-                          >
-                            Details →
                           </button>
                         )}
                       </div>
@@ -1008,8 +1091,9 @@ export function SCurveTimeline({
         node={selectedNode} 
         onClose={() => setSelectedNode(null)}
         onDeleteLog={onDeleteLog}
+        onDeleteMemoryNode={onDeleteMemoryNode}
+        onUngroup={onToggleGrouped ? () => { onToggleGrouped(false); setSelectedNode(null); } : undefined}
       />
-      <ConfirmModal {...confirmModal} />
     </div>
   );
 }
