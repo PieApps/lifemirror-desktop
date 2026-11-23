@@ -243,9 +243,6 @@ function App() {
           data.setViewMode("daily");
           data.setSelectedActivity(node);
         }}
-        onResumeClick={handleResumeProject}
-        isAiAvailable={settings.isAiAvailable}
-        onAILockedClick={handleAILockedClick}
       />
 
       {missingModel && settings.aiProcessingMode === "continuous" && (
@@ -329,6 +326,7 @@ function App() {
           activeNodeStartTime={data.activeActivity?.start_time}
           isZenMode={isZenMode}
           onToggleZenMode={toggleZenMode}
+          onResumeClick={handleResumeProject}
         />
 
         {!isZenMode && (
@@ -396,11 +394,6 @@ function App() {
                   metrics={metrics}
                   isIncognito={settings.isIncognito}
                   getPeriodLabel={data.getPeriodLabel}
-                  aiReflection={localAI.aiReflection}
-                  aiLoading={localAI.aiLoading}
-                  generateAIReflection={localAI.generateAIReflection}
-                  activeAiTab={localAI.activeAiTab}
-                  setActiveAiTab={localAI.setActiveAiTab}
                   chatMessages={data.chatMessages}
                   volatileChatHistory={localAI.volatileChatHistory}
                   chatInput={localAI.chatInput}

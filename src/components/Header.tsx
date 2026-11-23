@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import {
-  ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search, Lock, Sparkles
+  ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search
 } from "lucide-react";
 import { useSearch } from "../hooks/useSearch";
 import { SearchResultsOverlay } from "./SearchResultsOverlay";
@@ -15,9 +15,6 @@ interface HeaderProps {
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
   onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
-  onResumeClick: () => void;
-  isAiAvailable?: boolean;
-  onAILockedClick?: (featureName: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -29,9 +26,6 @@ export const Header: React.FC<HeaderProps> = ({
   showSettings,
   setShowSettings,
   onSearchSelect,
-  onResumeClick,
-  isAiAvailable = true,
-  onAILockedClick,
 }) => {
   const search = useSearch();
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -101,31 +95,6 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Paused</span>
           </div>
         )}
-
-        {/* Elevated Hero Feature: Resume Flow */}
-        <button
-          onClick={isAiAvailable === false && onAILockedClick ? () => onAILockedClick("Resume Flow") : onResumeClick}
-          aria-haspopup={isAiAvailable === false ? "dialog" : undefined}
-          aria-label={isAiAvailable === false ? "Resume Flow - Locked, AI Engine required" : "Resume Flow where you left off"}
-          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl transition-all border text-xs sm:text-sm cursor-pointer shadow-sm ${
-            isAiAvailable === false
-              ? "border-zinc-300 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 group"
-              : "border-indigo-500/30 bg-gradient-to-r from-indigo-500/15 to-violet-500/15 hover:from-indigo-500/25 hover:to-violet-500/25 text-indigo-500 dark:text-indigo-300 font-semibold shadow-indigo-500/10"
-          }`}
-          title={isAiAvailable === false ? "Resume Flow (Requires AI Engine to be active)" : "Reconstruct context and resume where you left off"}
-        >
-          {isAiAvailable === false ? (
-            <Lock className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors" />
-          ) : (
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          )}
-          <span className="hidden min-[640px]:inline">Resume Flow</span>
-          {isAiAvailable === false && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-md shrink-0">
-              Locked
-            </span>
-          )}
-        </button>
 
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

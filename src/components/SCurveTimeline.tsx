@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   Clock, Plus, 
-  ShieldAlert, MessageSquare, ExternalLink
+  ShieldAlert, MessageSquare, ExternalLink, Sparkles
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -190,6 +190,7 @@ interface SCurveTimelineProps {
   activeNodeStartTime?: string;
   isGrouped?: boolean;
   onToggleGrouped?: (grouped: boolean) => void;
+  onResumeClick?: () => void;
 }
 
 export interface TimelineNode {
@@ -228,6 +229,7 @@ export function SCurveTimeline({
   activeNodeStartTime,
   isGrouped = true,
   onToggleGrouped,
+  onResumeClick,
 }: SCurveTimelineProps) {
   const rowHeight = 200;
   const width = 800;
@@ -908,14 +910,27 @@ export function SCurveTimeline({
                     )}
                   </div>
 
-                  {/* LIVE badge — shown on the live active node */}
+                  {/* LIVE badge & The Now Spring Context Resume */}
                   {isNodeActive && (
                     <div
-                      className="absolute z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 backdrop-blur-sm shadow-sm"
+                      className="absolute z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 backdrop-blur-sm shadow-sm transition-all"
                       style={{ left: colPercentages[col], top: `${nodeY + 12}px`, transform: 'translateX(-50%)' }}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.8)] animate-pulse" />
                       <span className="text-[9px] font-bold tracking-wider">LIVE</span>
+                      {onResumeClick && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onResumeClick();
+                          }}
+                          className="ml-0.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 hover:text-white bg-emerald-600/30 hover:bg-emerald-600/60 rounded-md transition-colors cursor-pointer"
+                          title="Resume Flow context where you left off"
+                        >
+                          <Sparkles className="w-2.5 h-2.5 text-emerald-300" />
+                          <span>Resume</span>
+                        </button>
+                      )}
                     </div>
                   )}
 

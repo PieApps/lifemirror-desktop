@@ -2,7 +2,8 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { Settings, Shield, Sliders, Power, AlertCircle, X, Plus, Target, ShieldAlert, CheckCircle, XCircle, Loader2, Tag, Trash2, LifeBuoy, Heart, Globe, ExternalLink, Copy, Check, Sparkles, Smartphone, Ban, FileText, Cpu, Cloud, Eye, EyeOff, BookOpen, FolderOpen, ChevronDown, ChevronUp, RefreshCw, Volume2 } from "lucide-react";
+import { sound } from "../utils/sound";
 import { CloudPrivacyDisclosureModal } from "./CloudPrivacyDisclosureModal";
 import { ConfirmModal } from "./ConfirmModal";
 import { CATEGORIES, ActivityCategory, getCategoryOverrides, saveCategoryOverrides, CategoryOverrides } from "../utils/categoryMapper";
@@ -86,6 +87,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onRevokeCloudAccess,
 }) => {
   const [activeTab, setActiveTab] = React.useState<SettingsTab>(initialTab);
+  const [soundEnabled, setSoundEnabled] = React.useState<boolean>(sound.getEnabled());
 
   React.useEffect(() => {
     if (initialTab) {
@@ -665,6 +667,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
             <p className="text-xs text-[var(--text-muted)]">
               Pauses tracking immediately. Nothing is recorded or shown on your timeline.
+            </p>
+          </div>
+
+          {/* Sensorial Sound Chimes */}
+          <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-violet-400" />
+                <span className="text-sm font-medium text-[var(--text-color)]">Sensorial Sound Chimes</span>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !sound.getEnabled();
+                  sound.setEnabled(next);
+                  setSoundEnabled(next);
+                  if (next) sound.playIgniteFocus();
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                  soundEnabled ? "bg-violet-600" : "bg-zinc-400 dark:bg-zinc-800"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    soundEnabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              Plays gentle harmonic Solfeggio chimes when igniting focus and celebratory fanfares for the evening epilogue.
             </p>
           </div>
 

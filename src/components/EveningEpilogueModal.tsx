@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Copy, CheckCheck, BookOpen, Moon, Compass } from 'lucide-react';
 import { formatDuration } from '../utils/formatDuration';
+import { sound } from '../utils/sound';
 
 interface EveningEpilogueModalProps {
   isOpen: boolean;
@@ -26,6 +27,12 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
   onOpenVaultFile,
 }) => {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      sound.playEveningEpilogue();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

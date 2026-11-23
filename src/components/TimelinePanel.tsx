@@ -10,6 +10,7 @@ import { MonthlyView } from "./MonthlyView";
 import { ExportJournalModal } from "./ExportJournalModal";
 import { WikiVaultView } from "./WikiVaultView";
 import { EveningEpilogueModal } from "./EveningEpilogueModal";
+import { sound } from "../utils/sound";
 import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric } from "../types";
 import { getWeekRange, getLocalDateString } from "../hooks/useActivityData";
 import type { ProductivityMetrics } from "../services/analytics";
@@ -55,6 +56,7 @@ interface TimelinePanelProps {
   activeNodeStartTime?: string;
   isZenMode?: boolean;
   onToggleZenMode?: () => void;
+  onResumeClick?: () => void;
 }
 
 export const TimelinePanel: React.FC<TimelinePanelProps> = ({
@@ -87,6 +89,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   activeNodeStartTime,
   isZenMode,
   onToggleZenMode,
+  onResumeClick,
 }) => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"timeline" | "vault">("timeline");
@@ -255,7 +258,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             {viewMode === "daily" && (
               <div className="hidden sm:flex items-center p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 text-[11px] font-semibold shrink-0">
                 <button
-                  onClick={() => setIsGroupedTimeline(true)}
+                  onClick={() => {
+                    sound.playTactileTick();
+                    setIsGroupedTimeline(true);
+                  }}
                   className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     isGroupedTimeline
                       ? "bg-violet-600 text-white shadow-xs"
@@ -266,7 +272,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                   Episodes
                 </button>
                 <button
-                  onClick={() => setIsGroupedTimeline(false)}
+                  onClick={() => {
+                    sound.playTactileTick();
+                    setIsGroupedTimeline(false);
+                  }}
                   className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                     !isGroupedTimeline
                       ? "bg-violet-600 text-white shadow-xs"
@@ -283,7 +292,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             <div className="flex items-center gap-1 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0">
               {onToggleZenMode && (
                 <button
-                  onClick={onToggleZenMode}
+                  onClick={() => {
+                    sound.playTactileTick();
+                    onToggleZenMode();
+                  }}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all text-xs font-semibold cursor-pointer whitespace-nowrap ${
                     isZenMode
                       ? "bg-violet-600 text-white shadow-md shadow-violet-500/25"
@@ -332,7 +344,10 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                   </div>
                 </div>
                 <button
-                  onClick={handleStopFocus}
+                  onClick={() => {
+                    sound.playClearFocus();
+                    handleStopFocus();
+                  }}
                   className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
                 >
                   Clear Focus
@@ -341,16 +356,31 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             ) : (
               <div className="flex items-center justify-between gap-4">
                 {/* Ambient Flow Sensing Indicator */}
-                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] shrink-0 min-w-0 max-w-[45%]">
+                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] shrink-0 min-w-0 max-w-[55%]">
                   <Waves className="w-3.5 h-3.5 text-violet-400 shrink-0 animate-pulse" />
                   {activities.length > 0 ? (
-                    <div className="truncate">
-                      <span className="text-[var(--text-muted)]">Flowing in </span>
-                      <span className="font-semibold text-violet-400">{activities[0].app_name}</span>
-                      <span className="mx-1 text-[var(--text-muted)]/60">·</span>
-                      <span className="text-[var(--text-color)]/90">
-                        {formatCleanTitle(activities[0].window_title, activities[0].app_name, activities[0].domain_tag, activities[0].url)}
-                      </span>
+                    <div className="flex items-center gap-2.5 truncate">
+                      <div className="truncate">
+                        <span className="text-[var(--text-muted)]">Flowing in </span>
+                        <span className="font-semibold text-violet-400">{activities[0].app_name}</span>
+                        <span className="mx-1 text-[var(--text-muted)]/60">·</span>
+                        <span className="text-[var(--text-color)]/90">
+                          {formatCleanTitle(activities[0].window_title, activities[0].app_name, activities[0].domain_tag, activities[0].url)}
+                        </span>
+                      </div>
+                      {onResumeClick && (
+                        <button
+                          onClick={() => {
+                            sound.playTactileTick();
+                            onResumeClick();
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-violet-600/15 hover:bg-violet-600/25 border border-violet-500/30 text-violet-300 hover:text-white text-[10px] font-semibold transition-all cursor-pointer shadow-xs shrink-0"
+                          title="Reconstruct context and pick up where you left off"
+                        >
+                          <Sparkles className="w-3 h-3 text-violet-400" />
+                          <span>Resume Flow</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <span className="italic text-[var(--text-muted)]/70">Tranquil River · Ready when you are</span>
@@ -365,13 +395,21 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       type="text"
                       value={intentionInput}
                       onChange={(e) => setIntentionInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
+                      onKeyDown={(e) => { 
+                        if (e.key === "Enter" && intentionInput.trim()) {
+                          sound.playIgniteFocus();
+                          handleStartFocus();
+                        }
+                      }}
                       placeholder="Guiding intention for this session? (Enter to ignite)"
                       className="flex-1 bg-transparent border-none text-xs text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50 min-w-0"
                     />
                   </div>
                   <button
-                    onClick={handleStartFocus}
+                    onClick={() => {
+                      sound.playIgniteFocus();
+                      handleStartFocus();
+                    }}
                     disabled={!intentionInput.trim()}
                     className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0 shadow-xs"
                   >
@@ -412,6 +450,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             activeNodeStartTime={activeNodeStartTime}
             isGrouped={isGroupedTimeline}
             onToggleGrouped={setIsGroupedTimeline}
+            onResumeClick={onResumeClick}
           />
         ) : viewMode === "weekly" ? (
           <div className="p-6">
