@@ -2,13 +2,14 @@ import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ShieldAlert, Clock, Target, BookOpen, Maximize2, Minimize2,
-  Sparkles, Download, ChevronLeft, ChevronRight
+  Sparkles, Download, ChevronLeft, ChevronRight, Waves
 } from "lucide-react";
-import { SCurveTimeline } from "./SCurveTimeline";
+import { SCurveTimeline, formatCleanTitle } from "./SCurveTimeline";
 import { WeeklyView } from "./WeeklyView";
 import { MonthlyView } from "./MonthlyView";
 import { ExportJournalModal } from "./ExportJournalModal";
 import { WikiVaultView } from "./WikiVaultView";
+import { EveningEpilogueModal } from "./EveningEpilogueModal";
 import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric } from "../types";
 import { getWeekRange, getLocalDateString } from "../hooks/useActivityData";
 import type { ProductivityMetrics } from "../services/analytics";
@@ -92,6 +93,8 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [isGeneratingPeriodNote, setIsGeneratingPeriodNote] = useState(false);
   const [isGroupedTimeline, setIsGroupedTimeline] = useState<boolean>(true);
   const [initialVaultFile, setInitialVaultFile] = useState<string | undefined>(undefined);
+  const [isEpilogueOpen, setIsEpilogueOpen] = useState(false);
+  const [lastSynthesizedMarkdown, setLastSynthesizedMarkdown] = useState<string | undefined>(undefined);
 
   const handleGeneratePeriodNote = async () => {
     setIsGeneratingPeriodNote(true);
@@ -102,7 +105,18 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         dateKey: selectedDate,
       });
       setInitialVaultFile(relPath);
-      setMainTab("vault");
+
+      if (pType === "day") {
+        try {
+          const vaultContent = await invoke<string>("read_vault_file", { relativePath: relPath });
+          setLastSynthesizedMarkdown(vaultContent);
+        } catch (readErr) {
+          console.warn("Could not read synthesized note for epilogue:", readErr);
+        }
+        setIsEpilogueOpen(true);
+      } else {
+        setMainTab("vault");
+      }
     } catch (err) {
       console.error("Failed to compile periodic note:", err);
     } finally {
@@ -113,7 +127,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   return (
     <div className="timeline-panel-wrapper relative min-h-[350px] sm:min-h-0 sm:h-full bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden flex flex-col">
       <div className="p-3 sm:px-5 sm:py-3.5 border-b border-[var(--border-color)] flex flex-wrap items-center justify-between gap-3">
-        {/* Main Navigation: Timeline vs Knowledge Vault */}
+        {/* Main Navigation & Temporal Baton */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0">
             <button
@@ -141,57 +155,92 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
           </div>
 
           {mainTab === "timeline" && (
-            <div className="flex bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0">
-              <button
-                onClick={() => setViewMode("daily")}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                  viewMode === "daily"
-                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <span>Day</span>
-              </button>
-              <button
-                onClick={() => setViewMode("weekly")}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                  viewMode === "weekly"
-                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <span>Week</span>
-              </button>
-              <button
-                onClick={() => setViewMode("monthly")}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                  viewMode === "monthly"
-                    ? "bg-violet-600 text-white shadow-md shadow-violet-500/20"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-              >
-                <span>Month</span>
-              </button>
+            <div className="flex items-center bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0 gap-1">
+              <div className="flex items-center">
+                <button
+                  onClick={() => setViewMode("daily")}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                    viewMode === "daily"
+                      ? "bg-violet-600 text-white shadow-xs"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                  }`}
+                >
+                  Day
+                </button>
+                <button
+                  onClick={() => setViewMode("weekly")}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                    viewMode === "weekly"
+                      ? "bg-violet-600 text-white shadow-xs"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                  }`}
+                >
+                  Week
+                </button>
+                <button
+                  onClick={() => setViewMode("monthly")}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                    viewMode === "monthly"
+                      ? "bg-violet-600 text-white shadow-xs"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                  }`}
+                >
+                  Month
+                </button>
+              </div>
+
+              <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
+
+              <div className="flex items-center gap-1">
+                {selectedDate !== getLocalDateString() && onSelectDate && (
+                  <button
+                    onClick={() => onSelectDate(getLocalDateString())}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded-lg bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/30 transition-all cursor-pointer shadow-xs animate-in fade-in"
+                    title="Return to Today"
+                  >
+                    Today
+                  </button>
+                )}
+
+                <button
+                  onClick={handlePrevPeriod}
+                  className="p-1 rounded-lg hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all"
+                  title="Previous period"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs font-bold text-[var(--text-color)] min-w-[125px] text-center font-mono whitespace-nowrap select-none px-1">
+                  {getPeriodLabel()}
+                </span>
+                <button
+                  onClick={handleNextPeriod}
+                  disabled={isNextDisabled()}
+                  className="p-1 rounded-lg hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Next period"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Date Scrubber & Action Buttons (Only shown in Timeline mode) */}
+        {/* Action Jewel (Only shown in Timeline mode) */}
         {mainTab === "timeline" && (
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-            {/* Primary Creative Action: Synthesize Day / Period */}
+            {/* Primary Action: Synthesize Day / Period */}
             <button
               onClick={handleGeneratePeriodNote}
               disabled={isGeneratingPeriodNote}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-500/30 bg-violet-600/15 hover:bg-violet-600 text-violet-300 hover:text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0 shadow-xs"
-              title={`Synthesize and view ${viewMode === "monthly" ? "Month" : viewMode === "weekly" ? "Week" : "Day"} Note in Knowledge Vault`}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-violet-500/30 bg-violet-600/20 hover:bg-violet-600 text-violet-200 hover:text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs hover:shadow-violet-500/20"
+              title={`Synthesize and celebrate ${viewMode === "monthly" ? "Month" : viewMode === "weekly" ? "Week" : "Day"} Note`}
             >
               {isGeneratingPeriodNote ? (
                 <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin shrink-0" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
               )}
-              <span className="whitespace-nowrap">
+              <span className="whitespace-nowrap font-medium">
                 {isGeneratingPeriodNote
                   ? "Synthesizing..."
                   : viewMode === "monthly"
@@ -202,32 +251,9 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               </span>
             </button>
 
-            {/* Secondary Export Action */}
-            <button
-              onClick={() => setIsExportOpen(true)}
-              className="hidden sm:flex items-center justify-center p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/40 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] transition-all cursor-pointer shrink-0"
-              title="Export Work Journal (Markdown, CSV, JSON)"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            {onToggleZenMode && (
-              <button
-                onClick={onToggleZenMode}
-                className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 ${
-                  isZenMode
-                    ? "border-violet-500 bg-violet-600 text-white shadow-md shadow-violet-500/25"
-                    : "border-[var(--border-color)] bg-[var(--bg-color)]/40 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                }`}
-                title={isZenMode ? "Exit Zen Mode (⌘D / Ctrl+D)" : "Zen Mode (⌘D / Ctrl+D) — Expand Timeline"}
-              >
-                {isZenMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                <span className="whitespace-nowrap">Zen</span>
-              </button>
-            )}
-
+            {/* Daily Filter: Episodes vs Moments */}
             {viewMode === "daily" && (
-              <div className="hidden sm:flex items-center p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/40 text-[11px] font-semibold shrink-0">
+              <div className="hidden sm:flex items-center p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 text-[11px] font-semibold shrink-0">
                 <button
                   onClick={() => setIsGroupedTimeline(true)}
                   className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
@@ -253,35 +279,29 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               </div>
             )}
 
-            <div className="flex items-center gap-1 shrink-0">
-              {/* Smart 'Today' return pill — appears when exploring past dates */}
-              {selectedDate !== getLocalDateString() && onSelectDate && (
+            {/* Utility Capsule: Zen and Export */}
+            <div className="flex items-center gap-1 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0">
+              {onToggleZenMode && (
                 <button
-                  onClick={() => onSelectDate(getLocalDateString())}
-                  className="mr-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/30 transition-all cursor-pointer shadow-xs animate-in fade-in"
-                  title="Return to Today"
+                  onClick={onToggleZenMode}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                    isZenMode
+                      ? "bg-violet-600 text-white shadow-md shadow-violet-500/25"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                  }`}
+                  title={isZenMode ? "Exit Zen Mode (⌘D / Ctrl+D)" : "Zen Mode (⌘D / Ctrl+D) — Expand Timeline"}
                 >
-                  Today
+                  {isZenMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  <span className="hidden md:inline whitespace-nowrap">Zen</span>
                 </button>
               )}
 
               <button
-                onClick={handlePrevPeriod}
-                className="p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all shrink-0"
-                title="Previous period"
+                onClick={() => setIsExportOpen(true)}
+                className="p-1.5 rounded-xl hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] transition-all cursor-pointer shrink-0"
+                title="Export Work Journal (Markdown, CSV, JSON)"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-xs font-bold text-[var(--text-color)] min-w-[145px] text-center font-mono whitespace-nowrap select-none px-1 shrink-0">
-                {getPeriodLabel()}
-              </span>
-              <button
-                onClick={handleNextPeriod}
-                disabled={isNextDisabled()}
-                className="p-1.5 sm:p-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-                title="Next period"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -297,68 +317,70 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         </div>
       ) : (
         <>
-          {/* Active Intention Bar */}
-          <div className="px-6 py-2 border-b border-[var(--border-color)] bg-[var(--bg-color)]/20">
-        {activeIntention ? (
-          <div className="flex items-center justify-between bg-violet-500/10 border border-violet-500/20 rounded-lg px-3.5 py-1.5 shadow-sm">
-            <div className="flex items-center gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-violet-500 shrink-0 shadow-[0_0_8px_rgba(139,92,246,0.5)]" />
-              <div className="flex items-baseline gap-2">
-                <span className="text-[10px] font-bold text-violet-500 uppercase tracking-wider">Active Focus:</span>
-                <span className="text-xs text-[var(--text-color)] font-medium">{activeIntention}</span>
-              </div>
-            </div>
-            <button
-              onClick={handleStopFocus}
-              className="px-2.5 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/30 text-[11px] font-semibold rounded-md transition-all cursor-pointer"
-            >
-              Clear Focus
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <Target className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-              <input
-                type="text"
-                value={intentionInput}
-                onChange={(e) => setIntentionInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
-                placeholder="What are you focusing on right now?"
-                className="flex-1 bg-transparent border-none text-xs text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50 min-w-0"
-              />
-            </div>
-            
-            {/* Quick Presets */}
-            <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto text-[11px]">
-              {[
-                { label: "💻 Coding", value: "Deep Coding" },
-                { label: "📝 Writing", value: "Writing Documentation" },
-                { label: "🔍 Research", value: "Research & Analysis" },
-                { label: "🎨 Design", value: "UI Design & Polish" },
-                { label: "🐛 Debugging", value: "Debugging Code" },
-              ].map((preset) => (
+          {/* Ambient Flow Sensing & Focus Ember */}
+          <div className="px-5 py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-color)]/20">
+            {activeIntention ? (
+              <div className="flex items-center justify-between bg-violet-500/10 border border-violet-500/30 rounded-xl px-4 py-2 shadow-sm animate-in fade-in">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="relative flex items-center justify-center shrink-0">
+                    <div className="w-2.5 h-2.5 rounded-full bg-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.8)] animate-pulse" />
+                    <div className="absolute w-5 h-5 rounded-full bg-violet-500/20 animate-ping" />
+                  </div>
+                  <div className="flex items-baseline gap-2 truncate">
+                    <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider shrink-0">Active Focus:</span>
+                    <span className="text-xs text-[var(--text-color)] font-semibold truncate">{activeIntention}</span>
+                  </div>
+                </div>
                 <button
-                  key={preset.value}
-                  onClick={() => {
-                    setIntentionInput(preset.value);
-                  }}
-                  className="px-2 py-0.5 rounded-md bg-[var(--bg-color)]/60 hover:bg-violet-500/15 border border-[var(--border-color)] hover:border-violet-500/40 text-[var(--text-muted)] hover:text-violet-400 font-medium transition-all shrink-0 cursor-pointer text-[10px]"
+                  onClick={handleStopFocus}
+                  className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
                 >
-                  {preset.label}
+                  Clear Focus
                 </button>
-              ))}
-              <button
-                onClick={handleStartFocus}
-                disabled={!intentionInput.trim()}
-                className="ml-1 px-3 py-1 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-[11px] font-semibold rounded-md transition-colors cursor-pointer shrink-0"
-              >
-                Start Focus
-              </button>
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-4">
+                {/* Ambient Flow Sensing Indicator */}
+                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] shrink-0 min-w-0 max-w-[45%]">
+                  <Waves className="w-3.5 h-3.5 text-violet-400 shrink-0 animate-pulse" />
+                  {activities.length > 0 ? (
+                    <div className="truncate">
+                      <span className="text-[var(--text-muted)]">Flowing in </span>
+                      <span className="font-semibold text-violet-400">{activities[0].app_name}</span>
+                      <span className="mx-1 text-[var(--text-muted)]/60">·</span>
+                      <span className="text-[var(--text-color)]/90">
+                        {formatCleanTitle(activities[0].window_title, activities[0].app_name, activities[0].domain_tag, activities[0].url)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="italic text-[var(--text-muted)]/70">Tranquil River · Ready when you are</span>
+                  )}
+                </div>
+
+                {/* Serene Intention Input */}
+                <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                  <div className="flex items-center gap-2 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl flex-1 max-w-md focus-within:border-violet-500/50 transition-colors">
+                    <Target className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={intentionInput}
+                      onChange={(e) => setIntentionInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleStartFocus() }}
+                      placeholder="Guiding intention for this session? (Enter to ignite)"
+                      className="flex-1 bg-transparent border-none text-xs text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50 min-w-0"
+                    />
+                  </div>
+                  <button
+                    onClick={handleStartFocus}
+                    disabled={!intentionInput.trim()}
+                    className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0 shadow-xs"
+                  >
+                    Ignite Focus
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
       <div className="flex-1 overflow-y-auto relative custom-scrollbar">
         {/* Visual Lock overlay for Incognito Mode */}
@@ -426,6 +448,24 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
           monthlySummaries={monthlySummaries}
           viewMode={viewMode}
           onClose={() => setIsExportOpen(false)}
+        />
+      )}
+
+      {/* Evening Epilogue Postcard Modal */}
+      {isEpilogueOpen && (
+        <EveningEpilogueModal
+          isOpen={isEpilogueOpen}
+          dateStr={selectedDate}
+          activitiesCount={activities.length}
+          episodesCount={subSessionEvents.length > 0 ? subSessionEvents.length : activities.length}
+          totalFocusSeconds={metrics.totalActiveTime || 0}
+          synthesisMarkdown={lastSynthesizedMarkdown}
+          episodes={activities}
+          onClose={() => setIsEpilogueOpen(false)}
+          onOpenVaultFile={() => {
+            setIsEpilogueOpen(false);
+            setMainTab("vault");
+          }}
         />
       )}
     </div>

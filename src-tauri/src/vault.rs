@@ -709,9 +709,9 @@ pub async fn enrich_session_note(
     use crate::inference::get_inference_provider;
     let provider = get_inference_provider(state.inner().clone());
     let prompt = format!(
-        "You are an expert engineering productivity synthesist. Analyze this work session: '{}'.\n\
-        Activities breakdown:\n{}\n\n\
-        Write a concise, 2-3 sentence technical synthesis of what was accomplished, what topics were researched, and any key takeaways. Be direct, factual, and insightful. Do not include conversational filler.",
+        "You are an observant biographer of human focus and craft. Analyze this chapter of work: '{}'.\n\
+        Timeline Journey:\n{}\n\n\
+        Write a concise, 2-3 sentence reflection that captures the true essence of what was created, the depth of focus, and the intellectual ground covered. Speak with dignity, warmth, and literary clarity. Do not write a robotic changelog, bullet points, or corporate filler.",
         session_title, activities_summary
     );
     provider.prompt(&prompt).await.map_err(|e| e.to_string())

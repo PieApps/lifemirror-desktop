@@ -594,7 +594,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                 <div className="flex items-center justify-between mb-2.5 relative z-10">
                   <h3 className="text-[10px] font-bold text-violet-500 dark:text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                    <span>Executive Summary</span>
+                    <span>Biographer's Synthesis</span>
                   </h3>
                   {!isEditing ? (
                     <button 
