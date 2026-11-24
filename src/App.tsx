@@ -23,7 +23,7 @@ import { FirstLogCelebration } from "./components/FirstLogCelebration";
 import { MorningPreludeModal } from "./components/MorningPreludeModal";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { buildQuickCommands } from "./utils/commandRegistry";
-import { sound } from "./utils/sound";
+import { sound, useSoundState } from "./utils/sound";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
 import TimelineSidebar from "./components/TimelineSidebar";
@@ -213,16 +213,25 @@ function App() {
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [isEpilogueOpen, setIsEpilogueOpen] = useState(false);
 
+  const [isSoundEnabled, toggleSound] = useSoundState();
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setIsSpotlightOpen((prev) => !prev);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "m") {
+        e.preventDefault();
+        toggleSound();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [toggleSound]);
 
   const quickCommands = useMemo(() => {
     return buildQuickCommands({
@@ -237,6 +246,9 @@ function App() {
       },
       onToggleIncognito: () => {
         settings.handleToggleIncognito();
+      },
+      onToggleSound: () => {
+        toggleSound();
       },
       onOpenSettings: (tab) => {
         if (tab) setSettingsDefaultTab(tab as any);
@@ -253,8 +265,9 @@ function App() {
       },
       isZenMode,
       isIncognito: settings.isIncognito,
+      isSoundEnabled,
     });
-  }, [isZenMode, settings.isIncognito, data, settings]);
+  }, [isZenMode, settings.isIncognito, isSoundEnabled, data, settings, toggleSound]);
 
   // Resizable main sidepanel state (min 320px, max 750px, persisted)
   const [sidepanelWidth, setSidepanelWidth] = useState<number>(() => {

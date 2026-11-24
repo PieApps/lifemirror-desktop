@@ -157,7 +157,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
       });
       setInitialVaultFile(relPath);
 
-      if (pType === "day") {
+      if (pType === "day" || pType === "week") {
         try {
           const vaultContent = await invoke<string>("read_vault_file", { relativePath: relPath });
           setLastSynthesizedMarkdown(vaultContent);
@@ -635,10 +635,11 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         </div>
       )}
 
-      {/* Evening Epilogue Postcard Modal */}
+      {/* Evening Epilogue / Weekly Tapestry Postcard Modal */}
       {isEpilogueOpen && (
         <EveningEpilogueModal
           isOpen={isEpilogueOpen}
+          periodType={viewMode === "weekly" ? "week" : viewMode === "monthly" ? "month" : "day"}
           dateStr={selectedDate}
           activitiesCount={activities.length}
           episodesCount={epilogueChapters.length > 0 ? epilogueChapters.length : (subSessionEvents.length > 0 ? subSessionEvents.length : activities.length)}

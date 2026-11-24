@@ -22,6 +22,7 @@ interface EveningEpilogueModalProps {
     toolsCount?: number;
   }>;
   onOpenVaultFile?: () => void;
+  periodType?: "day" | "week" | "month";
 }
 
 export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
@@ -34,6 +35,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
   synthesisMarkdown,
   episodes = [],
   onOpenVaultFile,
+  periodType = "day",
 }) => {
   const [copied, setCopied] = useState(false);
   const [isSealing, setIsSealing] = useState(false);
@@ -82,7 +84,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
     setIsSealing(true);
     try {
       await invoke('compile_period_note', {
-        periodType: 'day',
+        periodType,
         dateKey: dateStr,
       });
       sound.playIgniteFocus();
@@ -133,7 +135,8 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
   };
 
   const handleCopy = async () => {
-    const textToCopy = `🌅 Evening Epilogue — ${dateStr}\n` +
+    const titlePrefix = periodType === "week" ? "🌟 Weekly Opus Tapestry" : periodType === "month" ? "🌌 Monthly Odyssey" : "🌅 Evening Epilogue";
+    const textToCopy = `${titlePrefix} — ${dateStr}\n` +
       `⏱️ Total Flow: ${formatDuration(totalFocusSeconds)} across ${episodesCount} Chapters\n\n` +
       (cleanReflection ? `"${cleanReflection}"\n\n` : '') +
       `Chapters Sculpted:\n` +
@@ -161,6 +164,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
         purityScore: 94,
         highlights,
         biographerQuote: cleanReflection || undefined,
+        periodType,
       });
 
       // Attempt clipboard copy first
@@ -176,7 +180,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `lifemirror-flow-${dateStr}.png`;
+      a.download = `lifemirror-${periodType}-flow-${dateStr}.png`;
       a.click();
       URL.revokeObjectURL(url);
 
@@ -201,14 +205,14 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
         <div className="flex items-center justify-between px-7 py-5 border-b border-[var(--border-color)]/60">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xs">
-              <Moon className="w-4 h-4" />
+              {periodType === "week" ? <Sparkles className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </div>
             <div>
               <span className="text-[10px] font-bold text-amber-500 dark:text-amber-400 uppercase tracking-widest block">
-                Golden Hour Closure
+                {periodType === "week" ? "Seven-Day Synthesis" : periodType === "month" ? "Thirty-Day Retrospective" : "Golden Hour Closure"}
               </span>
               <h3 className="text-base font-semibold text-[var(--text-color)]">
-                The Evening Epilogue
+                {periodType === "week" ? "The Weekly Opus Tapestry" : periodType === "month" ? "The Monthly Odyssey" : "The Evening Epilogue"}
               </h3>
             </div>
           </div>
@@ -228,7 +232,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
                 <Compass className="w-3.5 h-3.5" />
-                <span>Cadence of Your Day</span>
+                <span>{periodType === "week" ? "Cadence of Your Week" : periodType === "month" ? "Cadence of Your Month" : "Cadence of Your Day"}</span>
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -240,10 +244,10 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                       ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
                       : "bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-xs hover:scale-105"
                   }`}
-                  title="Watch 5-second cinematic playback of today's flow"
+                  title={periodType === "week" ? "Watch cinematic playback of this week's flow" : "Watch 5-second cinematic playback of today's flow"}
                 >
                   <Play className={`w-3 h-3 ${isPlayingReel ? "animate-spin" : "fill-current"}`} />
-                  <span>{isPlayingReel ? "Playing..." : "Play Daily Reel"}</span>
+                  <span>{isPlayingReel ? "Playing..." : periodType === "week" ? "Play Weekly Reel" : "Play Daily Reel"}</span>
                 </button>
                 <span className="text-xs font-mono text-[var(--text-muted)] font-semibold">
                   {dateStr}
@@ -380,7 +384,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                     ? "bg-emerald-600 text-white shadow-emerald-500/20"
                     : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold shadow-amber-500/20"
                 }`}
-                title="Seal Today's Chapter and inscribe permanently to Obsidian Vault"
+                title={periodType === "week" ? "Seal This Week's Opus and inscribe permanently to Obsidian Vault" : "Seal Today's Chapter and inscribe permanently to Obsidian Vault"}
               >
                 {isSealing ? (
                   <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
@@ -389,7 +393,14 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 ) : (
                   <Award className="w-3.5 h-3.5 text-black" />
                 )}
-                <span>{isSealing ? "Inscribing..." : isSealed ? "✓ Sealed to Vault" : "Seal & Inscribe Chapter"}</span>
+                <span>
+                  {isSealing 
+                    ? "Inscribing..." 
+                    : isSealed 
+                      ? (periodType === "week" ? "✓ Week Sealed to Vault" : "✓ Sealed to Vault") 
+                      : (periodType === "week" ? "Seal Week into Vault" : "Seal & Inscribe Chapter")
+                  }
+                </span>
               </button>
 
               {/* 1-Click Export Flow Postcard */}
@@ -397,7 +408,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 onClick={handleExportPostcard}
                 disabled={isExportingPostcard}
                 className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-xs font-semibold text-amber-300 transition-all cursor-pointer shadow-sm"
-                title="Generate high-resolution dark-mode Flow Postcard (Copies image to clipboard and downloads PNG)"
+                title={periodType === "week" ? "Generate high-resolution dark-mode Weekly Tapestry Postcard (Copies image to clipboard and downloads PNG)" : "Generate high-resolution dark-mode Flow Postcard (Copies image to clipboard and downloads PNG)"}
               >
                 {isExportingPostcard ? (
                   <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -406,7 +417,7 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 ) : (
                   <Camera className="w-3.5 h-3.5 text-amber-400" />
                 )}
-                <span>{isExportingPostcard ? "Generating..." : postcardCopied ? "✓ Postcard Saved!" : "Export Postcard"}</span>
+                <span>{isExportingPostcard ? "Generating..." : postcardCopied ? (periodType === "week" ? "✓ Tapestry Saved!" : "✓ Postcard Saved!") : (periodType === "week" ? "Export Tapestry" : "Export Postcard")}</span>
               </button>
 
               <button

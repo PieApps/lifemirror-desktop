@@ -1,7 +1,10 @@
+import { useState, useEffect, useCallback } from "react";
+
 // Pure WebAudio procedural synthesizer - UI chimes and notifications only
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private isEnabled: boolean = true;
+  private listeners: Set<(enabled: boolean) => void> = new Set();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -49,11 +52,25 @@ class SoundEngine {
     return ctx;
   }
 
+  public subscribe(listener: (enabled: boolean) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   public setEnabled(enabled: boolean) {
     this.isEnabled = enabled;
     if (typeof window !== "undefined") {
       localStorage.setItem("lifemirror_sound_enabled", enabled ? "true" : "false");
+      window.dispatchEvent(new CustomEvent("lifemirror_sound_toggle", { detail: enabled }));
     }
+    this.listeners.forEach((fn) => fn(enabled));
+  }
+
+  public toggle(): boolean {
+    const next = !this.isEnabled;
+    this.setEnabled(next);
+    if (next) this.playTactileTick();
+    return next;
   }
 
   public getEnabled(): boolean {
@@ -291,3 +308,14 @@ class SoundEngine {
 }
 
 export const sound = new SoundEngine();
+
+export function useSoundState(): [boolean, () => boolean] {
+  const [enabled, setEnabled] = useState(() => sound.getEnabled());
+
+  useEffect(() => {
+    return sound.subscribe((val) => setEnabled(val));
+  }, []);
+
+  const toggle = useCallback(() => sound.toggle(), []);
+  return [enabled, toggle];
+}

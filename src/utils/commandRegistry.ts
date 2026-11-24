@@ -6,7 +6,9 @@ import {
   Settings,
   Calendar,
   Music,
-  Maximize2
+  Maximize2,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 
 export interface QuickCommand {
@@ -27,8 +29,10 @@ export function buildQuickCommands(handlers: {
   onOpenSettings: (tab?: string) => void;
   onJumpToday: () => void;
   onOpenSoundtrack: () => void;
+  onToggleSound?: () => void;
   isZenMode?: boolean;
   isIncognito?: boolean;
+  isSoundEnabled?: boolean;
 }): QuickCommand[] {
   return [
     {
@@ -46,6 +50,15 @@ export function buildQuickCommands(handlers: {
       icon: React.createElement(Sunrise, { className: "w-4 h-4 text-rose-400" }),
       category: "flow",
       action: handlers.onOpenPrelude,
+    },
+    {
+      id: "toggle_sound",
+      title: handlers.isSoundEnabled ? "Mute Acoustic Effects" : "Enable Acoustic Sound Effects",
+      subtitle: handlers.isSoundEnabled ? "Silence all UI sound ticks and Solfeggio bells" : "Enable tactile sound ticks and Solfeggio bells",
+      icon: React.createElement(handlers.isSoundEnabled ? VolumeX : Volume2, { className: "w-4 h-4 text-violet-400" }),
+      category: "system",
+      shortcut: "⌘M",
+      action: handlers.onToggleSound || (() => {}),
     },
     {
       id: "toggle_zen",

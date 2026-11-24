@@ -1,7 +1,8 @@
 import React from "react";
 import {
-  ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search
+  ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search, Volume2, VolumeX
 } from "lucide-react";
+import { useSoundState } from "../utils/sound";
 
 interface HeaderProps {
   theme: "dark" | "light";
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   setShowSettings,
   onOpenSpotlight,
 }) => {
+  const [isSoundEnabled, toggleSound] = useSoundState();
   return (
     <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -79,6 +81,18 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">Paused</span>
           </div>
         )}
+
+        <button
+          onClick={toggleSound}
+          className="p-2 sm:p-2.5 rounded-xl transition-all border border-[var(--border-color)] hover:bg-zinc-500/10 text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
+          title={isSoundEnabled ? "Acoustic Effects: On (Click to Mute)" : "Acoustic Effects: Muted (Click to Enable)"}
+        >
+          {isSoundEnabled ? (
+            <Volume2 className="w-4 h-4 text-violet-400" />
+          ) : (
+            <VolumeX className="w-4 h-4 text-zinc-500" />
+          )}
+        </button>
 
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

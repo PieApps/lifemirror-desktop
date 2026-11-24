@@ -2,6 +2,7 @@ import { formatDuration } from "./formatDuration";
 
 export interface PostcardData {
   dateStr: string;
+  periodType?: "day" | "week" | "month";
   totalFocusSeconds: number;
   episodesCount: number;
   activitiesCount: number;
@@ -21,6 +22,9 @@ export async function generateFlowPostcard(data: PostcardData): Promise<Blob> {
   canvas.width = width;
   canvas.height = height;
 
+  const isWeekly = data.periodType === "week";
+  const isMonthly = data.periodType === "month";
+
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Unable to obtain 2D canvas context");
@@ -39,7 +43,7 @@ export async function generateFlowPostcard(data: PostcardData): Promise<Blob> {
   ctx.fillRect(0, 0, width, height);
 
   const gradBottomLeft = ctx.createRadialGradient(200, height - 120, 10, 200, height - 120, 450);
-  gradBottomLeft.addColorStop(0, "rgba(245, 158, 11, 0.22)");
+  gradBottomLeft.addColorStop(0, isWeekly ? "rgba(168, 85, 247, 0.25)" : "rgba(245, 158, 11, 0.22)");
   gradBottomLeft.addColorStop(0.5, "rgba(244, 63, 94, 0.08)");
   gradBottomLeft.addColorStop(1, "rgba(9, 9, 11, 0)");
   ctx.fillStyle = gradBottomLeft;
@@ -51,31 +55,43 @@ export async function generateFlowPostcard(data: PostcardData): Promise<Blob> {
   ctx.strokeRect(16, 16, width - 32, height - 32);
 
   // 3. Header Ribbon
-  ctx.fillStyle = "rgba(245, 158, 11, 0.15)";
-  ctx.strokeStyle = "rgba(245, 158, 11, 0.4)";
+  ctx.fillStyle = isWeekly ? "rgba(168, 85, 247, 0.15)" : "rgba(245, 158, 11, 0.15)";
+  ctx.strokeStyle = isWeekly ? "rgba(168, 85, 247, 0.4)" : "rgba(245, 158, 11, 0.4)";
   ctx.lineWidth = 1.5;
   const badgeX = 50;
   const badgeY = 50;
+  const badgeW = isWeekly ? 330 : 280;
   ctx.beginPath();
-  ctx.roundRect(badgeX, badgeY, 280, 28, 14);
+  ctx.roundRect(badgeX, badgeY, badgeW, 28, 14);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#fbbf24";
+  ctx.fillStyle = isWeekly ? "#c084fc" : "#fbbf24";
   ctx.font = "bold 11px system-ui, -apple-system, sans-serif";
-  ctx.fillText("🌅 LIFEMIRROR RETROSPECTIVE", badgeX + 16, badgeY + 18);
+  const badgeLabel = isWeekly
+    ? "🌟 LIFEMIRROR WEEKLY OPUS • TAPESTRY"
+    : isMonthly
+    ? "🌌 LIFEMIRROR MONTHLY OPUS"
+    : "🌅 LIFEMIRROR RETROSPECTIVE";
+  ctx.fillText(badgeLabel, badgeX + 16, badgeY + 18);
 
   // Formatted Date
   let formattedDate = data.dateStr;
-  try {
-    const d = new Date(data.dateStr + "T12:00:00");
-    formattedDate = d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {}
+  if (!isWeekly && !isMonthly) {
+    try {
+      const d = new Date(data.dateStr + "T12:00:00");
+      formattedDate = d.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {}
+  } else if (isWeekly) {
+    formattedDate = `Week Review · ${data.dateStr}`;
+  } else if (isMonthly) {
+    formattedDate = `Month Review · ${data.dateStr}`;
+  }
 
   ctx.fillStyle = "#ffffff";
   ctx.font = "900 32px system-ui, -apple-system, sans-serif";
@@ -96,8 +112,8 @@ export async function generateFlowPostcard(data: PostcardData): Promise<Blob> {
   ctx.bezierCurveTo(900, 165, 1050, 205, width - 50, 185);
   ctx.lineWidth = 5;
   const riverGrad = ctx.createLinearGradient(50, 0, width - 50, 0);
-  riverGrad.addColorStop(0, "#f59e0b");
-  riverGrad.addColorStop(0.5, "#a855f7");
+  riverGrad.addColorStop(0, isWeekly ? "#a855f7" : "#f59e0b");
+  riverGrad.addColorStop(0.5, "#6366f1");
   riverGrad.addColorStop(1, "#38bdf8");
   ctx.strokeStyle = riverGrad;
   ctx.shadowColor = "rgba(168, 85, 247, 0.6)";
@@ -132,9 +148,9 @@ export async function generateFlowPostcard(data: PostcardData): Promise<Blob> {
   const statWidth = 350;
   const statHeight = 85;
   const stats = [
-    { label: "FOCUSED FLOW", val: formatDuration(data.totalFocusSeconds), col: "#fbbf24" },
-    { label: "CHAPTERS SCULPTED", val: String(data.episodesCount), col: "#a855f7" },
-    { label: "FLOW PURITY", val: `${data.purityScore || 92}%`, col: "#34d399" },
+    { label: isWeekly ? "WEEKLY FLOW" : "FOCUSED FLOW", val: formatDuration(data.totalFocusSeconds), col: "#fbbf24" },
+    { label: isWeekly ? "WEEKLY CHAPTERS" : "CHAPTERS SCULPTED", val: String(data.episodesCount), col: "#a855f7" },
+    { label: isWeekly ? "WEEKLY PURITY" : "FLOW PURITY", val: `${data.purityScore || 92}%`, col: "#34d399" },
   ];
 
   stats.forEach((st, i) => {

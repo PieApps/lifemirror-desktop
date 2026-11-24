@@ -1179,9 +1179,10 @@ export function SCurveTimeline({
                   >
                     {isNodeActive && (
                       <>
-                        <div className="absolute -inset-2.5 rounded-full bg-violet-500/25 animate-ping pointer-events-none" />
-                        <div className="absolute -inset-1 rounded-full bg-violet-400/30 blur-sm pointer-events-none animate-pulse" />
-                        <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping pointer-events-none" />
+                        <div className="absolute -inset-3.5 rounded-full bg-emerald-500/20 animate-ping pointer-events-none" />
+                        <div className="absolute -inset-2 rounded-full bg-violet-400/25 blur-md pointer-events-none animate-pulse" />
+                        <div className="absolute -inset-1 rounded-full bg-emerald-400/35 animate-ping pointer-events-none" />
+                        <div className="absolute inset-0 rounded-full border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.7)] pointer-events-none" />
                       </>
                     )}
                     {node.isShield ? (
@@ -1199,21 +1200,26 @@ export function SCurveTimeline({
                     )}
                   </div>
 
-                  {/* LIVE badge & The Now Spring Context Resume */}
+                  {/* The Estuary of Time: Living "Now" Spring & Context Resume */}
                   {isNodeActive && (
                     <div
-                      className="absolute z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 backdrop-blur-sm shadow-sm transition-all"
-                      style={{ left: colPercentages[col], top: `${nodeY + 12}px`, transform: 'translateX(-50%)' }}
+                      className="absolute z-30 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 backdrop-blur-md shadow-[0_0_15px_rgba(52,211,153,0.3)] transition-all animate-in fade-in"
+                      style={{ left: colPercentages[col], top: `${nodeY + 14}px`, transform: 'translateX(-50%)' }}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_6px_rgba(52,211,153,0.8)] animate-pulse" />
-                      <span className="text-[9px] font-bold tracking-wider">LIVE</span>
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                      </span>
+                      <span className="text-[9px] font-bold tracking-wider font-mono">
+                        FLOWING{node.duration && node.duration >= 60 ? ` · ${Math.round(node.duration / 60)}m` : ""}
+                      </span>
                       {onResumeClick && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onResumeClick();
                           }}
-                          className="ml-0.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 hover:text-white bg-emerald-600/30 hover:bg-emerald-600/60 rounded-md transition-colors cursor-pointer"
+                          className="ml-0.5 flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-200 hover:text-white bg-emerald-600/40 hover:bg-emerald-500 rounded-md transition-colors cursor-pointer"
                           title="Resume Flow context where you left off"
                         >
                           <Sparkles className="w-2.5 h-2.5 text-emerald-300" />

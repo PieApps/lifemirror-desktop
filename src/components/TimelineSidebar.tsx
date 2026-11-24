@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { X, Edit2, MessageSquare, Trash2, FileText, Sparkles, Copy, FolderOpen, CheckCheck, Layers, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Edit2, MessageSquare, Trash2, FileText, Sparkles, Copy, FolderOpen, CheckCheck, Layers, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl, openPath } from '@tauri-apps/plugin-opener';
 import { TimelineNode, getGroupedSessionTitle, formatCleanTitle } from './SCurveTimeline';
@@ -145,6 +145,37 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
     } catch (e) {
       console.error("Failed to update summary", e);
     }
+  };
+
+  const dominantDomain = useMemo(() => {
+    if (!node) return null;
+    if (node.domain_tag) return node.domain_tag;
+    if (node.url) return extractDomain(node.url);
+    if (node.originalActivities?.[0]?.url) return extractDomain(node.originalActivities[0].url);
+    return null;
+  }, [node]);
+
+  const handleExcludeDomain = (domainToExclude: string, activityId?: number) => {
+    if (!domainToExclude) return;
+    setConfirmModal({
+      isOpen: true,
+      title: "1-Click Privacy Exclusion",
+      message: `Exclude "${domainToExclude}" from future tracking? Any window or tab matching this domain will be ignored permanently.`,
+      onConfirm: async () => {
+        try {
+          await invoke("add_domain_exclusion", { domain: domainToExclude });
+          sound.playCelebration();
+          if (activityId != null && onDeleteLog) {
+            onDeleteLog(activityId);
+          }
+        } catch (err) {
+          console.error("Failed to add domain exclusion:", err);
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      },
+      onCancel: () => setConfirmModal(prev => ({ ...prev, isOpen: false })),
+    });
   };
 
   // Memoize non-overlapping timeline breakdown items.
@@ -525,6 +556,15 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {dominantDomain && (
+              <button
+                onClick={() => handleExcludeDomain(dominantDomain)}
+                className="p-1.5 hover:bg-amber-500/10 text-[var(--text-muted)] hover:text-amber-400 rounded-lg transition-colors cursor-pointer"
+                title={`Exclude ${dominantDomain} from future tracking`}
+              >
+                <Shield className="w-4 h-4" />
+              </button>
+            )}
             {onUngroup && node.isGroupedSession && node.originalActivities.length > 1 && (
               <button
                 onClick={onUngroup}
@@ -802,6 +842,20 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                                 title="Delete activity"
                               >
                                 <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                            {event.url && extractDomain(event.url) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const domain = extractDomain(event.url!);
+                                  if (domain) handleExcludeDomain(domain, event.activityId);
+                                }}
+                                className="p-1 rounded text-amber-500 hover:bg-amber-500/10 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                title={`Exclude ${extractDomain(event.url)} from future tracking`}
+                              >
+                                <Shield className="w-3 h-3" />
                               </button>
                             )}
                             <span className="text-[10px] font-mono text-[var(--text-muted)] bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
