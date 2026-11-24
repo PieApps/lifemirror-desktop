@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { MarkdownRenderer } from "../utils/markdownRenderer";
 import { ConfirmModal } from "./ConfirmModal";
+import { MemoirModal } from "./MemoirModal";
 
 export interface VaultFileItem {
   name: string;
@@ -186,6 +187,7 @@ export const WikiVaultView: React.FC<WikiVaultViewProps> = ({ onBackToTimeline, 
   const [isCreatingNew, setIsCreatingNew] = useState<boolean>(false);
   const [newNoteTitle, setNewNoteTitle] = useState<string>("");
   const [newNoteCategory, setNewNoteCategory] = useState<"projects" | "topics">("projects");
+  const [isMemoirModalOpen, setIsMemoirModalOpen] = useState<boolean>(false);
 
   // Deletion and clearing modal states
   const [noteToDelete, setNoteToDelete] = useState<VaultFileItem | null>(null);
@@ -498,6 +500,15 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Clear</span>
+          </button>
+
+          <button
+            onClick={() => setIsMemoirModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold text-violet-300 transition-all shadow-sm cursor-pointer"
+            title="Compile archival Living Memoir from your vault notes"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
+            <span className="hidden sm:inline">Bind Memoir</span>
           </button>
 
           <button
@@ -1023,6 +1034,17 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
           }
         }}
         onCancel={() => setIsClearVaultModalOpen(false)}
+      />
+
+      {/* Living Memoir Anthology Modal */}
+      <MemoirModal
+        isOpen={isMemoirModalOpen}
+        onClose={() => setIsMemoirModalOpen(false)}
+        vaultFiles={files}
+        onSaveToVault={async (relativePath, content) => {
+          await invoke("write_vault_file", { relativePath, content });
+          await loadVaultStructure(relativePath);
+        }}
       />
     </div>
   );

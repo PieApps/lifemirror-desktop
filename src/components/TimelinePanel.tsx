@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ShieldAlert, Clock, Target, BookOpen, Maximize2, Minimize2,
-  Sparkles, Download, ChevronLeft, ChevronRight, Waves
+  Sparkles, Download, ChevronLeft, ChevronRight, Waves, Headphones, ExternalLink
 } from "lucide-react";
 import { SCurveTimeline, formatCleanTitle } from "./SCurveTimeline";
 import { WeeklyView } from "./WeeklyView";
@@ -10,6 +10,7 @@ import { MonthlyView } from "./MonthlyView";
 import { ExportJournalModal } from "./ExportJournalModal";
 import { WikiVaultView } from "./WikiVaultView";
 import { EveningEpilogueModal } from "./EveningEpilogueModal";
+import { FocusSoundtrackModal } from "./FocusSoundtrackModal";
 import { sound } from "../utils/sound";
 import type { ActivityNode, MemoryNode, SubSessionEvent, DistractionEvent, DailySummary, HourlyMetric } from "../types";
 import { getWeekRange, getLocalDateString } from "../hooks/useActivityData";
@@ -98,6 +99,13 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   const [initialVaultFile, setInitialVaultFile] = useState<string | undefined>(undefined);
   const [isEpilogueOpen, setIsEpilogueOpen] = useState(false);
   const [lastSynthesizedMarkdown, setLastSynthesizedMarkdown] = useState<string | undefined>(undefined);
+  const [isSoundtrackModalOpen, setIsSoundtrackModalOpen] = useState(false);
+  const [soundtrackTitle, setSoundtrackTitle] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("lifemirror_soundtrack_title") || "Focus Soundtrack";
+    }
+    return "Focus Soundtrack";
+  });
 
   const handleGeneratePeriodNote = async () => {
     setIsGeneratingPeriodNote(true);
@@ -343,15 +351,33 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                     <span className="text-xs text-[var(--text-color)] font-semibold truncate">{activeIntention}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    sound.playClearFocus();
-                    handleStopFocus();
-                  }}
-                  className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
-                >
-                  Clear Focus
-                </button>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Focus Soundtrack Companion */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      setIsSoundtrackModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/60 hover:bg-zinc-800 border border-violet-500/25 text-zinc-300 hover:text-white text-[11px] font-medium transition-all cursor-pointer shadow-xs"
+                    title="Focus Soundtrack (YouTube, Spotify, or Local Media)"
+                  >
+                    <Headphones className="w-3.5 h-3.5 text-violet-400" />
+                    <span className="truncate max-w-[140px]">{soundtrackTitle}</span>
+                    <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      sound.playClearFocus();
+                      handleStopFocus();
+                    }}
+                    className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
+                  >
+                    Clear Focus
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex items-center justify-between gap-4">
@@ -389,6 +415,21 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
 
                 {/* Serene Intention Input */}
                 <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                  {/* Focus Soundtrack Launcher */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      setIsSoundtrackModalOpen(true);
+                    }}
+                    className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-white/5 hover:border-violet-500/30 text-zinc-400 hover:text-white text-xs font-medium transition-all cursor-pointer shrink-0"
+                    title="Launch external focus soundtrack (YouTube, Spotify, or Local Media)"
+                  >
+                    <Headphones className="w-3.5 h-3.5 text-violet-400" />
+                    <span>Soundtrack</span>
+                    <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+                  </button>
+
                   <div className="flex items-center gap-2 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl flex-1 max-w-md focus-within:border-violet-500/50 transition-colors">
                     <Target className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     <input
@@ -509,6 +550,15 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             setIsEpilogueOpen(false);
             setMainTab("vault");
           }}
+        />
+      )}
+
+      {/* Focus Soundtrack Companion Modal */}
+      {isSoundtrackModalOpen && (
+        <FocusSoundtrackModal
+          isOpen={isSoundtrackModalOpen}
+          onClose={() => setIsSoundtrackModalOpen(false)}
+          onSelectSoundtrackTitle={(title) => setSoundtrackTitle(title)}
         />
       )}
     </div>

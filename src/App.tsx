@@ -18,6 +18,9 @@ import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
 import { FirstLogCelebration } from "./components/FirstLogCelebration";
+import { MorningPreludeModal } from "./components/MorningPreludeModal";
+import { OnboardingModal } from "./components/OnboardingModal";
+import { sound } from "./utils/sound";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
 import TimelineSidebar from "./components/TimelineSidebar";
@@ -268,6 +271,44 @@ function App() {
     return computeMetrics(data.activities, data.distractionEvents, focus.activeIntention);
   }, [data.activities, data.distractionEvents, focus.activeIntention]);
 
+  // Morning Prelude auto-prompt (once per morning between 5am and 12pm)
+  const [isMorningPreludeOpen, setIsMorningPreludeOpen] = useState(() => {
+    try {
+      const now = new Date();
+      const hour = now.getHours();
+      const today = now.toISOString().slice(0, 10);
+      const isMorning = hour >= 5 && hour < 12;
+      const seenToday = localStorage.getItem(`lifemirror_morning_prelude_${today}`) === "true";
+      return isMorning && !seenToday;
+    } catch {
+      return false;
+    }
+  });
+
+  // Onboarding Ceremony (first launch)
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
+    try {
+      return localStorage.getItem("lifemirror_onboarding_completed") !== "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const yesterdayStats = useMemo(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const yesterdayItems = data.weeklySummaries.filter(s => s.date === yesterdayStr);
+    const totalDuration = yesterdayItems.reduce((acc, s) => acc + s.total_duration, 0);
+    const sortedApps = [...yesterdayItems].sort((a, b) => b.total_duration - a.total_duration);
+    const dominantApp = sortedApps[0]?.app_name;
+    return {
+      totalDuration,
+      dominantApp,
+      episodeCount: yesterdayItems.length
+    };
+  }, [data.weeklySummaries]);
+
   useEffect(() => {
     const onVis = () => {
       document.documentElement.classList.toggle("app-hidden", document.visibilityState === "hidden");
@@ -322,9 +363,20 @@ function App() {
       }
     });
 
+    // Listen for distraction reminders to chime from the active main window
+    let lastDistractionChimeTime = 0;
+    const unlistenDistraction = listen('distraction-tick', () => {
+      const now = Date.now();
+      if (now - lastDistractionChimeTime > 30000) {
+        lastDistractionChimeTime = now;
+        sound.playAwakeningBell();
+      }
+    });
+
     return () => {
       unlisten.then(f => f());
       unlistenPull.then(f => f());
+      unlistenDistraction.then(f => f());
     };
   }, []);
 
@@ -627,6 +679,41 @@ function App() {
         }}
         currentOllamaUrl={settings.ollamaUrl}
         currentOllamaModel={settings.ollamaModel}
+      />
+
+      {/* Morning Prelude Dawn Awakening Modal */}
+      <MorningPreludeModal
+        isOpen={isMorningPreludeOpen}
+        onClose={() => {
+          try {
+            const today = new Date().toISOString().slice(0, 10);
+            localStorage.setItem(`lifemirror_morning_prelude_${today}`, "true");
+          } catch {}
+          setIsMorningPreludeOpen(false);
+        }}
+        onStartFocus={async (intent) => {
+          try {
+            const today = new Date().toISOString().slice(0, 10);
+            localStorage.setItem(`lifemirror_morning_prelude_${today}`, "true");
+          } catch {}
+          focus.setIntentionInput(intent);
+          await focus.handleStartFocus();
+          sound.playFocusIgnite();
+        }}
+        yesterdayStats={yesterdayStats}
+      />
+
+      {/* The Unboxing Ceremony First Launch Modal */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onOpenSettings={(tab) => {
+          setSettingsDefaultTab(tab);
+          settings.setShowSettings(true);
+        }}
+        onSelectAiMode={async (mode) => {
+          await settings.updateAiMode(mode);
+        }}
       />
 
       <FirstLogCelebration activityCount={data.activities.length} />

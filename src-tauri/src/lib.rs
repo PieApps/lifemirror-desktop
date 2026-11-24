@@ -697,6 +697,125 @@ fn delete_distraction_rule(db: State<'_, Arc<DbState>>, id: i64) -> Result<(), S
     db.delete_distraction_rule(id).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LocalMusicTrack {
+    pub name: String,
+    pub path: String,
+    pub extension: String,
+    pub size_mb: f64,
+}
+
+#[tauri::command]
+fn get_default_music_dir() -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        let music = std::path::Path::new(&home).join("Music");
+        if music.exists() {
+            return music.to_string_lossy().to_string();
+        }
+        return home;
+    }
+    #[cfg(target_os = "windows")]
+    if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        let music = std::path::Path::new(&userprofile).join("Music");
+        if music.exists() {
+            return music.to_string_lossy().to_string();
+        }
+        return userprofile;
+    }
+    "".to_string()
+}
+
+#[tauri::command]
+fn list_local_music_tracks(folder_path: Option<String>) -> Result<Vec<LocalMusicTrack>, String> {
+    let target = match folder_path {
+        Some(p) if !p.trim().is_empty() => {
+            if p.starts_with("~/") || p == "~" {
+                if let Ok(home) = std::env::var("HOME") {
+                    p.replacen('~', &home, 1)
+                } else {
+                    p
+                }
+            } else {
+                p
+            }
+        }
+        _ => get_default_music_dir(),
+    };
+
+    let path = std::path::Path::new(&target);
+    if !path.exists() || !path.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let audio_exts = ["mp3", "flac", "wav", "m4a", "ogg", "aac", "opus", "wma"];
+    let mut tracks = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()) {
+                    if audio_exts.contains(&ext.as_str()) {
+                        let name = p.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("Unknown Track")
+                            .to_string();
+                        let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        let size_mb = (size_bytes as f64) / (1024.0 * 1024.0);
+                        tracks.push(LocalMusicTrack {
+                            name,
+                            path: p.to_string_lossy().to_string(),
+                            extension: ext,
+                            size_mb: (size_mb * 10.0).round() / 10.0,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    tracks.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(tracks)
+}
+
+#[tauri::command]
+fn open_system_path(path: String) -> Result<(), String> {
+    let resolved = if path.starts_with("~/") || path == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            path.replacen('~', &home, 1)
+        } else {
+            path
+        }
+    } else {
+        path
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&resolved)
+            .spawn()
+            .map_err(|e| format!("Failed to open {}: {}", resolved, e))?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&resolved)
+            .spawn()
+            .map_err(|e| format!("Failed to open {}: {}", resolved, e))?;
+        Ok(())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&resolved)
+            .spawn()
+            .map_err(|e| format!("Failed to open {}: {}", resolved, e))?;
+        Ok(())
+    }
+}
+
 #[tauri::command]
 fn get_excluded_domains(db: State<'_, Arc<DbState>>) -> Result<Vec<db::ExclusionEntry>, String> {
     db.get_excluded_domains().map_err(|e| e.to_string())
@@ -1506,7 +1625,10 @@ pub fn run() {
             vault::compile_period_note,
             vault::delete_vault_file,
             vault::clear_and_archive_vault,
-            get_app_environment
+            get_app_environment,
+            get_default_music_dir,
+            list_local_music_tracks,
+            open_system_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
