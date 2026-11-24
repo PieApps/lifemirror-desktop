@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { X, Edit2, MessageSquare, Trash2, FileText, Sparkles, Copy, FolderOpen, CheckCheck, Layers, ChevronDown, ChevronUp } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl, openPath } from '@tauri-apps/plugin-opener';
@@ -96,15 +96,23 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
     isOpen: false, title: '', message: '', onConfirm: () => {}, onCancel: () => {}
   });
 
+  const lastNodeKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (node?.isMemoryNode && node.memoryData) {
-      setSummaryText(node.memoryData.summary || "");
-    } else {
-      setSummaryText("");
+    const currentKey = node ? `${node.id}_${node.start_time}` : null;
+    // Only reset state if the user selected a DIFFERENT card/node.
+    // If the node object reference updated due to background polling, preserve isEditing and input!
+    if (currentKey !== lastNodeKeyRef.current) {
+      lastNodeKeyRef.current = currentKey;
+      if (node?.isMemoryNode && node.memoryData) {
+        setSummaryText(node.memoryData.summary || "");
+      } else {
+        setSummaryText(node?.notes || "");
+      }
+      setIsEditing(false);
+      setIsEditingNote(false);
+      setSavedPath(null);
     }
-    setIsEditing(false);
-    setIsEditingNote(false);
-    setSavedPath(null);
   }, [node]);
 
   // Escape key closes the panel
@@ -117,11 +125,23 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
 
 
   const handleSaveSummary = async () => {
-    if (!node?.isMemoryNode || !node.memoryData?.id) return;
+    if (!node) return;
     try {
-      await invoke("update_memory_node_summary", { id: node.memoryData.id, summary: summaryText });
-      node.memoryData.summary = summaryText;
+      if (node.isMemoryNode && node.memoryData?.id) {
+        await invoke("update_memory_node_summary", { id: node.memoryData.id, summary: summaryText });
+        node.memoryData.summary = summaryText;
+      } else {
+        node.notes = summaryText;
+        const actIds = (node.originalActivities || []).map(a => a.id).filter((id): id is number => id != null);
+        await invoke("add_journal_entry", {
+          notes: summaryText,
+          activityId: node.id || null,
+          activityIds: actIds.length > 0 ? actIds : null,
+        });
+      }
       setIsEditing(false);
+      await compileMarkdown(summaryText);
+      sound.playFocusIgnite();
     } catch (e) {
       console.error("Failed to update summary", e);
     }
@@ -292,6 +312,20 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
 
   const activeDuration = totalDuration > 0 ? Math.min(rawActiveSum, totalDuration) : rawActiveSum;
 
+  const instantDigest = useMemo(() => {
+    if (!node) return "";
+    const durStr = getFormatDuration(activeDuration);
+    const spanStr = totalDuration > activeDuration ? `${getFormatDuration(totalDuration)} total span` : "continuous flow";
+    const toolNames = (node.tools || []).map(t => t.app_name).filter(Boolean);
+    const toolListStr = toolNames.length > 1
+      ? `${toolNames.slice(0, -1).join(", ")} and ${toolNames[toolNames.length - 1]}`
+      : (node.app_name || "creative tools");
+    const momentsCount = timelineItems.length;
+    const projectPart = node.dominantProject ? ` on **${node.dominantProject}**` : "";
+
+    return `Between ${formatTime(node.start_time)} and ${formatTime(node.end_time || node.start_time)} (${spanStr}), you engaged in ${durStr} of focused deep work${projectPart}. This chapter orchestrated craft across **${toolListStr}**, touching ${momentsCount} moments of creative output.`;
+  }, [node, activeDuration, totalDuration, timelineItems]);
+
   const compileMarkdown = useCallback(async (summaryOverride?: string) => {
     if (!node) return;
     setIsCompiling(true);
@@ -317,7 +351,7 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
           metadata: s.metadata || undefined,
           timestamp: s.timestamp,
         })),
-        ai_summary: summaryOverride ?? (summaryText || (node.isMemoryNode ? node.memoryData?.summary : undefined)),
+        ai_summary: summaryOverride ?? (summaryText || (node.isMemoryNode ? node.memoryData?.summary : instantDigest)),
         notes: node.notes || undefined,
       };
       const md = await invoke<string>("compile_session_markdown", { payload });
@@ -544,45 +578,72 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
         <div className="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-6">
           
           {/* Section 1: Hero Episode Card */}
-          <div className="glass rounded-2xl p-4 border border-[var(--border-color)] bg-[var(--card-bg)] flex items-center gap-4">
-            <AppIcon
-              appName={node.app_name}
-              url={node.url}
-              iconUrl={node.icon_url}
-              domainTag={node.domain_tag}
-              source={node.source}
-              className="w-12 h-12 shrink-0 rounded-xl"
-              showBadge={true}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-[var(--text-color)] font-mono">
-                  {getFormatDuration(activeDuration)}
-                </span>
-                <span className="text-xs text-violet-400 font-semibold uppercase tracking-wider">Focused</span>
-              </div>
-
-              <div className="text-xs text-[var(--text-muted)] font-mono flex items-center gap-1.5 flex-wrap mt-0.5">
-                <span>{formatTime(node.start_time)} – {formatTime(node.end_time || node.start_time)}</span>
-                {totalDuration > activeDuration && (
-                  <>
-                    <span>•</span>
-                    <span title="Total elapsed span">{formatDuration(totalDuration)} span</span>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-[10px] font-semibold text-zinc-300 px-2 py-0.5 rounded-full bg-zinc-800/60 border border-white/5 inline-block">
-                  {node.isMemoryNode ? '✨ Synthesized Flow' : `${node.source} Episode`}
-                </span>
-                {node.isGroupedSession && (
-                  <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                    {timelineItems.length} moments
+          <div className="glass rounded-2xl p-4 border border-[var(--border-color)] bg-[var(--card-bg)] flex flex-col gap-3">
+            <div className="flex items-start gap-4">
+              <AppIcon
+                appName={node.app_name}
+                url={node.url}
+                iconUrl={node.icon_url}
+                domainTag={node.domain_tag}
+                source={node.source}
+                className="w-12 h-12 shrink-0 rounded-xl mt-0.5"
+                showBadge={true}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-[var(--text-color)] font-mono">
+                    {getFormatDuration(activeDuration)}
                   </span>
-                )}
+                  <span className="text-xs text-violet-400 font-semibold uppercase tracking-wider">Focused</span>
+                </div>
+
+                <h2 className="text-base font-bold text-[var(--text-color)] leading-snug mt-1" title={getGroupedSessionTitle(node)}>
+                  {getGroupedSessionTitle(node)}
+                </h2>
+
+                <div className="text-xs text-[var(--text-muted)] font-mono flex items-center gap-1.5 flex-wrap mt-1">
+                  <span>{formatTime(node.start_time)} – {formatTime(node.end_time || node.start_time)}</span>
+                  {totalDuration > activeDuration && (
+                    <>
+                      <span>•</span>
+                      <span title="Total elapsed span">{formatDuration(totalDuration)} span</span>
+                      <span>•</span>
+                      <span className="text-emerald-400 font-semibold">{Math.round((activeDuration / totalDuration) * 100)}% purity</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                  {node.dominantProject && (
+                    <span className="text-[10px] font-bold text-violet-300 px-2 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/30 inline-block">
+                      {node.dominantProject}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-semibold text-zinc-300 px-2 py-0.5 rounded-full bg-zinc-800/60 border border-white/5 inline-block">
+                    {node.isMemoryNode ? '✨ Synthesized Flow' : `${node.source} Episode`}
+                  </span>
+                  {node.isGroupedSession && (
+                    <span className="text-[10px] font-semibold text-violet-400 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center gap-1">
+                      <Layers className="w-3 h-3" />
+                      <span>{timelineItems.length} Stacked Cards</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {node.tools && node.tools.length > 1 && (
+              <div className="pt-2.5 border-t border-[var(--border-color)]/60 flex items-center gap-2 flex-wrap">
+                <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Tool Palette:</span>
+                {node.tools.map((t, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 text-[10px]">
+                    <AppIcon appName={t.app_name} iconUrl={t.icon_url} url={t.url} source={t.source} className="w-3.5 h-3.5" showBadge={false} />
+                    <span className="font-medium text-[var(--text-color)]">{t.app_name}</span>
+                    <span className="text-[9px] text-[var(--text-muted)] font-mono">({formatDuration(t.duration)})</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Section 2: The Biographer's Episode Story */}
@@ -621,13 +682,13 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setIsEditing(false)}
-                        className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                        className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={handleSaveSummary}
-                        className="px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold"
+                        className="px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer"
                       >
                         Save
                       </button>
@@ -636,22 +697,40 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                 )}
               </div>
             ) : (
-              <div className="p-4 rounded-2xl border border-dashed border-[var(--border-color)] bg-[var(--card-bg)]/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
-                <div className="text-xs text-[var(--text-muted)]">
-                  Turn this {getFormatDuration(activeDuration)} session into a synthesized literary chronicle.
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent border border-violet-500/20 relative space-y-3">
+                <p className="text-xs text-[var(--text-color)] leading-relaxed font-serif whitespace-pre-wrap">
+                  "{instantDigest}"
+                </p>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-color)]/50 flex-wrap">
+                  <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                    Deterministic Flow Chronicle
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSummaryText(instantDigest);
+                        setIsEditing(true);
+                      }}
+                      className="px-2.5 py-1 text-xs text-[var(--text-muted)] hover:text-violet-400 flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Personalize this chronicle"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      <span>Personalize</span>
+                    </button>
+                    <button
+                      onClick={handleEnrichWithAI}
+                      disabled={isEnriching}
+                      className="px-3 py-1 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white flex items-center gap-1.5 shrink-0 shadow-xs shadow-violet-600/30 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isEnriching ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )}
+                      <span>{isEnriching ? "Synthesizing..." : "Elevate with AI"}</span>
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={handleEnrichWithAI}
-                  disabled={isEnriching}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white flex items-center gap-1.5 shrink-0 shadow-sm shadow-violet-600/30 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {isEnriching ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isEnriching ? "Synthesizing..." : "Synthesize Narrative"}</span>
-                </button>
               </div>
             )}
           </div>
@@ -664,13 +743,19 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
             </div>
           )}
 
-          {/* Section 4: The Artifact Journey (Touched Windows & Activities) */}
+          {/* Section 4: All Stacked Cards & Moments in this Episode */}
           {node.isGroupedSession && !node.isShield && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                  Artifacts & Windows ({timelineItems.length})
-                </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-[11px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Cards Stacked in this Episode ({timelineItems.length})</span>
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    Every card, tab, and focus moment grouped under this chapter:
+                  </p>
+                </div>
               </div>
               
               <div className="space-y-2 relative before:absolute before:inset-y-0 before:left-[19px] before:w-[2px] before:bg-black/5 dark:before:bg-white/5">
@@ -678,7 +763,10 @@ export default function TimelineSidebar({ node, onClose, onDeleteLog, onDeleteMe
                   const formattedDur = event.duration > 0 ? getFormatDuration(event.duration) : "<1s";
 
                   return (
-                    <div key={event.id ?? idx} className="relative flex items-start gap-3.5 p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                    <div key={event.id ?? idx} className="relative flex items-start gap-3 p-2.5 rounded-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 hover:border-violet-500/30 transition-all group">
+                      <div className="flex items-center justify-center w-5 h-5 rounded-md bg-violet-500/10 text-violet-400 text-[10px] font-mono font-bold shrink-0 mt-1">
+                        #{idx + 1}
+                      </div>
                       <div className="relative z-10 w-9 h-9 shrink-0 bg-[var(--bg-primary)] p-0.5 rounded-xl shadow-xs">
                         <AppIcon
                           appName={event.app || node.app_name}

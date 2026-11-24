@@ -94,52 +94,188 @@ export function formatCleanTitle(
   return title.trim();
 }
 
+// Converts kebab-case, snake_case, or dot.case to Title Case words
+export function formatProjectName(raw: string): string {
+  const cleaned = raw.replace(/[-_.]+/g, ' ').trim();
+  if (!cleaned) return raw;
+  return cleaned
+    .split(' ')
+    .filter(Boolean)
+    .map(word => {
+      // Preserve uppercase for common tech acronyms
+      if (/^(api|ui|cli|pr|db|os|ai|sql|rust|tauri|ts|js|css|svg|sdk)$/i.test(word)) {
+        return word.toUpperCase();
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+// Extract project or repository context from window titles, URLs, and paths
+export function detectProjectContext(
+  activities: ActivityNode[] = [],
+  subEvents: SubSessionEvent[] = []
+): string | null {
+  for (const act of activities) {
+    const raw = act.window_title || '';
+    
+    // Check VS Code pattern: "file.ext - projectName - Visual Studio Code" or "projectName - Visual Studio Code"
+    const ideMatch = raw.match(/[-–—]\s*([a-zA-Z0-9_\-\.]+)\s*[-–—]\s*(?:Visual Studio Code|VS Code|Cursor|Antigravity|VSCodium)/i) ||
+                     raw.match(/^([a-zA-Z0-9_\-\.]+)\s*[-–—]\s*(?:Visual Studio Code|VS Code|Cursor|Antigravity)/i);
+    if (ideMatch && ideMatch[1] && !/^(src|components|hooks|utils|assets|pages|tests|app|dist|target)$/i.test(ideMatch[1])) {
+      return formatProjectName(ideMatch[1]);
+    }
+
+    // Check GitHub / GitLab URLs: github.com/owner/repo
+    if (act.url) {
+      const gitMatch = act.url.match(/github\.com\/[^\/]+\/([a-zA-Z0-9_\-\.]+)/i) ||
+                       act.url.match(/gitlab\.com\/[^\/]+\/([a-zA-Z0-9_\-\.]+)/i);
+      if (gitMatch && gitMatch[1]) {
+        return formatProjectName(gitMatch[1]);
+      }
+    }
+
+    // Check terminal paths: e.g. "~/lifemirror-desktop" or "/var/www/pieapps/lifemirror-desktop"
+    const pathMatch = raw.match(/(?:\/|~[\/\w\.-]*\/)([a-zA-Z0-9_\-\.]{3,30})(?:\s|:|$)/);
+    if (pathMatch && pathMatch[1] && !/^(var|www|home|usr|bin|etc|tmp|dev|node_modules|dist|target)$/i.test(pathMatch[1])) {
+      return formatProjectName(pathMatch[1]);
+    }
+  }
+
+  for (const sub of subEvents) {
+    if (sub.primary_uri) {
+      const gitMatch = sub.primary_uri.match(/github\.com\/[^\/]+\/([a-zA-Z0-9_\-\.]+)/i);
+      if (gitMatch && gitMatch[1]) {
+        return formatProjectName(gitMatch[1]);
+      }
+    }
+    if (sub.context_tag && sub.context_tag.length > 2 && !/^(chrome|browser|editor|window)$/i.test(sub.context_tag)) {
+      return formatProjectName(sub.context_tag);
+    }
+  }
+
+  return null;
+}
+
+export function extractUniqueTools(
+  activities: ActivityNode[] = [],
+  dominantAppName: string,
+  dominantIcon?: string,
+  dominantUrl?: string,
+  dominantTag?: string,
+  dominantSource: string = "App"
+): TimelineNodeTool[] {
+  if (activities.length === 0) {
+    return [{
+      app_name: dominantAppName,
+      icon_url: dominantIcon,
+      url: dominantUrl,
+      domain_tag: dominantTag,
+      source: dominantSource,
+      duration: 0,
+    }];
+  }
+
+  const toolMap = new Map<string, TimelineNodeTool>();
+
+  for (const act of activities) {
+    const key = (act.app_name || "App").toLowerCase();
+    const existing = toolMap.get(key);
+    if (existing) {
+      existing.duration += act.duration;
+      if (!existing.icon_url && act.icon_url) existing.icon_url = act.icon_url;
+      if (!existing.url && act.url) existing.url = act.url;
+      if (!existing.domain_tag && act.domain_tag) existing.domain_tag = act.domain_tag;
+    } else {
+      toolMap.set(key, {
+        app_name: act.app_name,
+        icon_url: act.icon_url,
+        url: act.url,
+        domain_tag: act.domain_tag,
+        source: act.source,
+        duration: act.duration,
+      });
+    }
+  }
+
+  return Array.from(toolMap.values()).sort((a, b) => b.duration - a.duration);
+}
+
 export function getGroupedSessionTitle(node: TimelineNode): string {
   if (node.isShield) return "Shielded Flow";
-  if (node.isMemoryNode && node.window_title && !node.window_title.toLowerCase().endsWith(" session") && !node.window_title.toLowerCase().startsWith("session involving")) {
+  
+  if (node.isMemoryNode && node.window_title && 
+      !node.window_title.toLowerCase().endsWith(" session") && 
+      !node.window_title.toLowerCase().startsWith("session involving") &&
+      !node.window_title.toLowerCase().includes("working session")) {
     return formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
   }
 
-  if (node.originalActivities && node.originalActivities.length > 0) {
-    if (node.originalActivities.length === 1) {
-      const single = node.originalActivities[0];
+  const activities = node.originalActivities || [];
+  const subEvents = node.subEvents || [];
+  const projectContext = node.dominantProject || detectProjectContext(activities, subEvents);
+
+  if (activities.length > 0) {
+    if (activities.length === 1) {
+      const single = activities[0];
       const cleaned = formatCleanTitle(single.window_title, single.app_name, single.domain_tag, single.url);
-      if (cleaned && cleaned !== single.app_name && !cleaned.toLowerCase().endsWith(" session")) {
-        return cleaned;
+      if (cleaned && cleaned !== single.app_name && !cleaned.toLowerCase().endsWith(" session") && cleaned !== "Creative Flow") {
+        return projectContext && !cleaned.toLowerCase().includes(projectContext.toLowerCase())
+          ? `${projectContext} · ${cleaned}`
+          : cleaned;
       }
     } else {
       // Multi-activity episode synthesis:
       // Sort activities by duration descending
-      const sortedByDur = [...node.originalActivities].sort((a, b) => b.duration - a.duration);
+      const sortedByDur = [...activities].sort((a, b) => b.duration - a.duration);
       const cleanedTitles = sortedByDur
         .map(a => formatCleanTitle(a.window_title, a.app_name, a.domain_tag, a.url))
-        .filter((t): t is string => !!t && t !== node.app_name && !t.toLowerCase().endsWith(" session") && t !== "Creative Flow");
+        .filter((t): t is string => 
+          !!t && 
+          t !== node.app_name && 
+          !t.toLowerCase().endsWith(" session") && 
+          t !== "Creative Flow" &&
+          t !== "Working Session"
+        );
       
       const uniqueTitles = Array.from(new Set(cleanedTitles));
 
       if (uniqueTitles.length >= 2) {
-        return uniqueTitles.length > 2
-          ? `${uniqueTitles[0]} & ${uniqueTitles.length - 1} more`
-          : `${uniqueTitles[0]} + ${uniqueTitles[1]}`;
+        if (projectContext) {
+          const topTask = uniqueTitles[0];
+          const cleanTop = topTask.toLowerCase().startsWith(projectContext.toLowerCase())
+            ? topTask
+            : `${projectContext} · ${topTask}`;
+          return cleanTop;
+        }
+        return `${uniqueTitles[0]} & ${uniqueTitles[1]}`;
       } else if (uniqueTitles.length === 1) {
-        return `${uniqueTitles[0]} · ${node.originalActivities.length} activities`;
+        return projectContext && !uniqueTitles[0].toLowerCase().includes(projectContext.toLowerCase())
+          ? `${projectContext} · ${uniqueTitles[0]}`
+          : uniqueTitles[0];
       }
     }
   }
 
-  if (node.subEvents && node.subEvents.length > 0) {
-    const topSub = node.subEvents[0];
+  if (subEvents.length > 0) {
+    const topSub = subEvents[0];
     const cleaned = formatCleanTitle(topSub.title, topSub.parent_app_name || node.app_name, topSub.context_tag, topSub.primary_uri);
-    if (cleaned) {
-      return node.subEvents.length > 1 ? `${cleaned} & ${node.subEvents.length - 1} tabs` : cleaned;
+    if (cleaned && cleaned !== "Creative Flow" && cleaned !== "Working Session") {
+      return projectContext && !cleaned.toLowerCase().includes(projectContext.toLowerCase())
+        ? `${projectContext} · ${cleaned}`
+        : cleaned;
     }
   }
 
-  const baseCleaned = formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
-  if (baseCleaned.toLowerCase().endsWith(" session")) {
-    return baseCleaned.replace(/\s+session$/i, " Flow");
+  if (projectContext) {
+    return `${projectContext} Flow`;
   }
-  return baseCleaned;
+
+  const baseCleaned = formatCleanTitle(node.window_title, node.app_name, node.domain_tag, node.url);
+  if (baseCleaned && baseCleaned !== "Working Session" && !baseCleaned.toLowerCase().endsWith(" session")) {
+    return baseCleaned;
+  }
+  return `${node.app_name || "Focused"} Flow`;
 }
 
 
@@ -193,6 +329,15 @@ interface SCurveTimelineProps {
   onResumeClick?: () => void;
 }
 
+export interface TimelineNodeTool {
+  app_name: string;
+  icon_url?: string;
+  url?: string;
+  domain_tag?: string;
+  source: string;
+  duration: number;
+}
+
 export interface TimelineNode {
   isGroupedSession: boolean;
   id: number;
@@ -214,6 +359,8 @@ export interface TimelineNode {
   distractionEvents?: DistractionEvent[];
   isMemoryNode?: boolean;
   memoryData?: MemoryNode;
+  tools?: TimelineNodeTool[];
+  dominantProject?: string;
 }
 
 // extractDomain moved to AppIcon.tsx
@@ -550,6 +697,14 @@ export function SCurveTimeline({
         finalNodes.push(currentDistractionGroup);
       }
 
+      finalNodes.forEach(node => {
+        if (!node.isShield) {
+          node.dominantProject = detectProjectContext(node.originalActivities, node.subEvents) || undefined;
+          node.tools = extractUniqueTools(node.originalActivities, node.app_name, node.icon_url, node.url, node.domain_tag, node.source);
+          node.window_title = getGroupedSessionTitle(node);
+        }
+      });
+
       return finalNodes;
     }
 
@@ -566,61 +721,39 @@ export function SCurveTimeline({
     allEvents.forEach((ev) => {
       if (ev.type === 'activity') {
         const activity = ev.data as ActivityNode;
-        const isBrowser = activity.source.toLowerCase() === "browser" || isBrowserApp(activity.app_name);
-        const isEditor = activity.source.toLowerCase() === "editor";
-        const isGroupable = isBrowser || isEditor;
         const actStartMs = new Date(activity.start_time).getTime();
         const actEndMs = actStartMs + activity.duration * 1000;
 
-        if (isGroupable) {
-          const gapSeconds = currentGroup && !currentGroup.isShield
-            ? (actStartMs - currentGroupEndMs) / 1000
-            : 0;
+        const gapSeconds = currentGroup && !currentGroup.isShield
+          ? (actStartMs - currentGroupEndMs) / 1000
+          : 0;
 
-          if (currentGroup && !currentGroup.isShield && currentGroup.app_name === activity.app_name && gapSeconds < 1800) {
-            currentGroup.originalActivities.push(activity);
-            currentGroupEndMs = Math.max(currentGroupEndMs, actEndMs);
-            currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
+        // An Episode is a continuous flow session across all creative tools.
+        // As long as the pause between activities is < 900s (15 minutes) and not interrupted by a shield,
+        // it belongs to the same unified episode.
+        if (currentGroup && !currentGroup.isShield && gapSeconds < 900) {
+          currentGroup.originalActivities.push(activity);
+          currentGroupEndMs = Math.max(currentGroupEndMs, actEndMs);
+          currentGroup.end_time = new Date(currentGroupEndMs).toISOString();
 
-            const groupSpan = Math.max(0, Math.round((currentGroupEndMs - new Date(currentGroup.start_time).getTime()) / 1000));
-            currentGroup.duration = Math.min(calculateNonOverlappingDuration(currentGroup.originalActivities), groupSpan);
-            currentGroup.total_duration = Math.max(currentGroup.duration, groupSpan);
+          const groupSpan = Math.max(0, Math.round((currentGroupEndMs - new Date(currentGroup.start_time).getTime()) / 1000));
+          currentGroup.duration = Math.min(calculateNonOverlappingDuration(currentGroup.originalActivities), groupSpan);
+          currentGroup.total_duration = Math.max(currentGroup.duration, groupSpan);
 
-            if (activity.notes) {
-              currentGroup.notes = currentGroup.notes
-                ? `${currentGroup.notes} | ${activity.notes}`
-                : activity.notes;
-            }
-          } else {
-            if (currentGroup) nodes.push(currentGroup);
-            
-            currentGroupEndMs = actEndMs;
-            currentGroup = {
-              isGroupedSession: true,
-              id: activity.id,
-              app_name: activity.app_name,
-              window_title: formatCleanTitle(activity.window_title, activity.app_name, activity.domain_tag, activity.url) || `${activity.app_name} Flow`,
-              start_time: activity.start_time,
-              end_time: new Date(actEndMs).toISOString(),
-              duration: activity.duration,
-              total_duration: activity.duration,
-              source: isBrowser ? "Browser" : "Editor",
-              notes: activity.notes,
-              originalActivities: [activity],
-              subEvents: [],
-            };
+          if (activity.notes) {
+            currentGroup.notes = currentGroup.notes
+              ? `${currentGroup.notes} | ${activity.notes}`
+              : activity.notes;
           }
         } else {
-          if (currentGroup) {
-            nodes.push(currentGroup);
-            currentGroup = null;
-            currentGroupEndMs = 0;
-          }
-          nodes.push({
-            isGroupedSession: false,
+          if (currentGroup) nodes.push(currentGroup);
+          
+          currentGroupEndMs = actEndMs;
+          currentGroup = {
+            isGroupedSession: true,
             id: activity.id,
             app_name: activity.app_name,
-            window_title: activity.window_title,
+            window_title: formatCleanTitle(activity.window_title, activity.app_name, activity.domain_tag, activity.url) || `${activity.app_name} Flow`,
             start_time: activity.start_time,
             end_time: new Date(actEndMs).toISOString(),
             duration: activity.duration,
@@ -632,7 +765,7 @@ export function SCurveTimeline({
             notes: activity.notes,
             originalActivities: [activity],
             subEvents: [],
-          });
+          };
         }
       } else {
         const dEvent = ev.data as DistractionEvent;
@@ -726,7 +859,12 @@ export function SCurveTimeline({
         node.app_name = dominant.app_name;
         node.icon_url = dominant.icon_url;
         node.source = dominant.source;
-        node.window_title = "Working Session";
+        node.url = dominant.url;
+        node.domain_tag = dominant.domain_tag;
+
+        node.dominantProject = detectProjectContext(node.originalActivities, node.subEvents) || undefined;
+        node.tools = extractUniqueTools(node.originalActivities, dominant.app_name, dominant.icon_url, dominant.url, dominant.domain_tag, dominant.source);
+        node.window_title = getGroupedSessionTitle(node);
       }
     });
 
@@ -999,9 +1137,27 @@ export function SCurveTimeline({
                       </>
                     )}
                     <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <div className="flex items-center gap-1 overflow-hidden max-w-[130px]">
+                      <div className="flex items-center gap-1 overflow-hidden max-w-[150px]">
                         {node.isShield ? (
                           <ShieldAlert className="w-4 h-4 text-red-500 shrink-0" />
+                        ) : node.tools && node.tools.length > 1 ? (
+                          <div 
+                            className="flex items-center -space-x-1.5 overflow-hidden p-0.5 rounded-lg bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 shrink-0"
+                            title={node.tools.map(t => `${t.app_name} (${formatDuration(t.duration)})`).join(", ")}
+                          >
+                            {node.tools.slice(0, 3).map((t, idx) => (
+                              <div key={idx} className="relative z-10 w-4 h-4 rounded-full bg-[var(--card-bg)] shadow-xs flex items-center justify-center overflow-hidden border border-white/20 dark:border-zinc-800">
+                                <AppIcon 
+                                  appName={t.app_name} 
+                                  iconUrl={t.icon_url} 
+                                  url={t.url} 
+                                  source={t.source} 
+                                  className="w-3.5 h-3.5" 
+                                  showBadge={false} 
+                                />
+                              </div>
+                            ))}
+                          </div>
                         ) : (
                           <AppIcon 
                             appName={String(node.app_name)} 
@@ -1020,8 +1176,9 @@ export function SCurveTimeline({
                             : 'bg-black/5 dark:bg-white/10 text-[var(--text-color)] border border-black/10 dark:border-white/10'
                         }`}>
                           {node.isShield
-                            ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Distraction Blocked')
-                            : (node.domain_tag || 
+                            ? (node.distractionEvents && node.distractionEvents.length > 1 ? `${node.distractionEvents.length} Blocked` : 'Shielded')
+                            : (node.dominantProject || 
+                               node.domain_tag || 
                                (node.url ? extractDomain(node.url) : '') || 
                                node.originalActivities[0]?.domain_tag || 
                                (node.originalActivities[0]?.url ? extractDomain(node.originalActivities[0].url) : '') || 
@@ -1029,35 +1186,43 @@ export function SCurveTimeline({
                           }
                         </span>
                       </div>
-                      <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-1 shrink-0" title={`Active: ${formatDuration(node.duration)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` • Total span: ${formatDuration(node.total_duration)}` : ''}`}>
-                        <Clock className="w-2.5 h-2.5 text-violet-400" />
-                        <LiveTimer
-                          startTime={node.start_time}
-                          activeStartTime={activeNodeStartTime}
-                          initialDuration={node.duration}
-                          isActive={isNodeActive}
-                        />
+                      
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isEpicSession && (
+                          <span className="text-[8px] font-bold tracking-wider uppercase px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            Epic
+                          </span>
+                        )}
+                        {isDeepSession && !isEpicSession && (
+                          <span className="text-[8px] font-bold tracking-wider uppercase px-1 py-0.2 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                            Flow
+                          </span>
+                        )}
+                        <div className="flex items-center text-[10px] text-[var(--text-muted)] gap-1 font-mono" title={`Active: ${formatDuration(node.duration)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` • Total span: ${formatDuration(node.total_duration)}` : ''}`}>
+                          <Clock className="w-2.5 h-2.5 text-violet-400" />
+                          <LiveTimer
+                            startTime={node.start_time}
+                            activeStartTime={activeNodeStartTime}
+                            initialDuration={node.duration}
+                            isActive={isNodeActive}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <h4 className={`text-xs font-semibold line-clamp-2 mb-1 flex-1 ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)]'}`} title={getGroupedSessionTitle(node)}>
+                    <h4 className={`text-xs font-bold leading-snug line-clamp-2 mb-1 flex-1 tracking-tight ${node.isShield ? 'text-red-400' : 'text-[var(--text-color)] group-hover:text-violet-400 transition-colors'}`} title={getGroupedSessionTitle(node)}>
                       {getGroupedSessionTitle(node)}
                     </h4>
 
-                    {/* Micro-DNA Strand on grouped sessions showing distinct tools/domains */}
-                    {node.isGroupedSession && node.originalActivities.length > 1 && (
-                      <div className="flex items-center gap-1 my-1 overflow-hidden opacity-75 group-hover:opacity-100 transition-opacity duration-300">
-                        {Array.from(new Set(node.originalActivities.map(a => a.domain_tag || (a.url ? extractDomain(a.url) : '') || a.app_name).filter(Boolean)))
-                          .slice(0, 3)
-                          .map((tag, idx) => (
-                            <span key={idx} className="text-[8px] font-mono px-1 py-0.2 rounded bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 group-hover:border-violet-500/30 group-hover:bg-violet-500/10 transition-colors truncate max-w-[70px]">
-                              {tag}
-                            </span>
-                          ))}
-                        {node.originalActivities.length > 3 && (
-                          <span className="text-[8px] font-mono text-[var(--text-muted)] group-hover:text-violet-400 group-hover:bg-violet-500/15 px-1 py-0.2 rounded transition-colors">
-                            +{node.originalActivities.length - 3}
-                          </span>
+                    {/* Symphony indicator showing touchpoints and tool count */}
+                    {node.isGroupedSession && (node.originalActivities.length > 1 || (node.tools && node.tools.length > 1)) && (
+                      <div className="flex items-center gap-1.5 my-1 text-[9px] text-[var(--text-muted)] font-mono">
+                        <span>{node.originalActivities.length} touchpoints</span>
+                        {node.tools && node.tools.length > 1 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-violet-400 font-semibold">{node.tools.length} tools</span>
+                          </>
                         )}
                       </div>
                     )}
@@ -1076,7 +1241,7 @@ export function SCurveTimeline({
                         title={node.end_time && node.end_time !== node.start_time ? `Span: ${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}${node.total_duration ? ` (${formatDuration(node.total_duration)} total)` : ''}` : undefined}
                       >
                         {node.isGroupedSession && node.end_time && node.end_time !== node.start_time
-                          ? `${getFormatTime(node.start_time)} - ${getFormatTime(node.end_time)}${node.total_duration && formatDuration(node.total_duration) !== formatDuration(node.duration) ? ` (${formatDuration(node.total_duration)})` : ''}`
+                          ? `${getFormatTime(node.start_time)} – ${getFormatTime(node.end_time)}${node.total_duration && node.total_duration > node.duration ? ` • ${Math.round((node.duration / node.total_duration) * 100)}% purity` : ''}`
                           : getFormatTime(node.start_time)}
                       </span>
                       <div className="flex items-center gap-1.5">
