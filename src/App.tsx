@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettings } from "./hooks/useSettings";
@@ -179,9 +179,20 @@ function App() {
     });
   };
 
+  const isZenModeRef = useRef(isZenMode);
+  isZenModeRef.current = isZenMode;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+        const target = e.target as HTMLElement;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        toggleZenMode();
+      }
+      if (e.key === "Escape" && isZenModeRef.current) {
         const target = e.target as HTMLElement;
         if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
           return;
@@ -394,25 +405,27 @@ function App() {
 
   return (
     <div className="min-h-screen sm:h-screen sm:overflow-hidden bg-[var(--bg-color)] text-[var(--text-color)] flex flex-col transition-colors duration-300">
-      <Header
-        theme={settings.theme}
-        setTheme={settings.setTheme}
-        isIncognito={settings.isIncognito}
-        trackingActive={settings.trackingActive}
-        activeAppName={data.activeActivity?.app_name}
-        showSettings={settings.showSettings}
-        setShowSettings={settings.setShowSettings}
-        onSearchSelect={(node) => {
-          const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
-          const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
-          data.setSelectedDate(dateStr);
-          data.setViewMode("daily");
-          const timelineNode = createTimelineNodeFromSearchResult(node, data.subSessionEvents);
-          setSearchSelectedTimelineNode(timelineNode);
-        }}
-      />
+      {!isZenMode && (
+        <Header
+          theme={settings.theme}
+          setTheme={settings.setTheme}
+          isIncognito={settings.isIncognito}
+          trackingActive={settings.trackingActive}
+          activeAppName={data.activeActivity?.app_name}
+          showSettings={settings.showSettings}
+          setShowSettings={settings.setShowSettings}
+          onSearchSelect={(node) => {
+            const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
+            const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
+            data.setSelectedDate(dateStr);
+            data.setViewMode("daily");
+            const timelineNode = createTimelineNodeFromSearchResult(node, data.subSessionEvents);
+            setSearchSelectedTimelineNode(timelineNode);
+          }}
+        />
+      )}
 
-      {missingModel && settings.aiProcessingMode === "continuous" && (
+      {!isZenMode && missingModel && settings.aiProcessingMode === "continuous" && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 text-center text-sm shadow-inner relative">
           <p className="font-semibold mb-1">Semantic Search Unavailable: Missing AI Model</p>
           <p className="opacity-90 max-w-2xl mx-auto mb-3">
@@ -461,7 +474,9 @@ function App() {
       {/* Main Layout */}
       <div 
         id="main-app-layout-container"
-        className="main-app-container flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-6 sm:overflow-hidden relative"
+        className={`main-app-container flex-1 max-w-[1600px] w-full mx-auto sm:overflow-hidden relative transition-all duration-300 ${
+          isZenMode ? "p-1.5 sm:p-2.5" : "p-3 sm:p-6"
+        }`}
       >
         <TimelinePanel
           viewMode={data.viewMode}

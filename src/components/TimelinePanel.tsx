@@ -1,10 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ShieldAlert, Clock, Target, BookOpen, Maximize2, Minimize2,
-  Sparkles, Download, ChevronLeft, ChevronRight, Waves, Headphones, ExternalLink
+  Sparkles, Download, ChevronLeft, ChevronRight, Waves, Headphones, ExternalLink, Moon, Calendar
 } from "lucide-react";
-import { SCurveTimeline, formatCleanTitle } from "./SCurveTimeline";
+import { SCurveTimeline, formatCleanTitle, detectProjectContext } from "./SCurveTimeline";
 import { WeeklyView } from "./WeeklyView";
 import { MonthlyView } from "./MonthlyView";
 import { ExportJournalModal } from "./ExportJournalModal";
@@ -107,6 +107,38 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
     return "Focus Soundtrack";
   });
 
+  // Synthesize curated project chapters for the Evening Epilogue ceremony
+  const epilogueChapters = useMemo(() => {
+    if (!activities || activities.length === 0) return [];
+    const projectMap = new Map<string, { duration: number; apps: Set<string>; primaryTitle: string }>();
+
+    activities.forEach(act => {
+      const proj = detectProjectContext([act], []);
+      const cleanTitle = formatCleanTitle(act.window_title, act.app_name, act.domain_tag, act.url);
+      const key = proj || act.app_name || "Creative Flow";
+
+      const existing = projectMap.get(key) || {
+        duration: 0,
+        apps: new Set<string>(),
+        primaryTitle: proj ? `${proj} · ${cleanTitle}` : cleanTitle,
+      };
+      existing.duration += (act.duration || 60);
+      if (act.app_name) existing.apps.add(act.app_name);
+      projectMap.set(key, existing);
+    });
+
+    return Array.from(projectMap.entries())
+      .sort((a, b) => b[1].duration - a[1].duration)
+      .slice(0, 5)
+      .map(([_, val]) => ({
+        window_title: val.primaryTitle,
+        app_name: Array.from(val.apps).join(", ") || "Active Craft",
+        duration: val.duration,
+        tools: Array.from(val.apps),
+        toolsCount: val.apps.size,
+      }));
+  }, [activities]);
+
   const handleGeneratePeriodNote = async () => {
     setIsGeneratingPeriodNote(true);
     try {
@@ -170,13 +202,15 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               <div className="flex items-center">
                 <button
                   onClick={() => setViewMode("daily")}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl transition-all cursor-pointer whitespace-nowrap ${
                     viewMode === "daily"
                       ? "bg-violet-600 text-white shadow-xs"
                       : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
                   }`}
+                  title="Daily River Timeline"
                 >
-                  Day
+                  <Calendar className="w-3 h-3 shrink-0" />
+                  <span>Day</span>
                 </button>
                 <button
                   onClick={() => setViewMode("weekly")}
@@ -185,6 +219,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       ? "bg-violet-600 text-white shadow-xs"
                       : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
                   }`}
+                  title="Weekly Focus Distribution"
                 >
                   Week
                 </button>
@@ -195,6 +230,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       ? "bg-violet-600 text-white shadow-xs"
                       : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
                   }`}
+                  title="Monthly Focus Overview"
                 >
                   Month
                 </button>
@@ -239,15 +275,29 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         {/* Action Jewel (Only shown in Timeline mode) */}
         {mainTab === "timeline" && (
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-            {/* Primary Action: Synthesize Day / Period */}
+            {/* Unified Hero Action Jewel */}
             <button
               onClick={handleGeneratePeriodNote}
               disabled={isGeneratingPeriodNote}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-violet-500/30 bg-violet-600/20 hover:bg-violet-600 text-violet-200 hover:text-white font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs hover:shadow-violet-500/20"
-              title={`Synthesize and celebrate ${viewMode === "monthly" ? "Month" : viewMode === "weekly" ? "Week" : "Day"} Note`}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs ${
+                viewMode === "daily"
+                  ? "border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 shadow-amber-500/10"
+                  : "border-violet-500/30 bg-violet-600/20 hover:bg-violet-600 text-violet-200 hover:text-white shadow-violet-500/20"
+              }`}
+              title={
+                viewMode === "daily"
+                  ? "Synthesize today's chapters and open the Evening Epilogue closure ceremony"
+                  : `Synthesize and compile ${viewMode === "weekly" ? "Week" : "Month"} Note into Vault`
+              }
             >
               {isGeneratingPeriodNote ? (
-                <div className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                <div
+                  className={`w-3.5 h-3.5 border-2 ${
+                    viewMode === "daily" ? "border-amber-400" : "border-violet-400"
+                  } border-t-transparent rounded-full animate-spin shrink-0`}
+                />
+              ) : viewMode === "daily" ? (
+                <Moon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
               )}
@@ -258,43 +308,9 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                   ? "✨ Synthesize Month"
                   : viewMode === "weekly"
                   ? "✨ Synthesize Week"
-                  : "✨ Synthesize Day"}
+                  : "🌅 Evening Epilogue"}
               </span>
             </button>
-
-            {/* Daily Filter: Episodes vs Moments */}
-            {viewMode === "daily" && (
-              <div className="hidden sm:flex items-center p-0.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 text-[11px] font-semibold shrink-0">
-                <button
-                  onClick={() => {
-                    sound.playTactileTick();
-                    setIsGroupedTimeline(true);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    isGroupedTimeline
-                      ? "bg-violet-600 text-white shadow-xs"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                  }`}
-                  title="Curated flow episodes (cohesive chapters)"
-                >
-                  Episodes
-                </button>
-                <button
-                  onClick={() => {
-                    sound.playTactileTick();
-                    setIsGroupedTimeline(false);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                    !isGroupedTimeline
-                      ? "bg-violet-600 text-white shadow-xs"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
-                  }`}
-                  title="Individual moments (ungrouped activities)"
-                >
-                  Moments
-                </button>
-              </div>
-            )}
 
             {/* Utility Capsule: Zen and Export */}
             <div className="flex items-center gap-1 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 p-1 rounded-2xl border border-[var(--border-color)] shrink-0">
@@ -535,16 +551,64 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
         />
       )}
 
+      {/* Floating Sanctum HUD in Zen Mode */}
+      {isZenMode && (
+        <div className="fixed top-4 inset-x-0 z-50 flex items-center justify-center pointer-events-none animate-in fade-in slide-in-from-top-3 duration-300">
+          <div className="pointer-events-auto flex items-center gap-3 px-4 py-2 rounded-2xl border border-violet-500/30 shadow-2xl backdrop-blur-xl bg-[var(--card-bg)]/90 text-xs">
+            {/* Focus Soundtrack Companion Pill */}
+            <button
+              onClick={() => {
+                sound.playClick();
+                setIsSoundtrackModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-xs font-medium text-violet-300 transition-colors cursor-pointer"
+              title="Focus Soundtrack Companion"
+            >
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+              <Headphones className="w-3.5 h-3.5 text-violet-400" />
+              <span className="truncate max-w-[140px] font-semibold">{soundtrackTitle}</span>
+            </button>
+
+            <div className="h-4 w-px bg-[var(--border-color)]" />
+
+            {/* Intention Capsule */}
+            <div className="flex items-center gap-1.5 px-2">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-semibold text-[var(--text-color)] font-mono">
+                {activeIntention ? activeIntention : "Deep Flow Sanctum"}
+              </span>
+            </div>
+
+            <div className="h-4 w-px bg-[var(--border-color)]" />
+
+            {/* Exit Zen Button */}
+            {onToggleZenMode && (
+              <button
+                onClick={() => {
+                  sound.playTactileTick();
+                  onToggleZenMode();
+                }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-all cursor-pointer shadow-xs"
+                title="Exit Zen Mode (⌘D / Esc)"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Exit (⌘D)</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Evening Epilogue Postcard Modal */}
       {isEpilogueOpen && (
         <EveningEpilogueModal
           isOpen={isEpilogueOpen}
           dateStr={selectedDate}
           activitiesCount={activities.length}
-          episodesCount={subSessionEvents.length > 0 ? subSessionEvents.length : activities.length}
+          episodesCount={epilogueChapters.length > 0 ? epilogueChapters.length : (subSessionEvents.length > 0 ? subSessionEvents.length : activities.length)}
           totalFocusSeconds={metrics.totalActiveTime || 0}
           synthesisMarkdown={lastSynthesizedMarkdown}
-          episodes={activities}
+          episodes={epilogueChapters}
           onClose={() => setIsEpilogueOpen(false)}
           onOpenVaultFile={() => {
             setIsEpilogueOpen(false);
