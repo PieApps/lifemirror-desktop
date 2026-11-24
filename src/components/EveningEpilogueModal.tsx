@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Sparkles, Copy, CheckCheck, BookOpen, Moon, Compass, Award, Check, Play } from 'lucide-react';
+import { X, Sparkles, Copy, CheckCheck, BookOpen, Moon, Compass, Award, Check, Play, Camera } from 'lucide-react';
 import { formatDuration } from '../utils/formatDuration';
 import { sound } from '../utils/sound';
+import { generateFlowPostcard } from '../utils/postcardGenerator';
 
 interface EveningEpilogueModalProps {
   isOpen: boolean;
@@ -40,6 +41,8 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
   const [isPlayingReel, setIsPlayingReel] = useState(false);
   const [activeReelIndex, setActiveReelIndex] = useState<number | null>(null);
   const [reelProgress, setReelProgress] = useState(0);
+  const [isExportingPostcard, setIsExportingPostcard] = useState(false);
+  const [postcardCopied, setPostcardCopied] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -143,6 +146,47 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy epilogue:', err);
+    }
+  };
+
+  const handleExportPostcard = async () => {
+    if (isExportingPostcard) return;
+    setIsExportingPostcard(true);
+    try {
+      const blob = await generateFlowPostcard({
+        dateStr,
+        totalFocusSeconds,
+        episodesCount,
+        activitiesCount,
+        purityScore: 94,
+        highlights,
+        biographerQuote: cleanReflection || undefined,
+      });
+
+      // Attempt clipboard copy first
+      try {
+        if (typeof ClipboardItem !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+        }
+      } catch {}
+
+      // Also trigger file download for permanence
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lifemirror-flow-${dateStr}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      sound.playCelebration();
+      setPostcardCopied(true);
+      setTimeout(() => setPostcardCopied(false), 3000);
+    } catch (err) {
+      console.error('Failed to export flow postcard:', err);
+    } finally {
+      setIsExportingPostcard(false);
     }
   };
 
@@ -346,6 +390,23 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                   <Award className="w-3.5 h-3.5 text-black" />
                 )}
                 <span>{isSealing ? "Inscribing..." : isSealed ? "✓ Sealed to Vault" : "Seal & Inscribe Chapter"}</span>
+              </button>
+
+              {/* 1-Click Export Flow Postcard */}
+              <button
+                onClick={handleExportPostcard}
+                disabled={isExportingPostcard}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-xs font-semibold text-amber-300 transition-all cursor-pointer shadow-sm"
+                title="Generate high-resolution dark-mode Flow Postcard (Copies image to clipboard and downloads PNG)"
+              >
+                {isExportingPostcard ? (
+                  <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                ) : postcardCopied ? (
+                  <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5 text-amber-400" />
+                )}
+                <span>{isExportingPostcard ? "Generating..." : postcardCopied ? "✓ Postcard Saved!" : "Export Postcard"}</span>
               </button>
 
               <button

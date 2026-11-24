@@ -386,6 +386,7 @@ export function SCurveTimeline({
 
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
   const [_isHovering, setIsHovering] = useState<number | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
   // Group consecutive browser/editor usages together or show unbundled moments
   const processedNodes = useMemo(() => {
@@ -869,8 +870,60 @@ export function SCurveTimeline({
       }
     });
 
+    if (nodes.length === 0 && isDemoMode) {
+      const now = new Date();
+      const demoNodes: TimelineNode[] = [
+        {
+          id: 999901,
+          app_name: "Figma",
+          window_title: "Designing System Architecture & River Vectors",
+          start_time: new Date(now.getTime() - 7200000).toISOString(),
+          end_time: new Date(now.getTime() - 4500000).toISOString(),
+          duration: 2700,
+          total_duration: 2700,
+          isGroupedSession: true,
+          originalActivities: [],
+          subEvents: [],
+          dominantProject: "LifeMirror Studio",
+          source: "App",
+          tools: [{ app_name: "Figma", source: "App", duration: 2700 }],
+        },
+        {
+          id: 999902,
+          app_name: "Cursor",
+          window_title: "Crafting Rust Audio Solfeggio Synthesizer",
+          start_time: new Date(now.getTime() - 4200000).toISOString(),
+          end_time: new Date(now.getTime() - 1200000).toISOString(),
+          duration: 3000,
+          total_duration: 3000,
+          isGroupedSession: true,
+          originalActivities: [],
+          subEvents: [],
+          dominantProject: "LifeMirror Desktop",
+          source: "App",
+          tools: [{ app_name: "Cursor", source: "App", duration: 3000 }],
+        },
+        {
+          id: 999903,
+          app_name: "Google Chrome",
+          window_title: "Researching Native WebKitGTK Date Navigation",
+          start_time: new Date(now.getTime() - 900000).toISOString(),
+          end_time: now.toISOString(),
+          duration: 900,
+          total_duration: 900,
+          isGroupedSession: true,
+          originalActivities: [],
+          subEvents: [],
+          dominantProject: "WebKit Research",
+          source: "Browser",
+          tools: [{ app_name: "Google Chrome", source: "Browser", duration: 900 }],
+        },
+      ];
+      return demoNodes;
+    }
+
     return nodes;
-  }, [memoryNodes, activities, subSessionEvents, distractionEvents]);
+  }, [memoryNodes, activities, subSessionEvents, distractionEvents, isDemoMode]);
 
   // Sync selectedNode when processedNodes updates to recalculate time/durations
   useEffect(() => {
@@ -1001,9 +1054,25 @@ export function SCurveTimeline({
                 <Clock className="w-8 h-8 text-violet-400 animate-pulse" />
               </div>
               <h3 className="text-lg font-bold text-[var(--text-color)] mb-2 tracking-tight">Your day is a clean river.</h3>
-              <p className="text-xs text-[var(--text-muted)] mb-6 leading-relaxed max-w-xs mx-auto">
+              <p className="text-xs text-[var(--text-muted)] mb-4 leading-relaxed max-w-xs mx-auto">
                 Work, explore, and create. LifeMirror quietly preserves the rhythm of your flow.
               </p>
+
+              {/* Interactive Demo Ignition */}
+              <div className="flex flex-col gap-2 mb-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playFocusIgnite();
+                    setIsDemoMode(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-violet-500/20 transition-all cursor-pointer transform active:scale-98"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Experience Interactive River (Demo)</span>
+                </button>
+              </div>
+
               <div className="space-y-2.5 text-left">
                 {[
                   { 
@@ -1046,6 +1115,27 @@ export function SCurveTimeline({
           </div>
         ) : (
           <div className="relative w-full max-w-4xl" style={{ height: `${totalHeight}px` }}>
+            {/* Interactive Demo Mode Banner */}
+            {isDemoMode && (
+              <div className="sticky top-2 z-40 flex items-center justify-between gap-3 px-4 py-2 mb-4 rounded-2xl bg-zinc-950/90 border border-violet-500/50 text-xs shadow-2xl backdrop-blur-xl animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span className="font-semibold text-white">Interactive Demo River</span>
+                  <span className="text-[11px] text-zinc-400 hidden sm:inline">· Press <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 font-mono text-[10px] text-violet-300">J</kbd>/<kbd className="px-1.5 py-0.5 rounded bg-zinc-800 font-mono text-[10px] text-violet-300">K</kbd> to glide</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setIsDemoMode(false);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-[10px] cursor-pointer transition-colors"
+                >
+                  Exit Demo
+                </button>
+              </div>
+            )}
+
             <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${width} ${totalHeight}`} preserveAspectRatio="none" fill="none">
               <path d={generatePath()} stroke="var(--timeline-bg-path)" strokeWidth="4" strokeLinecap="round" />
               <path d={generatePath()} stroke="url(#timeline-grad)" strokeWidth="4" strokeLinecap="round" className="timeline-glow opacity-80" />

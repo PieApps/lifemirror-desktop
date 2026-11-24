@@ -12,6 +12,7 @@ interface MorningPreludeModalProps {
     dominantApp?: string;
     episodeCount?: number;
   };
+  initialIntention?: string;
 }
 
 export const MorningPreludeModal: React.FC<MorningPreludeModalProps> = ({
@@ -19,16 +20,20 @@ export const MorningPreludeModal: React.FC<MorningPreludeModalProps> = ({
   onClose,
   onStartFocus,
   yesterdayStats,
+  initialIntention = "",
 }) => {
-  const [intention, setIntention] = useState("");
+  const [intention, setIntention] = useState(initialIntention);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
+      if (initialIntention) {
+        setIntention(initialIntention);
+      }
       setTimeout(() => inputRef.current?.focus(), 80);
       sound.playAwakeningBell();
     }
-  }, [isOpen]);
+  }, [isOpen, initialIntention]);
 
   // Handle escape key
   useEffect(() => {
@@ -138,6 +143,29 @@ export const MorningPreludeModal: React.FC<MorningPreludeModalProps> = ({
                 className="w-full px-4 py-3 bg-zinc-900/90 border border-amber-500/30 focus:border-amber-400 rounded-2xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all font-medium pr-10 shadow-inner"
               />
               <Sparkles className="w-4 h-4 text-amber-400/60 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            {/* Quick Intention Presets */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {[
+                "⚡ Deep Architecture Refactor",
+                "🎨 Design & Polish UI",
+                "🐛 Bug Triage & Hardening",
+                "📝 Writing & Strategy",
+              ].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setIntention(preset);
+                    inputRef.current?.focus();
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-900/60 hover:bg-amber-500/15 border border-white/5 hover:border-amber-500/30 text-zinc-400 hover:text-amber-200 transition-all cursor-pointer"
+                >
+                  {preset}
+                </button>
+              ))}
             </div>
           </div>
 

@@ -5,6 +5,7 @@ import { useSettings } from "./hooks/useSettings";
 import { useActivityData } from "./hooks/useActivityData";
 import { useFocus } from "./hooks/useFocus";
 import { useLocalAI } from "./hooks/useLocalAI";
+import { useSearch } from "./hooks/useSearch";
 import { Header } from "./components/Header";
 import { TimelinePanel } from "./components/TimelinePanel";
 import { AISidebar } from "./components/AISidebar";
@@ -14,12 +15,14 @@ import { SupportModal } from "./components/SupportModal";
 import { DonateModal } from "./components/DonateModal";
 import { AILockedModal } from "./components/AILockedModal";
 import { AISetupModal } from "./components/AISetupModal";
+import { SearchResultsOverlay } from "./components/SearchResultsOverlay";
 import { computeMetrics } from "./services/analytics";
 import { ResumeLoadingSkeleton } from "./components/ResumeLoadingSkeleton";
 import { ResumeContextCard } from "./components/ResumeContextCard";
 import { FirstLogCelebration } from "./components/FirstLogCelebration";
 import { MorningPreludeModal } from "./components/MorningPreludeModal";
 import { OnboardingModal } from "./components/OnboardingModal";
+import { buildQuickCommands } from "./utils/commandRegistry";
 import { sound } from "./utils/sound";
 import type { ResumeContextResponse } from "./types/resume";
 import type { ActivityNode, MemoryNode } from "./types";
@@ -204,6 +207,54 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // Search & Global ⌘K Spotlight State
+  const search = useSearch();
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+  const [isEpilogueOpen, setIsEpilogueOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsSpotlightOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const quickCommands = useMemo(() => {
+    return buildQuickCommands({
+      onOpenEpilogue: () => {
+        setIsEpilogueOpen(true);
+      },
+      onOpenPrelude: () => {
+        setIsMorningPreludeOpen(true);
+      },
+      onToggleZen: () => {
+        toggleZenMode();
+      },
+      onToggleIncognito: () => {
+        settings.handleToggleIncognito();
+      },
+      onOpenSettings: (tab) => {
+        if (tab) setSettingsDefaultTab(tab as any);
+        settings.setShowSettings(true);
+      },
+      onJumpToday: () => {
+        const today = new Date().toISOString().slice(0, 10);
+        data.setSelectedDate(today);
+        data.setViewMode("daily");
+      },
+      onOpenSoundtrack: () => {
+        const btn = document.querySelector<HTMLButtonElement>('button[title*="Soundtrack"]');
+        if (btn) btn.click();
+      },
+      isZenMode,
+      isIncognito: settings.isIncognito,
+    });
+  }, [isZenMode, settings.isIncognito, data, settings]);
 
   // Resizable main sidepanel state (min 320px, max 750px, persisted)
   const [sidepanelWidth, setSidepanelWidth] = useState<number>(() => {
@@ -414,14 +465,7 @@ function App() {
           activeAppName={data.activeActivity?.app_name}
           showSettings={settings.showSettings}
           setShowSettings={settings.setShowSettings}
-          onSearchSelect={(node) => {
-            const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
-            const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
-            data.setSelectedDate(dateStr);
-            data.setViewMode("daily");
-            const timelineNode = createTimelineNodeFromSearchResult(node, data.subSessionEvents);
-            setSearchSelectedTimelineNode(timelineNode);
-          }}
+          onOpenSpotlight={() => setIsSpotlightOpen(true)}
         />
       )}
 
@@ -509,6 +553,9 @@ function App() {
           isZenMode={isZenMode}
           onToggleZenMode={toggleZenMode}
           onResumeClick={handleResumeProject}
+          isEpilogueOpen={isEpilogueOpen}
+          setIsEpilogueOpen={setIsEpilogueOpen}
+          onOpenMorningPrelude={() => setIsMorningPreludeOpen(true)}
         />
 
         {!isZenMode && (
@@ -699,6 +746,7 @@ function App() {
       {/* Morning Prelude Dawn Awakening Modal */}
       <MorningPreludeModal
         isOpen={isMorningPreludeOpen}
+        initialIntention={focus.activeIntention}
         onClose={() => {
           try {
             const today = new Date().toISOString().slice(0, 10);
@@ -728,6 +776,30 @@ function App() {
         }}
         onSelectAiMode={async (mode) => {
           await settings.updateAiMode(mode);
+        }}
+      />
+
+      {/* Universal ⌘K Celestial Spotlight Command Palette */}
+      <SearchResultsOverlay
+        isOpen={isSpotlightOpen}
+        searchQuery={search.searchQuery}
+        setSearchQuery={search.setSearchQuery}
+        searchResults={search.searchResults}
+        memoryResults={search.memoryResults}
+        isSearching={search.isSearching}
+        commands={quickCommands}
+        onResultClick={(node) => {
+          search.setSearchQuery("");
+          const timestamp = 'start_time' in node ? node.start_time : node.timestamp;
+          const dateStr = timestamp.split('T')[0] || timestamp.split(' ')[0];
+          data.setSelectedDate(dateStr);
+          data.setViewMode("daily");
+          const timelineNode = createTimelineNodeFromSearchResult(node, data.subSessionEvents);
+          setSearchSelectedTimelineNode(timelineNode);
+        }}
+        onClose={() => {
+          setIsSpotlightOpen(false);
+          search.setSearchQuery("");
         }}
       />
 

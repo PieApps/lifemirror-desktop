@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ShieldAlert, Clock, Target, BookOpen, Maximize2, Minimize2,
-  Sparkles, Download, ChevronLeft, ChevronRight, Waves, Headphones, ExternalLink, Moon, Calendar
+  Sparkles, Download, ChevronLeft, ChevronRight, Waves, Headphones, ExternalLink, Moon, Calendar, Sunrise, Pencil
 } from "lucide-react";
 import { SCurveTimeline, formatCleanTitle, detectProjectContext } from "./SCurveTimeline";
 import { WeeklyView } from "./WeeklyView";
@@ -58,6 +58,9 @@ interface TimelinePanelProps {
   isZenMode?: boolean;
   onToggleZenMode?: () => void;
   onResumeClick?: () => void;
+  isEpilogueOpen?: boolean;
+  setIsEpilogueOpen?: (open: boolean) => void;
+  onOpenMorningPrelude?: () => void;
 }
 
 export const TimelinePanel: React.FC<TimelinePanelProps> = ({
@@ -91,13 +94,18 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   isZenMode,
   onToggleZenMode,
   onResumeClick,
+  isEpilogueOpen: propIsEpilogueOpen,
+  setIsEpilogueOpen: propSetIsEpilogueOpen,
+  onOpenMorningPrelude,
 }) => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"timeline" | "vault">("timeline");
   const [isGeneratingPeriodNote, setIsGeneratingPeriodNote] = useState(false);
   const [isGroupedTimeline, setIsGroupedTimeline] = useState<boolean>(true);
   const [initialVaultFile, setInitialVaultFile] = useState<string | undefined>(undefined);
-  const [isEpilogueOpen, setIsEpilogueOpen] = useState(false);
+  const [localIsEpilogueOpen, setLocalIsEpilogueOpen] = useState(false);
+  const isEpilogueOpen = propIsEpilogueOpen !== undefined ? propIsEpilogueOpen : localIsEpilogueOpen;
+  const setIsEpilogueOpen = propSetIsEpilogueOpen !== undefined ? propSetIsEpilogueOpen : setLocalIsEpilogueOpen;
   const [lastSynthesizedMarkdown, setLastSynthesizedMarkdown] = useState<string | undefined>(undefined);
   const [isSoundtrackModalOpen, setIsSoundtrackModalOpen] = useState(false);
   const [soundtrackTitle, setSoundtrackTitle] = useState<string>(() => {
@@ -365,6 +373,19 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                   <div className="flex items-baseline gap-2 truncate">
                     <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider shrink-0">Active Focus:</span>
                     <span className="text-xs text-[var(--text-color)] font-semibold truncate">{activeIntention}</span>
+                    {onOpenMorningPrelude && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sound.playClick();
+                          onOpenMorningPrelude();
+                        }}
+                        className="p-1 hover:bg-violet-500/20 text-violet-300 hover:text-white rounded-md transition-colors cursor-pointer shrink-0 ml-0.5"
+                        title="Refine Intention in Morning Prelude"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -445,6 +466,21 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                     <span>Soundtrack</span>
                     <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
                   </button>
+
+                  {onOpenMorningPrelude && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sound.playClick();
+                        onOpenMorningPrelude();
+                      }}
+                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition-all cursor-pointer shadow-xs shrink-0"
+                      title="Set Today's Intention with Morning Prelude"
+                    >
+                      <Sunrise className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Morning Prelude</span>
+                    </button>
+                  )}
 
                   <div className="flex items-center gap-2 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl flex-1 max-w-md focus-within:border-violet-500/50 transition-colors">
                     <Target className="w-3.5 h-3.5 text-violet-400 shrink-0" />

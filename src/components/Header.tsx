@@ -1,10 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
   ShieldAlert, Settings as SettingsIcon, Sun, Moon, Search
 } from "lucide-react";
-import { useSearch } from "../hooks/useSearch";
-import { SearchResultsOverlay } from "./SearchResultsOverlay";
-import type { ActivityNode, MemoryNode } from "../types";
 
 interface HeaderProps {
   theme: "dark" | "light";
@@ -14,7 +11,7 @@ interface HeaderProps {
   activeAppName?: string;
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
-  onSearchSelect: (activity: ActivityNode | MemoryNode) => void;
+  onOpenSpotlight: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,23 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeAppName,
   showSettings,
   setShowSettings,
-  onSearchSelect,
+  onOpenSpotlight,
 }) => {
-  const search = useSearch();
-  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
-
-  // Global ⌘K / Ctrl+K keyboard shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setIsSpotlightOpen((prev) => !prev);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
     <header className="sticky top-0 z-40 glass border-b border-[var(--border-color)] px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -66,35 +48,17 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Omniscient Spotlight Search Bar Trigger */}
       <div className="flex-1 max-w-md mx-2 sm:mx-8 relative">
         <button
-          onClick={() => setIsSpotlightOpen(true)}
+          onClick={onOpenSpotlight}
           className="flex items-center justify-between w-full bg-[var(--bg-color)]/60 hover:bg-[var(--bg-color)] border border-[var(--border-color)] hover:border-violet-500/40 rounded-xl py-1.5 sm:py-2 pl-3.5 pr-2.5 text-xs sm:text-sm text-[var(--text-muted)] hover:text-[var(--text-color)] transition-all cursor-pointer group shadow-inner"
         >
           <div className="flex items-center gap-2.5">
             <Search className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
-            <span className="truncate">Search your mind...</span>
+            <span className="truncate">Search memories, run commands...</span>
           </div>
           <kbd className="hidden min-[480px]:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--text-muted)] bg-zinc-800/60 rounded-md border border-white/5">
             ⌘K
           </kbd>
         </button>
-        
-        {/* The Omniscient Memory Spotlight Modal */}
-        <SearchResultsOverlay
-          isOpen={isSpotlightOpen}
-          searchQuery={search.searchQuery}
-          setSearchQuery={search.setSearchQuery}
-          searchResults={search.searchResults}
-          memoryResults={search.memoryResults}
-          isSearching={search.isSearching}
-          onResultClick={(act) => {
-            search.setSearchQuery("");
-            onSearchSelect(act);
-          }}
-          onClose={() => {
-            setIsSpotlightOpen(false);
-            search.setSearchQuery("");
-          }}
-        />
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">

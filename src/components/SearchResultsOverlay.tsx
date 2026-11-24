@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, Calendar, Loader2, Brain, Sparkles, Clock, CornerDownLeft, X, Layers } from "lucide-react";
+import { Search, Calendar, Loader2, Brain, Sparkles, Clock, CornerDownLeft, X, Layers, Command } from "lucide-react";
 import type { ActivityNode, MemoryNode } from "../types";
+import type { QuickCommand } from "../utils/commandRegistry";
 import { sound } from "../utils/sound";
 
 interface SearchResultsOverlayProps {
@@ -11,11 +12,14 @@ interface SearchResultsOverlayProps {
   searchResults: ActivityNode[];
   memoryResults: MemoryNode[];
   isSearching: boolean;
+  commands?: QuickCommand[];
   onResultClick: (activity: ActivityNode | MemoryNode) => void;
+  onExecuteCommand?: (cmd: QuickCommand) => void;
   onClose: () => void;
 }
 
 type SearchItem = 
+  | { type: "command"; item: QuickCommand }
   | { type: "memory"; item: MemoryNode }
   | { type: "activity"; item: ActivityNode };
 
@@ -26,10 +30,12 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
   searchResults,
   memoryResults,
   isSearching,
+  commands = [],
   onResultClick,
+  onExecuteCommand,
   onClose,
 }) => {
-  const [filter, setFilter] = useState<"all" | "memories" | "activities">("all");
+  const [filter, setFilter] = useState<"all" | "actions" | "memories" | "activities">("all");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -42,9 +48,27 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
     }
   }, [isOpen]);
 
+  // Filter commands by search query
+  const matchingCommands = useMemo<QuickCommand[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return commands;
+    return commands.filter(
+      (c) =>
+        c.title.toLowerCase().includes(q) ||
+        c.subtitle.toLowerCase().includes(q) ||
+        (c.shortcut && c.shortcut.toLowerCase().includes(q))
+    );
+  }, [commands, searchQuery]);
+
   // Combine results into an indexed list
   const combinedItems = useMemo<SearchItem[]>(() => {
     const list: SearchItem[] = [];
+
+    // Commands first (if all or actions)
+    if (filter === "all" || filter === "actions") {
+      matchingCommands.forEach((cmd) => list.push({ type: "command", item: cmd }));
+    }
+
     if (filter === "all" || filter === "memories") {
       memoryResults.forEach((m) => list.push({ type: "memory", item: m }));
     }
@@ -52,7 +76,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
       searchResults.forEach((a) => list.push({ type: "activity", item: a }));
     }
     return list;
-  }, [filter, memoryResults, searchResults]);
+  }, [filter, matchingCommands, memoryResults, searchResults]);
 
   // Reset selected index if list length changes
   useEffect(() => {
@@ -86,7 +110,12 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
         const selected = combinedItems[selectedIndex];
         if (selected) {
           sound.playFocusIgnite();
-          onResultClick(selected.item);
+          if (selected.type === "command") {
+            if (onExecuteCommand) onExecuteCommand(selected.item);
+            else selected.item.action();
+          } else {
+            onResultClick(selected.item);
+          }
           onClose();
         }
       }
@@ -94,7 +123,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, combinedItems, selectedIndex, onResultClick, onClose]);
+  }, [isOpen, combinedItems, selectedIndex, onResultClick, onExecuteCommand, onClose]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -132,7 +161,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search any thought, code, or article you've ever touched..."
+            placeholder="Type a command, thought, code, or article..."
             className="flex-1 bg-transparent text-sm sm:text-base font-medium text-[var(--text-color)] placeholder:text-zinc-500 focus:outline-none"
           />
 
@@ -154,20 +183,33 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
         </div>
 
         {/* Filter Pills Bar */}
-        <div className="flex items-center gap-2 px-5 py-2.5 border-b border-[var(--border-color)]/50 bg-[var(--bg-color)]/20 text-xs">
+        <div className="flex items-center gap-2 px-5 py-2.5 border-b border-[var(--border-color)]/50 bg-[var(--bg-color)]/20 text-xs overflow-x-auto">
           <button
             onClick={() => setFilter("all")}
-            className={`px-3 py-1 rounded-xl font-semibold transition-all cursor-pointer ${
+            className={`px-3 py-1 rounded-xl font-semibold transition-all cursor-pointer whitespace-nowrap ${
               filter === "all"
                 ? "bg-violet-600 text-white shadow-xs"
                 : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
             }`}
           >
-            All Results ({memoryResults.length + searchResults.length})
+            All Results ({matchingCommands.length + memoryResults.length + searchResults.length})
           </button>
+          {matchingCommands.length > 0 && (
+            <button
+              onClick={() => setFilter("actions")}
+              className={`px-3 py-1 rounded-xl font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                filter === "actions"
+                  ? "bg-violet-600 text-white shadow-xs"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
+              }`}
+            >
+              <Command className="w-3.5 h-3.5" />
+              <span>Actions ({matchingCommands.length})</span>
+            </button>
+          )}
           <button
             onClick={() => setFilter("memories")}
-            className={`px-3 py-1 rounded-xl font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1 rounded-xl font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               filter === "memories"
                 ? "bg-violet-600 text-white shadow-xs"
                 : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
@@ -178,7 +220,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
           </button>
           <button
             onClick={() => setFilter("activities")}
-            className={`px-3 py-1 rounded-xl font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1 rounded-xl font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               filter === "activities"
                 ? "bg-violet-600 text-white shadow-xs"
                 : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
@@ -191,24 +233,77 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
 
         {/* Results List View */}
         <div ref={listRef} className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-1">
-          {searchQuery.trim().length < 2 ? (
+          {combinedItems.length === 0 && !isSearching ? (
             <div className="py-12 px-6 text-center space-y-2">
               <Sparkles className="w-8 h-8 text-violet-400/40 mx-auto animate-pulse" />
               <p className="text-sm font-semibold text-[var(--text-color)]">
-                The Omniscient Memory Spotlight
+                No matching actions or memories
               </p>
               <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
-                Type 2 or more characters to recall any moment, application, or chronicled memory from your life.
+                Try searching a different project, action, or date keyword.
               </p>
-            </div>
-          ) : combinedItems.length === 0 && !isSearching ? (
-            <div className="py-12 text-center text-xs text-[var(--text-muted)]">
-              No matching memories or activities found for "{searchQuery}".
             </div>
           ) : (
             combinedItems.map((entry, index) => {
               const isSelected = selectedIndex === index;
 
+              // 1. Quick Command
+              if (entry.type === "command") {
+                const cmd = entry.item;
+                return (
+                  <div
+                    key={`cmd-${cmd.id}`}
+                    id={`spotlight-item-${index}`}
+                    onClick={() => {
+                      sound.playFocusIgnite();
+                      if (onExecuteCommand) onExecuteCommand(cmd);
+                      else cmd.action();
+                      onClose();
+                    }}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3.5 ${
+                      isSelected
+                        ? "bg-violet-500/15 border-violet-500/50 shadow-md shadow-violet-500/10 scale-[1.01]"
+                        : "border-transparent hover:bg-zinc-500/5"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-violet-500/20 text-violet-400 border border-violet-500/30 flex items-center justify-center shrink-0">
+                        {cmd.icon}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-[var(--text-color)] truncate">
+                            {cmd.title}
+                          </span>
+                          <span className="text-[10px] font-mono text-[var(--text-muted)] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-[var(--border-color)]/40 uppercase">
+                            {cmd.category}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[var(--text-muted)] truncate">
+                          {cmd.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {cmd.shortcut && (
+                        <kbd className="px-2 py-0.5 text-[10px] font-mono font-bold text-violet-300 bg-violet-500/20 border border-violet-500/30 rounded-md">
+                          {cmd.shortcut}
+                        </kbd>
+                      )}
+                      {isSelected && (
+                        <div className="flex items-center gap-1 text-[11px] font-mono text-violet-400 font-semibold">
+                          <span>Run</span>
+                          <CornerDownLeft className="w-3.5 h-3.5" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 2. Memory Result
               if (entry.type === "memory") {
                 const mem = entry.item;
                 const d = new Date(mem.timestamp);
@@ -267,7 +362,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
                 );
               }
 
-              // Activity / Episode
+              // 3. Activity / Episode
               const act = entry.item;
               const d = new Date(act.start_time);
               const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -344,7 +439,7 @@ export const SearchResultsOverlay: React.FC<SearchResultsOverlayProps> = ({
             </span>
             <span className="flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-white/5">↵</kbd>
-              <span>inspect & warp</span>
+              <span>run / inspect</span>
             </span>
           </div>
 
