@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Sparkles, Copy, CheckCheck, BookOpen, Moon, Compass, Award, Check } from 'lucide-react';
+import { X, Sparkles, Copy, CheckCheck, BookOpen, Moon, Compass, Award, Check, Play } from 'lucide-react';
 import { formatDuration } from '../utils/formatDuration';
 import { sound } from '../utils/sound';
 
@@ -37,6 +37,9 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isSealing, setIsSealing] = useState(false);
   const [isSealed, setIsSealed] = useState(false);
+  const [isPlayingReel, setIsPlayingReel] = useState(false);
+  const [activeReelIndex, setActiveReelIndex] = useState<number | null>(null);
+  const [reelProgress, setReelProgress] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -86,6 +89,44 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
     } finally {
       setIsSealing(false);
     }
+  };
+
+  const handlePlayReel = () => {
+    if (isPlayingReel) return;
+    setIsPlayingReel(true);
+    setActiveReelIndex(0);
+    setReelProgress(0);
+    sound.playReelSweep(0);
+
+    const startTime = performance.now();
+    const duration = 4500;
+    const numChapters = highlights.length || 1;
+
+    const animFrame = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      setReelProgress(progress);
+
+      const currentChapter = Math.min(numChapters - 1, Math.floor(progress * numChapters));
+      setActiveReelIndex(prev => {
+        if (prev !== currentChapter) {
+          sound.playReelSweep(currentChapter);
+        }
+        return currentChapter;
+      });
+
+      if (progress < 1) {
+        requestAnimationFrame(animFrame);
+      } else {
+        setTimeout(() => {
+          setIsPlayingReel(false);
+          setActiveReelIndex(null);
+          sound.playEveningEpilogue();
+        }, 500);
+      }
+    };
+
+    requestAnimationFrame(animFrame);
   };
 
   const handleCopy = async () => {
@@ -145,9 +186,25 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 <Compass className="w-3.5 h-3.5" />
                 <span>Cadence of Your Day</span>
               </span>
-              <span className="text-xs font-mono text-[var(--text-muted)] font-semibold">
-                {dateStr}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePlayReel}
+                  disabled={isPlayingReel}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isPlayingReel
+                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
+                      : "bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-xs hover:scale-105"
+                  }`}
+                  title="Watch 5-second cinematic playback of today's flow"
+                >
+                  <Play className={`w-3 h-3 ${isPlayingReel ? "animate-spin" : "fill-current"}`} />
+                  <span>{isPlayingReel ? "Playing..." : "Play Daily Reel"}</span>
+                </button>
+                <span className="text-xs font-mono text-[var(--text-muted)] font-semibold">
+                  {dateStr}
+                </span>
+              </div>
             </div>
 
             {/* Abstract Serpentine River Line with Warm Sunset Lighting */}
@@ -170,6 +227,24 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 <circle cx="60" cy="16" r="4.5" className="fill-amber-400 animate-pulse" />
                 <circle cx="200" cy="22" r="4.5" className="fill-violet-400" />
                 <circle cx="340" cy="28" r="5" className="fill-pink-400 shadow-md" />
+
+                {/* Animated Luminous Comet along the River during Daily Reel */}
+                {isPlayingReel && (
+                  <g>
+                    <circle
+                      cx={10 + reelProgress * 380}
+                      cy={22 + Math.sin(reelProgress * Math.PI * 2) * 16}
+                      r="10"
+                      className="fill-amber-400/30 animate-ping"
+                    />
+                    <circle
+                      cx={10 + reelProgress * 380}
+                      cy={22 + Math.sin(reelProgress * Math.PI * 2) * 16}
+                      r="5.5"
+                      className="fill-amber-300 shadow-[0_0_18px_rgba(251,191,36,1)]"
+                    />
+                  </g>
+                )}
               </svg>
             </div>
 
@@ -207,26 +282,44 @@ export const EveningEpilogueModal: React.FC<EveningEpilogueModalProps> = ({
                 Chapters Sculpted Today
               </span>
               <div className="space-y-1.5">
-                {highlights.map((h, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-black/5 dark:bg-white/5 border border-[var(--border-color)]/50 text-xs">
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded-md shrink-0">
-                        #{i + 1}
-                      </span>
-                      <span className="font-semibold text-[var(--text-color)] truncate">
-                        {h.title}
-                      </span>
+                {highlights.map((h, i) => {
+                  const isReelActive = activeReelIndex === i;
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all duration-300 ${
+                        isReelActive
+                          ? "border-amber-400/80 bg-amber-500/20 scale-[1.02] shadow-[0_0_20px_rgba(245,158,11,0.3)] ring-1 ring-amber-400/50"
+                          : "border-[var(--border-color)]/50 bg-black/5 dark:bg-white/5"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <span
+                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md shrink-0 transition-colors ${
+                            isReelActive
+                              ? "text-black bg-amber-400 font-extrabold border border-amber-300"
+                              : "text-amber-400 bg-amber-400/10 border border-amber-400/20"
+                          }`}
+                        >
+                          #{i + 1}
+                        </span>
+                        <span className={`font-semibold truncate transition-colors ${isReelActive ? "text-amber-300 dark:text-amber-200" : "text-[var(--text-color)]"}`}>
+                          {h.title}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono text-[var(--text-muted)] hidden sm:inline">
+                          {h.app}
+                        </span>
+                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md transition-colors ${
+                          isReelActive ? "bg-amber-400 text-black" : "text-[var(--text-color)] bg-black/5 dark:bg-white/10"
+                        }`}>
+                          {formatDuration(h.duration)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-mono text-[var(--text-muted)] hidden sm:inline">
-                        {h.app}
-                      </span>
-                      <span className="text-[10px] font-mono font-bold text-[var(--text-color)] bg-black/5 dark:bg-white/10 px-2 py-0.5 rounded-md">
-                        {formatDuration(h.duration)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

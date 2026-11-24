@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { 
   Clock, Plus, 
   ShieldAlert, MessageSquare, ExternalLink, Sparkles
@@ -11,6 +11,7 @@ import TimelineSidebar from './TimelineSidebar';
 import { LiveTimer } from './LiveTimer';
 import { formatDuration, calculateNonOverlappingDuration } from '../utils/formatDuration';
 import { mapAppToCategory, CATEGORIES } from '../utils/categoryMapper';
+import { sound } from '../utils/sound';
 
 export const isBrowserApp = (appName?: string): boolean => {
   if (!appName) return false;
@@ -883,6 +884,66 @@ export function SCurveTimeline({
     }
   }, [processedNodes]);
 
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // Keyboard River Instrument Navigation (J/K/Arrows to glide, Space to inspect, R to reflect)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      if (processedNodes.length === 0) return;
+
+      if (e.key.toLowerCase() === 'j' || e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setFocusedIndex(prev => {
+          const next = prev === null ? 0 : Math.min(processedNodes.length - 1, prev + 1);
+          sound.playTactileTick();
+          const targetNode = processedNodes[next];
+          if (targetNode) {
+            cardRefs.current.get(targetNode.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          return next;
+        });
+      } else if (e.key.toLowerCase() === 'k' || e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setFocusedIndex(prev => {
+          const next = prev === null ? processedNodes.length - 1 : Math.max(0, prev - 1);
+          sound.playTactileTick();
+          const targetNode = processedNodes[next];
+          if (targetNode) {
+            cardRefs.current.get(targetNode.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          return next;
+        });
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        if (focusedIndex !== null && processedNodes[focusedIndex]) {
+          e.preventDefault();
+          const targetNode = processedNodes[focusedIndex];
+          setSelectedNode(prev => (prev?.id === targetNode.id ? null : targetNode));
+        }
+      } else if (e.key.toLowerCase() === 'r') {
+        if (focusedIndex !== null && processedNodes[focusedIndex]) {
+          e.preventDefault();
+          onAddJournal(processedNodes[focusedIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        if (selectedNode) {
+          e.preventDefault();
+          setSelectedNode(null);
+        } else if (focusedIndex !== null) {
+          e.preventDefault();
+          setFocusedIndex(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [processedNodes, focusedIndex, selectedNode, onAddJournal]);
+
   const getBaseNodeCoords = (index: number) => {
     const r = Math.floor(index / 3);
     const isRowEven = r % 2 === 0;
@@ -1083,7 +1144,15 @@ export function SCurveTimeline({
                   />
 
                   <div
+                    ref={(el) => {
+                      if (el) cardRefs.current.set(node.id, el);
+                      else cardRefs.current.delete(node.id);
+                    }}
                     className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
+                      focusedIndex === index
+                        ? 'ring-2 ring-violet-500 shadow-[0_0_28px_rgba(139,92,246,0.4)] scale-[1.02] z-20 border-violet-500/80'
+                        : ''
+                    } ${
                       isEpicSession ? 'border-violet-500/40 shadow-violet-500/10' : isDeepSession ? 'border-violet-500/25' : ''
                     } ${
                       node.isGroupedSession 
@@ -1263,6 +1332,29 @@ export function SCurveTimeline({
                 </React.Fragment>
               );
             })}
+          </div>
+        )}
+
+        {/* Floating Keyboard Instrument Shortcuts HUD */}
+        {processedNodes.length > 0 && (
+          <div className="sticky bottom-3 inset-x-0 flex items-center justify-center pointer-events-none z-30 pb-1">
+            <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]/85 backdrop-blur-md shadow-lg text-[10px] text-[var(--text-muted)] font-mono transition-opacity opacity-75 hover:opacity-100">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">J</kbd>
+                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">K</kbd>
+                <span>Navigate</span>
+              </span>
+              <span className="opacity-30">•</span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">Space</kbd>
+                <span>Inspect</span>
+              </span>
+              <span className="opacity-30">•</span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">R</kbd>
+                <span>Reflect</span>
+              </span>
+            </div>
           </div>
         )}
       </div>

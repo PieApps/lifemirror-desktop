@@ -260,6 +260,34 @@ class SoundEngine {
   public playFocusIgnite() {
     this.playIgniteFocus();
   }
+
+  /**
+   * Ascending harmonic chime for the 5-second Daily Reel playback.
+   * Steps through rising Solfeggio frequencies: 264Hz -> 396Hz -> 528Hz -> 639Hz
+   */
+  public async playReelSweep(step: number) {
+    if (!this.isEnabled) return;
+    try {
+      const ctx = await this.ensureRunningContext();
+      if (!ctx) return;
+      const now = Math.max(ctx.currentTime, 0.001);
+      const frequencies = [264, 396, 528, 639, 741];
+      const freq = frequencies[Math.min(step, frequencies.length - 1)];
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.35, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.9);
+    } catch {}
+  }
 }
 
 export const sound = new SoundEngine();

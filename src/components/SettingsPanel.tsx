@@ -1443,12 +1443,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 {selectedAiMode === "local" && (
                   <button
                     type="button"
-                    onClick={() => handleTestConnection(true)}
+                    onClick={async () => {
+                      if (!aiUrl || aiUrl === "false") setAiUrl("http://localhost:11434");
+                      if (!aiModel || aiModel === "false") setAiModel("llama3.2");
+                      await handleTestConnection(true);
+                    }}
                     disabled={connectionStatus === "testing"}
-                    className="px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-color)]/60 hover:bg-[var(--surface-color)] text-[11px] font-medium text-[var(--text-color)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                    title="Auto-detect running local Ollama instance and bind models"
                   >
-                    <RefreshCw className={`w-3 h-3 ${connectionStatus === "testing" ? "animate-spin" : ""}`} />
-                    <span>Check Connection</span>
+                    {connectionStatus === "testing" ? (
+                      <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    )}
+                    <span>{connectionStatus === "testing" ? "Detecting..." : "Auto-Connect Ollama"}</span>
                   </button>
                 )}
                 {selectedAiMode === "cloud" && (
