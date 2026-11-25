@@ -112,8 +112,8 @@ export const MonthlyView: React.FC<MonthlyViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-violet-500/15 text-violet-300 border border-violet-500/30">
-                <Calendar className="w-3 h-3 text-violet-400" />
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30">
+                <Calendar className="w-3 h-3 text-violet-600 dark:text-violet-400" />
                 {year} Chapter
               </span>
               <span className="text-xs text-[var(--text-muted)] font-medium">· Tapestry of Time</span>

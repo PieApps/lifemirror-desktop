@@ -369,8 +369,8 @@ export const WeeklyView: React.FC<WeeklyViewProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1 rounded-xl bg-violet-600/15 border border-violet-500/30 text-violet-300 font-semibold text-xs shadow-xs">
-              ⚡ Golden Window: <span className="text-white font-bold">{chronotypeData.goldenWindow}</span> ({chronotypeData.windowPct}%)
+            <div className="px-3 py-1 rounded-xl bg-violet-600/15 border border-violet-500/30 text-violet-700 dark:text-violet-300 font-semibold text-xs shadow-xs">
+              ⚡ Golden Window: <span className="text-violet-900 dark:text-white font-bold">{chronotypeData.goldenWindow}</span> ({chronotypeData.windowPct}%)
             </div>
             <button
               onClick={() => setShowDetailedHeatmap(!showDetailedHeatmap)}

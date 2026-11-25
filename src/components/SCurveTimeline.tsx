@@ -997,7 +997,7 @@ export function SCurveTimeline({
   }, [processedNodes]);
 
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
-  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const cardRefs = useRef<Map<number | string, HTMLDivElement>>(new Map());
 
   // Keyboard River Instrument Navigation (J/K/Arrows to glide, Space to inspect, R to reflect)
   useEffect(() => {
@@ -1016,6 +1016,9 @@ export function SCurveTimeline({
           const targetNode = processedNodes[next];
           if (targetNode) {
             cardRefs.current.get(targetNode.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (selectedNode) {
+              setSelectedNode(targetNode);
+            }
           }
           return next;
         });
@@ -1027,6 +1030,9 @@ export function SCurveTimeline({
           const targetNode = processedNodes[next];
           if (targetNode) {
             cardRefs.current.get(targetNode.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (selectedNode) {
+              setSelectedNode(targetNode);
+            }
           }
           return next;
         });
@@ -1216,6 +1222,7 @@ export function SCurveTimeline({
                   node.originalActivities?.some(a => a.start_time === activeNodeStartTime)
                 )
               );
+              const isCardActive = focusedIndex === index || (selectedNode != null && selectedNode.id === node.id);
 
               // Volumetric sizing & aura based on deep work duration
               const durationSecs = node.duration || 0;
@@ -1233,9 +1240,16 @@ export function SCurveTimeline({
               return (
                 <React.Fragment key={node.id || index}>
                   <div
-                    className={`absolute z-20 ${anchorSize} rounded-full border-2 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 hover:scale-125 ${anchorAura}`}
+                    className={`absolute z-20 ${anchorSize} rounded-full border-2 bg-[var(--timeline-anchor-bg)] flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 hover:scale-125 ${
+                      isCardActive
+                        ? 'scale-125 !border-violet-500 dark:!border-violet-400 ring-4 ring-violet-500/50 dark:ring-violet-400/60 shadow-[0_0_24px_rgba(139,92,246,0.9)] z-30'
+                        : anchorAura
+                    }`}
                     style={{ left: colPercentages[col], top: `${nodeY}px` }}
-                    onClick={() => setSelectedNode(node)}
+                    onClick={() => {
+                      setSelectedNode(node);
+                      setFocusedIndex(index);
+                    }}
                     onMouseEnter={() => setIsHovering(index)}
                     onMouseLeave={() => setIsHovering(null)}
                   >
@@ -1293,7 +1307,11 @@ export function SCurveTimeline({
 
                   {/* Organic connector stem from river anchor to memory island */}
                   <div
-                    className="absolute z-0 w-0.5 bg-gradient-to-b from-violet-500/50 to-violet-500/15 pointer-events-none transform -translate-x-1/2"
+                    className={`absolute z-0 transition-all duration-300 pointer-events-none transform -translate-x-1/2 ${
+                      isCardActive
+                        ? "w-1 bg-gradient-to-b from-violet-500 to-violet-400 opacity-100 shadow-[0_0_8px_rgba(139,92,246,0.8)]"
+                        : "w-0.5 bg-gradient-to-b from-violet-500/50 to-violet-500/15 opacity-70"
+                    }`}
                     style={{
                       left: colPercentages[col],
                       top: `${nodeY + 12}px`,
@@ -1306,12 +1324,10 @@ export function SCurveTimeline({
                       if (el) cardRefs.current.set(node.id, el);
                       else cardRefs.current.delete(node.id);
                     }}
-                    className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left z-10 transition-all duration-300 ${
-                      focusedIndex === index
-                        ? 'ring-2 ring-violet-500 shadow-[0_0_28px_rgba(139,92,246,0.4)] scale-[1.02] z-20 border-violet-500/80'
-                        : ''
-                    } ${
-                      isEpicSession ? 'border-violet-500/40 shadow-violet-500/10' : isDeepSession ? 'border-violet-500/25' : ''
+                    className={`absolute group glass-card rounded-xl p-3.5 shadow-xl text-left transition-all duration-300 ${
+                      isCardActive
+                        ? '!border-violet-500 dark:!border-violet-400 !ring-2 !ring-violet-500/80 dark:!ring-violet-400/90 !shadow-[0_0_30px_rgba(139,92,246,0.45)] scale-[1.03] -translate-y-1.5 z-30 bg-violet-50/90 dark:bg-violet-950/45'
+                        : `z-10 ${isEpicSession ? 'border-violet-500/40 shadow-violet-500/10' : isDeepSession ? 'border-violet-500/25' : ''}`
                     } ${
                       node.isGroupedSession 
                         ? 'cursor-pointer hover:border-violet-500/60 hover:-translate-y-1.5 hover:shadow-[0_16px_36px_rgba(139,92,246,0.18)]' 
@@ -1324,6 +1340,7 @@ export function SCurveTimeline({
                       ...cardWidthStyle
                     }}
                     onClick={(e) => {
+                      setFocusedIndex(index);
                       if (node.isGroupedSession || node.isMemoryNode) {
                         const target = e.target as HTMLElement;
                         if (!target.closest('button') && !target.closest('a')) {
@@ -1412,6 +1429,11 @@ export function SCurveTimeline({
                       </div>
                       
                       <div className="flex items-center gap-1 shrink-0">
+                        {isCardActive && (
+                          <span className="text-[8px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-violet-600 text-white shadow-xs animate-in fade-in">
+                            Selected
+                          </span>
+                        )}
                         {isEpicSession && (
                           <span className="text-[8px] font-bold tracking-wider uppercase px-1 py-0.2 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
                             Epic

@@ -251,7 +251,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 {selectedDate !== getLocalDateString() && onSelectDate && (
                   <button
                     onClick={() => onSelectDate(getLocalDateString())}
-                    className="px-2 py-0.5 text-[11px] font-semibold rounded-lg bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/30 transition-all cursor-pointer shadow-xs animate-in fade-in"
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded-lg bg-violet-600/20 hover:bg-violet-600 text-violet-700 dark:text-violet-300 hover:text-white border border-violet-500/30 transition-all cursor-pointer shadow-xs animate-in fade-in"
                     title="Return to Today"
                   >
                     Today
@@ -291,7 +291,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs ${
                 viewMode === "daily"
                   ? "border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 shadow-amber-500/10"
-                  : "border-violet-500/30 bg-violet-600/15 hover:bg-violet-600/25 dark:bg-violet-600/20 dark:hover:bg-violet-600 text-violet-700 dark:text-violet-200 hover:text-violet-900 dark:hover:text-white shadow-violet-500/10"
+                  : "border-violet-300 dark:border-violet-500/30 bg-violet-100 hover:bg-violet-200 dark:bg-violet-600/20 dark:hover:bg-violet-600 text-violet-800 dark:text-violet-200 hover:text-violet-950 dark:hover:text-white shadow-violet-500/10"
               }`}
               title={
                 viewMode === "daily"
@@ -302,13 +302,13 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               {isGeneratingPeriodNote ? (
                 <div
                   className={`w-3.5 h-3.5 border-2 ${
-                    viewMode === "daily" ? "border-amber-500 dark:border-amber-400" : "border-violet-600 dark:border-violet-400"
+                    viewMode === "daily" ? "border-amber-500 dark:border-amber-400" : "border-violet-700 dark:border-violet-400"
                   } border-t-transparent rounded-full animate-spin shrink-0`}
                 />
               ) : viewMode === "daily" ? (
                 <Moon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
+                <Sparkles className="w-3.5 h-3.5 text-violet-700 dark:text-violet-400 shrink-0" />
               )}
               <span className="whitespace-nowrap font-medium">
                 {isGeneratingPeriodNote
@@ -386,7 +386,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                           sound.playClick();
                           onOpenMorningPrelude();
                         }}
-                        className="p-1 hover:bg-violet-500/20 text-violet-300 hover:text-white rounded-md transition-colors cursor-pointer shrink-0 ml-0.5"
+                        className="p-1 hover:bg-violet-500/20 text-violet-600 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white rounded-md transition-colors cursor-pointer shrink-0 ml-0.5"
                         title="Refine Intention in Morning Prelude"
                       >
                         <Pencil className="w-3 h-3" />
@@ -416,7 +416,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       sound.playClearFocus();
                       handleStopFocus();
                     }}
-                    className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
+                    className="px-3 py-1 bg-violet-600/20 hover:bg-violet-600 text-violet-700 dark:text-violet-300 hover:text-white border border-violet-500/40 text-[11px] font-semibold rounded-lg transition-all cursor-pointer shrink-0 shadow-xs"
                   >
                     Clear Focus
                   </button>
@@ -425,7 +425,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
             ) : (
               <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0 overflow-hidden">
                 {/* Ambient Flow Sensing Indicator */}
-                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0 flex-1 overflow-hidden">
+                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0 flex-1 max-w-[42%] overflow-hidden">
                   <Waves className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0 animate-pulse" />
                   {activities.length > 0 ? (
                     <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
@@ -447,7 +447,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                           title="Reconstruct context and pick up where you left off"
                         >
                           <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400" />
-                          <span className="hidden xl:inline">Resume Flow</span>
+                          <span className="hidden min-[1500px]:inline">Resume Flow</span>
                         </button>
                       )}
                     </div>
@@ -469,7 +469,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                     title="Launch external focus soundtrack (YouTube, Spotify, or Local Media)"
                   >
                     <Headphones className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
-                    <span className="hidden xl:inline">Soundtrack</span>
+                    <span className="hidden min-[1500px]:inline">Soundtrack</span>
                     <ExternalLink className="w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500" />
                   </button>
 
@@ -484,11 +484,11 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       title="Set Today's Intention with Morning Prelude"
                     >
                       <Sunrise className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                      <span className="hidden lg:inline">Morning Prelude</span>
+                      <span className="hidden min-[1500px]:inline">Morning Prelude</span>
                     </button>
                   )}
 
-                  <div className="flex items-center gap-2 bg-[var(--surface-color)] dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl w-32 sm:w-44 md:w-56 focus-within:w-64 transition-all duration-300 focus-within:border-violet-500/50">
+                  <div className="flex items-center gap-2 bg-[var(--surface-color)] dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl w-28 sm:w-36 md:w-44 focus-within:w-56 transition-all duration-300 focus-within:border-violet-500/50">
                     <Target className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0" />
                     <input
                       type="text"

@@ -475,7 +475,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               title="Return to S-Curve Timeline"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">Timeline</span>
+              <span className="hidden min-[1600px]:inline">Timeline</span>
             </button>
           )}
 
@@ -496,11 +496,11 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
 
           <button
             onClick={() => setIsClearVaultModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 text-xs font-semibold text-red-600 dark:text-red-400 transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 text-xs font-semibold text-red-600 dark:text-red-400 transition-colors cursor-pointer shadow-xs"
             title="Archive existing notes to .trash/ and reset vault index"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">Clear</span>
+            <span className="hidden min-[1600px]:inline">Clear</span>
           </button>
 
           <button
@@ -509,7 +509,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
             title="Compile archival Living Memoir from your vault notes"
           >
             <BookOpen className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
-            <span className="hidden 2xl:inline">Bind Memoir</span>
+            <span className="hidden min-[1600px]:inline">Bind Memoir</span>
           </button>
 
           <button
@@ -518,7 +518,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
             title="Open Vault or Active Note in Obsidian / System Default Editor"
           >
             <ExternalLink className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
-            <span className="hidden 2xl:inline">Open in Obsidian</span>
+            <span className="hidden min-[1600px]:inline">Obsidian</span>
           </button>
         </div>
       </div>
@@ -833,7 +833,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               )}
 
               {/* Three Collection Showcase Cards — Responsive with Container Queries */}
-              <div className="grid grid-cols-1 @[620px]:grid-cols-3 gap-3.5 w-full mb-8">
+              <div className="grid grid-cols-1 @[540px]:grid-cols-2 @[820px]:grid-cols-3 gap-3.5 w-full mb-8">
                 {/* Shelf 1: Chronicles */}
                 <div
                   onClick={() => setShelf("chronicles")}
@@ -843,7 +843,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
                         <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span className="truncate">Chronicles</span>
+                        <span className="truncate whitespace-nowrap">Chronicles</span>
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
                         {chroniclesCount} notes
@@ -867,7 +867,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
                         <Layers className="w-4 h-4 text-emerald-500 shrink-0" />
-                        <span className="truncate">Craft & Code</span>
+                        <span className="truncate whitespace-nowrap">Craft & Code</span>
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
                         {craftCount} notes
@@ -891,7 +891,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
                         <Compass className="w-4 h-4 text-sky-500 shrink-0" />
-                        <span className="truncate">Ideas & Topics</span>
+                        <span className="truncate whitespace-nowrap">Ideas & Topics</span>
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
                         {ideasCount} notes

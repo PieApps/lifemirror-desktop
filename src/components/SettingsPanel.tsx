@@ -597,8 +597,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--surface-color)] rounded-xl border border-[var(--border-color)] shrink-0">
         {[
           { id: "general", label: "Rhythm & Senses", shortLabel: "Rhythm", icon: Clock },
-          { id: "focus", label: "Sanctum & Privacy", shortLabel: "Sanctum", icon: Shield },
-          { id: "ai", label: "The Biographer", shortLabel: "AI Engine", icon: Sparkles },
+          { id: "focus", label: "Sanctum & Privacy", shortLabel: "Privacy", icon: Shield },
+          { id: "ai", label: "The Biographer", shortLabel: "AI", icon: Sparkles },
           { id: "about", label: "Origin & Vault", shortLabel: "Vault", icon: BookOpen },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1027,7 +1027,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     onRefreshUnattachedNotes?.();
                     setNotesModalOpen(true);
                   }}
-                  className="px-2.5 py-1 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 text-violet-300 text-xs font-medium transition-colors shrink-0 cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-violet-600/20 hover:bg-violet-600/40 text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white text-xs font-semibold transition-colors shrink-0 cursor-pointer"
                 >
                   View Notes
                 </button>
