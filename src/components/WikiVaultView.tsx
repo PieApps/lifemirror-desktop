@@ -435,23 +435,24 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
   return (
     <div className="wiki-vault-container h-full flex flex-col bg-[var(--card-bg)] rounded-3xl border border-[var(--border-color)] overflow-hidden">
       {/* Top Header Bar */}
-      <div className="p-4 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between gap-3 bg-[var(--bg-color)]/30">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div className="p-3.5 sm:p-5 border-b border-[var(--border-color)] flex items-center justify-between gap-2 sm:gap-3 bg-[var(--bg-color)]/30 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0 shrink-0">
           <span className="p-2 rounded-xl bg-violet-500/10 text-violet-500 shrink-0">
             <BookOpen className="w-5 h-5" />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-bold text-[var(--text-color)] truncate">
+              <h2 className="text-sm sm:text-base font-bold text-[var(--text-color)] whitespace-nowrap">
                 Knowledge Vault
               </h2>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+              <span className="hidden md:inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shrink-0">
                 Personal Library
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>100% On-Device · Encrypted & Offline</span>
+              <span>100% On-Device</span>
+              <span className="hidden lg:inline"> · Encrypted & Offline</span>
               {vaultPath && (
                 <button
                   type="button"
@@ -466,15 +467,15 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
           {onBackToTimeline && (
             <button
               onClick={onBackToTimeline}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)] text-xs text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer shadow-xs"
               title="Return to S-Curve Timeline"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Timeline</span>
+              <span className="hidden xl:inline">Timeline</span>
             </button>
           )}
 
@@ -487,37 +488,37 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               }
               await loadVaultStructure(selectedFile?.relative_path);
             }}
-            className="p-2 rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
+            className="p-2 rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)] hover:border-zinc-400/50 text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer shadow-xs"
             title="Refresh & Sync Vault"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-violet-500" : ""}`} />
           </button>
 
           <button
             onClick={() => setIsClearVaultModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-red-500/20 hover:bg-red-500/10 text-xs font-semibold text-red-500/80 hover:text-red-500 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/15 text-xs font-semibold text-red-600 dark:text-red-400 transition-colors cursor-pointer shadow-xs"
             title="Archive existing notes to .trash/ and reset vault index"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Clear</span>
+            <span className="hidden xl:inline">Clear</span>
           </button>
 
           <button
             onClick={() => setIsMemoirModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold text-violet-300 transition-all shadow-sm cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white transition-all shadow-xs cursor-pointer shrink-0"
             title="Compile archival Living Memoir from your vault notes"
           >
-            <BookOpen className="w-3.5 h-3.5 text-violet-400" />
-            <span className="hidden sm:inline">Bind Memoir</span>
+            <BookOpen className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
+            <span className="hidden 2xl:inline">Bind Memoir</span>
           </button>
 
           <button
             onClick={handleOpenInObsidian}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)] hover:bg-[var(--border-color)] text-xs font-semibold text-[var(--text-color)] transition-colors shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)] hover:border-violet-500/40 text-xs font-semibold text-[var(--text-color)] transition-colors shadow-xs cursor-pointer shrink-0"
             title="Open Vault or Active Note in Obsidian / System Default Editor"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-violet-500" />
-            <span className="hidden sm:inline">Open in Obsidian</span>
+            <ExternalLink className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
+            <span className="hidden 2xl:inline">Open in Obsidian</span>
           </button>
         </div>
       </div>
@@ -542,55 +543,78 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
               />
             </div>
 
-            {/* The Three Sacred Shelves */}
-            <div className="grid grid-cols-4 gap-1 p-1 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] text-[10px] font-semibold">
+            {/* The Three Sacred Shelves — 2x2 Grid for Zero Truncation */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-[var(--surface-color)] rounded-xl border border-[var(--border-color)] text-[11px] font-semibold">
               <button
                 type="button"
                 onClick={() => setShelf("all")}
-                className={`py-1 px-1 rounded-lg transition-all text-center cursor-pointer truncate ${
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-between gap-1 min-w-0 ${
                   shelf === "all"
                     ? "bg-violet-600 text-white shadow-xs"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
                 }`}
-                title="All notes"
+                title="All notes in vault"
               >
-                All ({files.length})
+                <span className="truncate">All Notes</span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                  shelf === "all" ? "bg-white/20 text-white" : "bg-[var(--border-color)] text-[var(--text-muted)]"
+                }`}>
+                  {files.length}
+                </span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setShelf("chronicles")}
-                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-between gap-1 min-w-0 ${
                   shelf === "chronicles"
                     ? "bg-violet-600 text-white shadow-xs"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
                 }`}
                 title="Daily, weekly, and monthly chronicles"
               >
-                📖 Chronicles ({chroniclesCount})
+                <span className="truncate">Chronicles</span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                  shelf === "chronicles" ? "bg-white/20 text-white" : "bg-amber-500/15 text-amber-500 dark:text-amber-400"
+                }`}>
+                  {chroniclesCount}
+                </span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setShelf("craft")}
-                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-between gap-1 min-w-0 ${
                   shelf === "craft"
                     ? "bg-violet-600 text-white shadow-xs"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
                 }`}
                 title="Projects and deep session chapters"
               >
-                ⚡ Craft ({craftCount})
+                <span className="truncate">Craft & Code</span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                  shelf === "craft" ? "bg-white/20 text-white" : "bg-emerald-500/15 text-emerald-500 dark:text-emerald-400"
+                }`}>
+                  {craftCount}
+                </span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setShelf("ideas")}
-                className={`py-1 px-0.5 rounded-lg transition-all text-center cursor-pointer truncate ${
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-between gap-1 min-w-0 ${
                   shelf === "ideas"
                     ? "bg-violet-600 text-white shadow-xs"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-zinc-500/10"
                 }`}
                 title="Topics and knowledge index"
               >
-                💡 Ideas ({ideasCount})
+                <span className="truncate">Ideas & Topics</span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                  shelf === "ideas" ? "bg-white/20 text-white" : "bg-sky-500/15 text-sky-500 dark:text-sky-400"
+                }`}>
+                  {ideasCount}
+                </span>
               </button>
             </div>
 
@@ -681,7 +705,7 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
         </div>
 
         {/* Center/Right Pane: Document Reader & Editor */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-[var(--bg-color)]/10 min-w-0">
+        <div className="flex-1 flex flex-col overflow-hidden bg-[var(--bg-color)]/10 min-w-0 @container">
           {selectedFile ? (
             <>
               {/* Document Header & Actions */}
@@ -808,28 +832,28 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                 </div>
               )}
 
-              {/* Three Collection Showcase Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-8">
+              {/* Three Collection Showcase Cards — Responsive with Container Queries */}
+              <div className="grid grid-cols-1 @[620px]:grid-cols-3 gap-3.5 w-full mb-8">
                 {/* Shelf 1: Chronicles */}
                 <div
                   onClick={() => setShelf("chronicles")}
                   className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                        <Calendar className="w-4 h-4 text-amber-500" />
-                        <span>Chronicles</span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
+                        <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span className="truncate">Chronicles</span>
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                        {chroniclesCount}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                        {chroniclesCount} notes
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                       Daily reviews, weekly syntheses, and monthly milestones.
                     </p>
                   </div>
-                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                  <span className="text-[11px] font-semibold text-violet-400 mt-3 group-hover:translate-x-1 transition-transform inline-block">
                     Browse Chronicles →
                   </span>
                 </div>
@@ -840,20 +864,20 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                   className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                        <Layers className="w-4 h-4 text-emerald-500" />
-                        <span>Craft & Code</span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
+                        <Layers className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <span className="truncate">Craft & Code</span>
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        {craftCount}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                        {craftCount} notes
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                       Active projects and focused deep work session chapters.
                     </p>
                   </div>
-                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                  <span className="text-[11px] font-semibold text-violet-400 mt-3 group-hover:translate-x-1 transition-transform inline-block">
                     Browse Craft →
                   </span>
                 </div>
@@ -864,20 +888,20 @@ Enter context, objectives, and research notes for this ${newNoteCategory === "pr
                   className="p-4 rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all cursor-pointer group flex flex-col justify-between"
                 >
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5">
-                        <Compass className="w-4 h-4 text-sky-500" />
-                        <span>Ideas & Topics</span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-sm font-bold text-[var(--text-color)] flex items-center gap-1.5 min-w-0">
+                        <Compass className="w-4 h-4 text-sky-500 shrink-0" />
+                        <span className="truncate">Ideas & Topics</span>
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30">
-                        {ideasCount}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 shrink-0">
+                        {ideasCount} notes
                       </span>
                     </div>
                     <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                       Topic references, concept notes, and library index.
                     </p>
                   </div>
-                  <span className="text-[11px] font-semibold text-violet-400 mt-4 group-hover:translate-x-1 transition-transform inline-block">
+                  <span className="text-[11px] font-semibold text-violet-400 mt-3 group-hover:translate-x-1 transition-transform inline-block">
                     Browse Ideas →
                   </span>
                 </div>

@@ -581,7 +581,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [aiMode]);
 
   return (
-    <div className="glass rounded-2xl p-4 sm:p-6 border border-[var(--border-color)] w-full text-left flex flex-col flex-1 h-full min-h-0 overflow-y-auto custom-scrollbar">
+    <div className="glass rounded-2xl p-4 sm:p-6 pb-16 sm:pb-20 border border-[var(--border-color)] w-full text-left flex flex-col flex-1 h-full min-h-0 overflow-y-auto custom-scrollbar">
       {/* Header with Title and Version */}
       <div className="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-[var(--border-color)] shrink-0">
         <div className="flex items-center gap-2">
@@ -594,11 +594,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       </div>
 
       {/* Segmented Tab Navigation: The Sacred Trio + Origin */}
-      <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] shrink-0">
+      <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--surface-color)] rounded-xl border border-[var(--border-color)] shrink-0">
         {[
           { id: "general", label: "Rhythm & Senses", shortLabel: "Rhythm", icon: Clock },
-          { id: "focus", label: "Sanctum & Privacy", shortLabel: "Focus", icon: Shield },
-          { id: "ai", label: "The Biographer", shortLabel: "AI", icon: Sparkles },
+          { id: "focus", label: "Sanctum & Privacy", shortLabel: "Sanctum", icon: Shield },
+          { id: "ai", label: "The Biographer", shortLabel: "AI Engine", icon: Sparkles },
           { id: "about", label: "Origin & Vault", shortLabel: "Vault", icon: BookOpen },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -616,8 +616,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">
-                <span className="hidden 2xl:inline">{tab.label}</span>
-                <span className="2xl:hidden">{tab.shortLabel}</span>
+                {tab.shortLabel}
               </span>
             </button>
           );
@@ -1528,8 +1527,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </button>
               </div>
 
-              {/* 3 Mode Choice Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* 3 Mode Choice Cards — Stacked for Spacious Ergonomics */}
+              <div className="flex flex-col gap-2.5">
                 {/* Mode: On-Device */}
                 <button
                   type="button"
@@ -1537,30 +1536,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     setSelectedAiMode("local");
                     await onUpdateAiMode?.("local");
                   }}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                  className={`p-3 sm:p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col gap-1.5 ${
                     selectedAiMode === "local"
                       ? "border-emerald-500/60 bg-emerald-500/10 shadow-sm shadow-emerald-500/10 text-[var(--text-color)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                      : "border-[var(--border-color)] bg-[var(--surface-color)] hover:border-zinc-400/50 text-[var(--text-muted)]"
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
-                        <Cpu className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>On-Device</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-[var(--text-color)]">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                        selectedAiMode === "local" ? "border-emerald-500 bg-emerald-500 text-white" : "border-[var(--border-color)]"
+                      }`}>
+                        {selectedAiMode === "local" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        100% Private
-                      </span>
+                      <Cpu className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>On-Device</span>
                     </div>
-                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Runs locally on your computer via Ollama. Free forever, no data sent to cloud.
-                    </p>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                      100% Private
+                    </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
-                    <Check className={`w-3 h-3 ${selectedAiMode === "local" ? "opacity-100" : "opacity-0"}`} />
-                    <span>{selectedAiMode === "local" ? "Active Engine" : "Select On-Device"}</span>
-                  </div>
+                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pl-6">
+                    Runs locally on your computer via Ollama. Free forever, zero telemetry or cloud transit.
+                  </p>
                 </button>
 
                 {/* Mode: Online Service */}
@@ -1570,30 +1568,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     setSelectedAiMode("cloud");
                     await onUpdateAiMode?.("cloud");
                   }}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                  className={`p-3 sm:p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col gap-1.5 ${
                     selectedAiMode === "cloud"
                       ? "border-violet-500/60 bg-violet-500/10 shadow-sm shadow-violet-500/10 text-[var(--text-color)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                      : "border-[var(--border-color)] bg-[var(--surface-color)] hover:border-zinc-400/50 text-[var(--text-muted)]"
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
-                        <Cloud className="w-3.5 h-3.5 text-violet-400" />
-                        <span>Online Service</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-[var(--text-color)]">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                        selectedAiMode === "cloud" ? "border-violet-500 bg-violet-500 text-white" : "border-[var(--border-color)]"
+                      }`}>
+                        {selectedAiMode === "cloud" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 border border-violet-500/30">
-                        Zero RAM
-                      </span>
+                      <Cloud className="w-4 h-4 text-violet-400 shrink-0" />
+                      <span>Online Service</span>
                     </div>
-                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Connect Gemini, Groq, or OpenAI with your key. Instant setup, zero downloads.
-                    </p>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-500 dark:text-violet-400 border border-violet-500/30 shrink-0">
+                      Zero RAM
+                    </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-1 text-[10px] text-violet-400 font-medium">
-                    <Check className={`w-3 h-3 ${selectedAiMode === "cloud" ? "opacity-100" : "opacity-0"}`} />
-                    <span>{selectedAiMode === "cloud" ? "Active Engine" : "Select Online"}</span>
-                  </div>
+                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pl-6">
+                    Connect Gemini, Groq, or OpenAI with your key. Instant setup, zero model downloads.
+                  </p>
                 </button>
 
                 {/* Mode: Disabled */}
@@ -1603,30 +1600,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     setSelectedAiMode("off");
                     await onUpdateAiMode?.("off");
                   }}
-                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                  className={`p-3 sm:p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col gap-1.5 ${
                     selectedAiMode === "off"
                       ? "border-zinc-500/60 bg-zinc-500/10 shadow-sm text-[var(--text-color)]"
-                      : "border-[var(--border-color)] bg-[var(--bg-color)]/30 hover:border-[var(--border-color)]/80 text-[var(--text-muted)]"
+                      : "border-[var(--border-color)] bg-[var(--surface-color)] hover:border-zinc-400/50 text-[var(--text-muted)]"
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-color)]">
-                        <Ban className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>AI Off</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-xs sm:text-sm text-[var(--text-color)]">
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                        selectedAiMode === "off" ? "border-zinc-500 bg-zinc-500 text-white" : "border-[var(--border-color)]"
+                      }`}>
+                        {selectedAiMode === "off" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/20 text-zinc-400 border border-zinc-500/30">
-                        Tracking Only
-                      </span>
+                      <Ban className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>AI Off</span>
                     </div>
-                    <p className="text-[10px] text-[var(--text-muted)] leading-relaxed">
-                      Pause all AI processing. Track app time and focus without summaries or chat.
-                    </p>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-zinc-500/15 text-zinc-500 dark:text-zinc-400 border border-zinc-500/30 shrink-0">
+                      Tracking Only
+                    </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-1 text-[10px] text-zinc-400 font-medium">
-                    <Check className={`w-3 h-3 ${selectedAiMode === "off" ? "opacity-100" : "opacity-0"}`} />
-                    <span>{selectedAiMode === "off" ? "Active Engine" : "Turn AI Off"}</span>
-                  </div>
+                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed pl-6">
+                    Pause all AI processing. Track app time and focus rhythm without cloud or local models.
+                  </p>
                 </button>
               </div>
             </div>
@@ -1967,7 +1963,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   <label className="block text-xs font-semibold text-[var(--text-color)] mb-1.5">
                     Select Cloud Provider
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {/* Google Gemini */}
                     <button
                       type="button"
@@ -1980,11 +1976,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                         localCloudProvider === "gemini"
                           ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                          : "border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-muted)] hover:border-zinc-400/50"
                       }`}
                     >
                       <span className="block text-xs font-semibold">Gemini</span>
-                      <span className="text-[9px] text-emerald-400 font-medium">Free AI Studio</span>
+                      <span className="text-[9px] text-emerald-500 dark:text-emerald-400 font-medium">Free AI Studio</span>
                     </button>
 
                     {/* Groq */}
@@ -1999,11 +1995,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                         localCloudProvider === "groq"
                           ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                          : "border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-muted)] hover:border-zinc-400/50"
                       }`}
                     >
                       <span className="block text-xs font-semibold">Groq</span>
-                      <span className="text-[9px] text-emerald-400 font-medium">Fast / Free Tier</span>
+                      <span className="text-[9px] text-emerald-500 dark:text-emerald-400 font-medium">Fast / Free Tier</span>
                     </button>
 
                     {/* OpenAI */}
@@ -2018,11 +2014,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                         localCloudProvider === "openai"
                           ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                          : "border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-muted)] hover:border-zinc-400/50"
                       }`}
                     >
                       <span className="block text-xs font-semibold">OpenAI</span>
-                      <span className="text-[9px] text-zinc-400">gpt-4o-mini</span>
+                      <span className="text-[9px] text-zinc-500 dark:text-zinc-400">gpt-4o-mini</span>
                     </button>
 
                     {/* OpenRouter */}
@@ -2037,11 +2033,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                         localCloudProvider === "openrouter"
                           ? "border-violet-500 bg-violet-500/15 text-[var(--text-color)] font-bold shadow-sm"
-                          : "border-[var(--border-color)] bg-[var(--bg-color)]/30 text-[var(--text-muted)]"
+                          : "border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-muted)] hover:border-zinc-400/50"
                       }`}
                     >
                       <span className="block text-xs font-semibold">OpenRouter</span>
-                      <span className="text-[9px] text-sky-400">Aggregator</span>
+                      <span className="text-[9px] text-sky-500 dark:text-sky-400">Aggregator</span>
                     </button>
                   </div>
                 </div>

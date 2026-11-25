@@ -290,8 +290,8 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               disabled={isGeneratingPeriodNote}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs ${
                 viewMode === "daily"
-                  ? "border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 shadow-amber-500/10"
-                  : "border-violet-500/30 bg-violet-600/20 hover:bg-violet-600 text-violet-200 hover:text-white shadow-violet-500/20"
+                  ? "border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 shadow-amber-500/10"
+                  : "border-violet-500/30 bg-violet-600/15 hover:bg-violet-600/25 dark:bg-violet-600/20 dark:hover:bg-violet-600 text-violet-700 dark:text-violet-200 hover:text-violet-900 dark:hover:text-white shadow-violet-500/10"
               }`}
               title={
                 viewMode === "daily"
@@ -302,25 +302,25 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               {isGeneratingPeriodNote ? (
                 <div
                   className={`w-3.5 h-3.5 border-2 ${
-                    viewMode === "daily" ? "border-amber-400" : "border-violet-400"
+                    viewMode === "daily" ? "border-amber-500 dark:border-amber-400" : "border-violet-600 dark:border-violet-400"
                   } border-t-transparent rounded-full animate-spin shrink-0`}
                 />
               ) : viewMode === "daily" ? (
-                <Moon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <Moon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                <Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400 shrink-0" />
               )}
               <span className="whitespace-nowrap font-medium">
                 {isGeneratingPeriodNote
                   ? "Synthesizing..."
                   : viewMode === "monthly"
-                  ? "✨ Synthesize Month"
+                  ? "Synthesize Month"
                   : viewMode === "weekly"
-                  ? "✨ Synthesize Week"
+                  ? "Synthesize Week"
                   : (
                     <>
-                      <span className="hidden min-[540px]:inline">🌅 Evening Epilogue</span>
-                      <span className="min-[540px]:hidden">🌅 Epilogue</span>
+                      <span className="hidden min-[540px]:inline">Evening Epilogue</span>
+                      <span className="min-[540px]:hidden">Epilogue</span>
                     </>
                   )}
               </span>
@@ -403,12 +403,12 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       sound.playClick();
                       setIsSoundtrackModalOpen(true);
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/60 hover:bg-zinc-800 border border-violet-500/25 text-zinc-300 hover:text-white text-[11px] font-medium transition-all cursor-pointer shadow-xs"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900/60 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-violet-500/25 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white text-[11px] font-medium transition-all cursor-pointer shadow-xs"
                     title="Focus Soundtrack (YouTube, Spotify, or Local Media)"
                   >
-                    <Headphones className="w-3.5 h-3.5 text-violet-400" />
+                    <Headphones className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
                     <span className="truncate max-w-[140px]">{soundtrackTitle}</span>
-                    <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+                    <ExternalLink className="w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500" />
                   </button>
 
                   <button
@@ -423,15 +423,15 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0 overflow-hidden">
                 {/* Ambient Flow Sensing Indicator */}
-                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] shrink-0 min-w-0 max-w-[55%]">
-                  <Waves className="w-3.5 h-3.5 text-violet-400 shrink-0 animate-pulse" />
+                <div className="hidden md:flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0 flex-1 overflow-hidden">
+                  <Waves className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0 animate-pulse" />
                   {activities.length > 0 ? (
-                    <div className="flex items-center gap-2.5 truncate">
-                      <div className="truncate">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 truncate">
+                      <div className="truncate min-w-0 flex-1">
                         <span className="text-[var(--text-muted)]">Flowing in </span>
-                        <span className="font-semibold text-violet-400">{activities[0].app_name}</span>
+                        <span className="font-semibold text-violet-600 dark:text-violet-400">{activities[0].app_name}</span>
                         <span className="mx-1 text-[var(--text-muted)]/60">·</span>
                         <span className="text-[var(--text-color)]/90">
                           {formatCleanTitle(activities[0].window_title, activities[0].app_name, activities[0].domain_tag, activities[0].url)}
@@ -443,21 +443,21 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                             sound.playTactileTick();
                             onResumeClick();
                           }}
-                          className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-violet-600/15 hover:bg-violet-600/25 border border-violet-500/30 text-violet-300 hover:text-white text-[10px] font-semibold transition-all cursor-pointer shadow-xs shrink-0"
+                          className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-violet-600/15 hover:bg-violet-600/25 border border-violet-500/30 text-violet-700 dark:text-violet-300 hover:text-violet-900 dark:hover:text-white text-[10px] font-semibold transition-all cursor-pointer shadow-xs shrink-0"
                           title="Reconstruct context and pick up where you left off"
                         >
-                          <Sparkles className="w-3 h-3 text-violet-400" />
-                          <span>Resume Flow</span>
+                          <Sparkles className="w-3 h-3 text-violet-500 dark:text-violet-400" />
+                          <span className="hidden xl:inline">Resume Flow</span>
                         </button>
                       )}
                     </div>
                   ) : (
-                    <span className="italic text-[var(--text-muted)]/70">Tranquil River · Ready when you are</span>
+                    <span className="italic text-[var(--text-muted)]/70 truncate">Tranquil River · Ready when you are</span>
                   )}
                 </div>
 
                 {/* Serene Intention Input */}
-                <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
                   {/* Focus Soundtrack Launcher */}
                   <button
                     type="button"
@@ -465,12 +465,12 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                       sound.playClick();
                       setIsSoundtrackModalOpen(true);
                     }}
-                    className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-white/5 hover:border-violet-500/30 text-zinc-400 hover:text-white text-xs font-medium transition-all cursor-pointer shrink-0"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-900/40 dark:hover:bg-zinc-900/80 border border-zinc-200 dark:border-white/5 hover:border-violet-500/30 text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white text-xs font-medium transition-all cursor-pointer shrink-0 shadow-xs"
                     title="Launch external focus soundtrack (YouTube, Spotify, or Local Media)"
                   >
-                    <Headphones className="w-3.5 h-3.5 text-violet-400" />
-                    <span>Soundtrack</span>
-                    <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+                    <Headphones className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400" />
+                    <span className="hidden xl:inline">Soundtrack</span>
+                    <ExternalLink className="w-2.5 h-2.5 text-zinc-400 dark:text-zinc-500" />
                   </button>
 
                   {onOpenMorningPrelude && (
@@ -480,16 +480,16 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                         sound.playClick();
                         onOpenMorningPrelude();
                       }}
-                      className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-xs font-semibold transition-all cursor-pointer shadow-xs shrink-0"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 text-xs font-semibold transition-all cursor-pointer shadow-xs shrink-0"
                       title="Set Today's Intention with Morning Prelude"
                     >
-                      <Sunrise className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Morning Prelude</span>
+                      <Sunrise className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      <span className="hidden lg:inline">Morning Prelude</span>
                     </button>
                   )}
 
-                  <div className="flex items-center gap-2 bg-[var(--bg-color)]/60 dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl flex-1 max-w-md focus-within:border-violet-500/50 transition-colors">
-                    <Target className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                  <div className="flex items-center gap-2 bg-[var(--surface-color)] dark:bg-zinc-800/40 border border-[var(--border-color)] px-3 py-1.5 rounded-xl w-32 sm:w-44 md:w-56 focus-within:w-64 transition-all duration-300 focus-within:border-violet-500/50">
+                    <Target className="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 shrink-0" />
                     <input
                       type="text"
                       value={intentionInput}
@@ -500,7 +500,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                           handleStartFocus();
                         }
                       }}
-                      placeholder="Guiding intention for this session? (Enter to ignite)"
+                      placeholder="Guiding intention..."
                       className="flex-1 bg-transparent border-none text-xs text-[var(--text-color)] focus:outline-none placeholder:text-[var(--text-muted)]/50 min-w-0"
                     />
                   </div>

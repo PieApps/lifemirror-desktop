@@ -1489,30 +1489,30 @@ export function SCurveTimeline({
             })}
           </div>
         )}
-
-        {/* Floating Keyboard Instrument Shortcuts HUD */}
-        {processedNodes.length > 0 && (
-          <div className="sticky bottom-3 inset-x-0 flex items-center justify-center pointer-events-none z-30 pb-1">
-            <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]/85 backdrop-blur-md shadow-lg text-[10px] text-[var(--text-muted)] font-mono transition-opacity opacity-75 hover:opacity-100">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">J</kbd>
-                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">K</kbd>
-                <span>Navigate</span>
-              </span>
-              <span className="opacity-30">•</span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">Space</kbd>
-                <span>Inspect</span>
-              </span>
-              <span className="opacity-30">•</span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">R</kbd>
-                <span>Reflect</span>
-              </span>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Floating Keyboard Instrument Shortcuts HUD pinned to viewport bottom */}
+      {processedNodes.length > 0 && (
+        <div className="absolute bottom-4 inset-x-0 flex items-center justify-center pointer-events-none z-30 pb-1">
+          <div className="pointer-events-auto flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]/90 backdrop-blur-md shadow-lg text-[10px] text-[var(--text-muted)] font-mono transition-opacity opacity-75 hover:opacity-100">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">J</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">K</kbd>
+              <span>Navigate</span>
+            </span>
+            <span className="opacity-30">•</span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">Space</kbd>
+              <span>Inspect</span>
+            </span>
+            <span className="opacity-30">•</span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-bold text-[var(--text-color)]">R</kbd>
+              <span>Reflect</span>
+            </span>
+          </div>
+        </div>
+      )}
 
       <TimelineSidebar 
         node={selectedNode} 

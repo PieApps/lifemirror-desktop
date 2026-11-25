@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Search className="w-4 h-4 text-violet-400 group-hover:scale-110 transition-transform" />
             <span className="truncate">Search memories, run commands...</span>
           </div>
-          <kbd className="hidden min-[480px]:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--text-muted)] bg-zinc-800/60 rounded-md border border-white/5">
+          <kbd className="hidden min-[480px]:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono font-bold text-[var(--text-muted)] bg-black/5 dark:bg-white/10 rounded-md border border-black/5 dark:border-white/10 shadow-xs">
             ⌘K
           </kbd>
         </button>
