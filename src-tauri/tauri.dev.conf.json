@@ -3,6 +3,19 @@
   "productName": "LifeMirror Desktop Dev",
   "identifier": "com.lifemirror.desktop.dev",
   "app": {
+    "security": {
+      "capabilities": [
+        "default",
+        {
+          "identifier": "dev-mcp",
+          "description": "Capability for development MCP automation plugin",
+          "windows": ["main", "overlay", "toast"],
+          "permissions": [
+            "mcp:default"
+          ]
+        }
+      ]
+    },
     "windows": [
       {
         "label": "main",

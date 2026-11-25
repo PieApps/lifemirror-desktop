@@ -16,6 +16,9 @@ if (args[0] === 'dev') {
     const devConfigPath = path.join('src-tauri', 'tauri.dev.conf.json');
     args.splice(1, 0, '--config', devConfigPath);
   }
+  if (!args.includes('--features')) {
+    args.push('--features', 'dev-mcp');
+  }
 }
 
 const tauriBin = path.join(rootDir, 'node_modules', '.bin', process.platform === 'win32' ? 'tauri.cmd' : 'tauri');

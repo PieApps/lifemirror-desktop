@@ -40,6 +40,14 @@ impl AppEnvironment {
     }
 
     pub fn data_dir(&self) -> PathBuf {
+        #[cfg(debug_assertions)]
+        if let Ok(val) = std::env::var("LIFEMIRROR_DATA_DIR") {
+            let p = PathBuf::from(val);
+            if !p.as_os_str().is_empty() {
+                return p;
+            }
+        }
+
         #[cfg(target_os = "windows")]
         {
             let base = std::env::var("LOCALAPPDATA")
@@ -89,6 +97,11 @@ impl AppEnvironment {
     }
 
     pub fn keyring_service(&self) -> &'static str {
+        #[cfg(debug_assertions)]
+        if std::env::var("LIFEMIRROR_DATA_DIR").is_ok() {
+            return "com.lifemirror.desktop.throwaway";
+        }
+
         match self {
             AppEnvironment::Production => "com.lifemirror.desktop",
             AppEnvironment::Development => "com.lifemirror.desktop.dev",
@@ -97,6 +110,14 @@ impl AppEnvironment {
     }
 
     pub fn default_vault_path(&self) -> PathBuf {
+        #[cfg(debug_assertions)]
+        if let Ok(val) = std::env::var("LIFEMIRROR_DATA_DIR") {
+            let p = PathBuf::from(val);
+            if !p.as_os_str().is_empty() {
+                return p.join("vault");
+            }
+        }
+
         let folder_name = match self {
             AppEnvironment::Production => "LifeMirror Vault",
             AppEnvironment::Development => "LifeMirror Vault (Dev)",

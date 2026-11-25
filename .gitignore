@@ -46,3 +46,6 @@ companion-extension/com.lifemirror.desktop.json
 # Separate repository for website
 website/
 
+# Vendored Tauri MCP tool
+tools/tauri-mcp/
+

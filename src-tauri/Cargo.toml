@@ -22,6 +22,7 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-mcp = { path = "../tools/tauri-mcp", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -53,5 +54,9 @@ keyring = { version = "4.2.0", default-features = false, features = ["v1", "appl
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.10"
 keyring = { version = "4.2.0", default-features = false, features = ["v1", "windows-native-keyring-store"] }
+
+[features]
+default = []
+dev-mcp = ["dep:tauri-plugin-mcp"]
 
 

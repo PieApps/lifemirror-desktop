@@ -5,6 +5,18 @@ import "./index.css";
 
 import { DistractionToast } from "./components/DistractionToast";
 
+if (import.meta.env.DEV) {
+  import("../tools/tauri-mcp/dist-js/index.js")
+    .then((mcp) => {
+      if (mcp && typeof mcp.setupPluginListeners === "function") {
+        mcp.setupPluginListeners();
+      }
+    })
+    .catch((err) => {
+      console.warn("[tauri-mcp] Failed to load dev listeners:", err);
+    });
+}
+
 const isToast = window.location.pathname === "/toast";
 if (isToast) {
   document.body.style.backgroundColor = "transparent";

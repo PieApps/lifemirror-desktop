@@ -1463,11 +1463,32 @@ pub fn run() {
     // Build and run the Tauri app
     let single_instance_id = match env::AppEnvironment::detect(None) {
         env::AppEnvironment::Production => "com.lifemirror.desktop",
-        env::AppEnvironment::Development => "com.lifemirror.desktop.dev",
+        env::AppEnvironment::Development => {
+            #[cfg(debug_assertions)]
+            if std::env::var("LIFEMIRROR_DATA_DIR").is_ok() {
+                "com.lifemirror.desktop.agent"
+            } else {
+                "com.lifemirror.desktop.dev"
+            }
+            #[cfg(not(debug_assertions))]
+            "com.lifemirror.desktop.dev"
+        }
         env::AppEnvironment::Testing => "com.lifemirror.desktop.test",
     };
 
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(all(debug_assertions, feature = "dev-mcp"))]
+    {
+        builder = builder.plugin(tauri_plugin_mcp::init_with_config(
+            tauri_plugin_mcp::PluginConfig::new("LifeMirror Desktop".to_string())
+                .start_socket_server(true)
+                .socket_path(std::path::PathBuf::from("/tmp/lifemirror-mcp.sock")),
+        ));
+    }
+
+    builder
         .plugin(
             tauri_plugin_single_instance::Builder::new()
                 .dbus_id(single_instance_id)
