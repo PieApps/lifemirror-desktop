@@ -123,30 +123,72 @@ In the AI sidebar on the right:
 
 ---
 
-## 4. Key Application Features
+## 4. Key Application Features (1.0 Gold Master)
 
-* **S-Curve Timeline & Real-Time Tracking:** Scroll through a winding serpentine infographic mapping your computer usage. Monitored active OS window sessions sit alongside browser tab events. The timeline dynamically displays your currently active task in real time, with the counter ticking up smoothly second-by-second.
-* **Interactive Local AI Chat:** Ask custom questions about your productivity and desktop focus directly to your local AI model. The AI receives a token-budgeted daily activity rollup (top apps and recent window switches) to answer questions like *"Where did I spend the most time today?"* with character-by-character real-time streaming.
-* **Timeline App Icons & Favicons:** The timeline automatically displays dynamic website favicons (both for past logs and for the real-time active tracker) and custom brand-specific vector icons (VS Code, Discord, Slack, terminal, Spotify, Figma, etc.) for popular desktop applications.
-* **Browser Session Grouping & Accordion Inspection:** Consecutive browser events are grouped into a single timeline card showing total session duration, start time, and a tab visited count. Clicking this card expands an interactive list detailing each individual tab visited (including favicon, page title, domain, and calculated duration), with no visual layout shifts on the S-Curve.
-* **Reflective Journaling:** Click "Reflect" on any timeline node to open a notes editor. Save your thoughts directly into the local encrypted SQLCipher database.
-* **Incognito Mode:** Toggle Incognito Mode to temporarily freeze all active focus tracking and browser tab logging. While active, the in-memory active session cache is wiped immediately, a glassmorphic blur and lock screen overlay are displayed, and AI Chat routing shifts to a volatile, non-saved memory array.
-* **Background OS Tracking Control:** Turn background window monitoring on or off from the Local-First configurations panel. Toggling it off terminates active tracking loops, clears active state caching, and prevents database insertions.
-* **Theme Selection:** Toggle between a deep neon-glow Dark Mode and a premium frosted-glass Light Mode using the Sun/Moon switcher button in the header. Preferences are automatically persisted across launches.
-* **System Tray Control & Close-to-Tray:** The application runs as a background utility. Closing the window with the 'X' button hides it to the system status tray rather than quitting. Single-click the tray icon to restore the window. Right-click the icon to pause or resume tracking, or completely Quit the app.
-* **Launch on Startup:** A "Launch on Startup" toggle registers the application with the operating system to automatically start hidden in the system tray when your computer boots up.
-* **Minimum Logging Threshold:** Customize the minimum time a window must be in focus (60 to 300 seconds, with a minimum of 1 minute) using a slider or input box to be recorded in the database, avoiding database bloat from quick clicks or window switches.
-* **Domain Exclusion & Privacy Blacklist:** Permanently block sensitive websites (banking, healthcare, private intranets, personal communication) from being tracked in LifeMirror Desktop and the Companion Extension:
-  * **Adding Exclusions:** Open **Settings** (gear icon) → **Privacy & Excluded Domains**, enter a domain (e.g. `chase.com` or `mychart.com`), choose whether to include subdomains, and click **Exclude Domain**. You can also check one or more one-click category presets (Banking & Finance, Healthcare, Personal Webmail, Local Intranets) or click the `🚫` button directly on any reflection card in the Chrome Extension side panel or popup.
-  * **Purge vs. Future-Only:** When adding an exclusion, a confirmation dialog asks:
-    1. *Also delete existing history from LifeMirror (recommended)*: Removes matching past `sub_session_events`, clears associated `activity_logs` window titles, and invalidates cached daily rollups.
-    2. *Only stop tracking from now on*: Keeps past timeline history intact while blocking all future visits.
-  * **Unattached Notes Preservation:** Personal reflections and notes written on purged timeline cards are **never deleted**. They are detached and preserved in the encrypted database. Click **View Unattached Notes** in the Settings panel at any time to inspect them.
-  * **Physical Erasure:** Database purges use SQLite's `PRAGMA secure_delete = ON` and execute a WAL truncate checkpoint, physically overwriting freed pages on disk.
-  * **URL Sanitization & Search Query Masking:** Full URLs have query strings (`?token=...`) and hash fragments (`#...`) stripped before saving to prevent capturing authentication tokens or session IDs. Search engine tab titles (Google, Bing, DuckDuckGo, Yahoo, etc.) are automatically masked to the engine name (e.g., `"Google Search"`) to protect private search queries.
-  * **Boundaries & Scope:** LifeMirror manages its own local records and does not touch Chrome's internal browsing history. External authentication providers (OAuth, SAML) and payment gateways redirect through separate domains and must be excluded individually.
-  * **Bidirectional Sync:** Exclusions synchronize automatically between the Chrome extension and desktop app via Native Messaging. If changes occur offline, they reconcile safely on reconnect using Last-Writer-Wins (exclusions win ties) and tombstones.
-* **Deep Work Enforcement (Active Interdiction):** Transition from passive tracking to active focus defense. Define blacklisted keywords and regex rules in the Settings to instantly block distracting windows with a glassmorphic overlay. Take it a step further by setting an **Active Intention Goal** (e.g., "Writing a project proposal") on the main dashboard; the app will use your Local AI to asynchronously evaluate new windows on the fly and block anything that pulls you away from your active goal.
+### 🌊 Living S-Curve River Timeline & The Estuary of Time
+Scroll through a winding serpentine infographic mapping your computer usage. Monitored active OS window sessions sit alongside browser tab events. 
+* **The Estuary of Time:** The currently active task breathes with dual-frequency out-pulsing rings (`animate-ping` & `animate-pulse`), a glowing emerald halo, and a live `FLOWING · {duration}` badge ticking up smoothly second-by-second.
+* **Timeline App Icons & Dynamic Favicons:** Displays dynamic website favicons and custom brand-colored vector icons (VS Code, Discord, Slack, terminal, Spotify, Figma, etc.) for popular desktop applications.
+* **User-Controlled Grouping ("Episodes" vs. "Moments"):** Use the glass segmented switcher on the timeline toolbar to switch between:
+  * **`✨ Episodes`**: Curated, cohesive chapters of flow featuring tactile deck bloom and micro-DNA domain strands.
+  * **`⚡ Moments`**: Unbundled, granular activities where every single action is rendered as its own distinct card on the river timeline.
+  * **Instant Drawer Ungroup**: An **`Expand into Moments`** button in the session drawer header allows instantly unbundling any episode onto the river timeline.
+* **Day 1 Zero-State Grace & Interactive Studio Demo River:** On a fresh morning or zero-activity day, click `[ ✨ Experience Interactive River (Demo) ]` to immediately explore a 3-node simulated river (`Figma`, `Cursor`, `Google Chrome`) with full keyboard haptics and a floating `[ Exit Demo ]` banner.
+
+---
+
+### 🎹 Keyboard Instrument Navigation & Tactile Audio Haptics
+LifeMirror is designed to be played like a fine musical instrument without reaching for your mouse:
+* **`J` / `K`**: Glide down and up the river nodes with acoustic woodblock ticks.
+* **`Space`**: Open and inspect the highlighted node's Journey Trail drawer.
+* **`Escape`**: Dismiss drawers, overlays, and modals instantly.
+* **`⌘M` / `Ctrl+M`**: Toggle the tactile Web Audio acoustic synthesizer on or off (mirrored by the `[ 🔊 / 🔇 ]` button in the header).
+* **`⌘D` / `Ctrl+D`**: Toggle the distraction-free **Zen Sanctum**.
+* **`⌘K` / `Ctrl+K`**: Summon the Universal Celestial Spotlight Command Palette.
+
+---
+
+### ⚡ Universal ⌘K Celestial Spotlight Command Palette
+Press **`⌘K`** (or click the search jewel in the header) from anywhere in the application—even inside Zen Mode—to open the global command palette:
+* **Instant Actions**: Execute core workflows immediately (`🌅 Evening Epilogue & Daily Reel`, `🌅 Morning Prelude & Set Intention`, `🧘 Toggle Zen Sanctum`, `🔒 Toggle Incognito Isolation`, `🎵 Focus Soundtrack Companion`, `📅 Jump to Today's River`, `🔊 Toggle Tactile Sound`).
+* **Omni-Search**: Search across past episodes, memories, and app categories with instant arrow-key navigation (`↑` / `↓`) and `Enter` execution.
+* **Category Filter Pills**: Quickly filter between `All Results`, `Actions`, `Memories`, and `Episodes`.
+
+---
+
+### 🌅 Morning Prelude & Daily Intention Lifeline
+Begin your day with conscious intention rather than reactive distraction:
+* **Dedicated Prelude Trigger**: Click `[ 🌅 Morning Prelude ]` on the timeline toolbar at any time to set your intention for the day.
+* **1-Click Presets**: Select from high-impact intention tags (`⚡ Deep Architecture Refactor`, `🎨 Design & Polish UI`, `🐛 Bug Triage & Hardening`, `📝 Writing & Strategy`) or write your own custom focus goal.
+* **Persistent Anchoring**: Your active intention is pinned to the river header with a 1-click pencil button `[ ✏️ ]` for easy refinements, and floats inside the Zen Sanctum HUD capsule.
+
+---
+
+### 🌅 Evening Epilogue & 🌟 The Friday Afternoon Tapestry
+Close your day and week with intentional celebration rather than cognitive fatigue:
+* **The Evening Epilogue**: Click `🌅 Evening Epilogue` to open the golden-hour closure ceremony. Review your top sculpted chapters, read the Biographer AI's literary reflection, and watch a 5-second cinematic playback reel of your daily flow.
+* **The Friday Afternoon Tapestry (Weekly Opus)**: In Weekly View, click `✨ Synthesize Week` to compile the 7-day review into your vault and open **The Weekly Opus Tapestry** modal celebrating your weekly momentum.
+* **📸 "Proof of Craft" High-Resolution Flow Postcard Exporter**:
+  Click `[ 📸 Export Postcard ]` (or `[ 📸 Export Tapestry ]`) to instantly generate a 1200x675 2x Retina dark-mode visual artifact. Features ambient auroras, serpentine milestone paths, purity metrics, top craft chapters, and literary quotes. Automatically copies the PNG image to your system clipboard and downloads the file.
+* **Permanent Vault Inscription**: Click `Seal & Inscribe Chapter` (or `Seal Week into Vault`) to permanently lock the periodic summary into your Obsidian Knowledge Vault with celebratory acoustic chimes.
+
+---
+
+### 🛡️ 1-Click Privacy Scalpel & Physical Erasure
+* **Drawer-Header Domain Exclusion**: Inspect any episode in the Session Drawer and click `[ 🛡️ ]` to instantly exclude the dominant domain and scrub historical logs without leaving the timeline.
+* **Granular Journey Scalpel**: Every row in the Journey Trail breakdown features an inline `[ 🛡️ ]` button to surgically exclude specific sub-domains or web applications.
+* **Domain Exclusion Settings**: Open **Settings** → **Privacy & Excluded Domains** to manage exclusions or toggle category presets (Banking & Finance, Healthcare, Personal Webmail, Local Intranets).
+* **Physical Erasure**: Deleting activities executes SQLite's `PRAGMA secure_delete = ON` and WAL truncation, overwriting freed pages on disk. Personal notes remain safe in unattached storage.
+* **URL Sanitization & Search Query Masking**: Strips query parameters (`?token=...`, `#...`) and automatically masks search queries across major search engines (Google, Bing, DuckDuckGo, Brave, etc.) to the engine name.
+
+---
+
+### 🧘 Zen Sanctum & Deep Work Interdiction
+* **Zen Sanctum (`⌘D`)**: Strips away all chrome, sidebars, and distraction, leaving only your serpentine river, keyboard haptics, and a floating ambient intention HUD.
+* **Active Interdiction Defense**: Define blacklisted keywords and regex rules in Settings to block distracting windows with a glassmorphic overlay. Local AI evaluates incoming windows against your active intention and blocks off-task distractions.
+* **Incognito Mode**: Instantly freezes focus tracking and tab logging, displays a glassmorphic privacy blur, and shifts AI memory to volatile RAM.
+
+---
 
 ---
 

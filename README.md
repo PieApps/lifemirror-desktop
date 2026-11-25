@@ -1,8 +1,42 @@
-# 📋 LifeMirror Desktop
+# 🪞 LifeMirror Desktop — 1.0 Gold Master
 
-LifeMirror Desktop is a privacy-first, local-focused productivity reflection utility. It captures continuous operating system activity logs and browser tab focus histories natively, records them securely in a local encrypted SQLCipher database, visualizes your day as a beautiful serpentine "S-Curve" timeline infographic, and automatically synthesizes your work into a 100% offline, Obsidian-compatible **Knowledge Vault & Autonomous LLM Wiki**.
+> **"A bicycle for your creative attention."**
 
-Additionally, LifeMirror interfaces with an intelligent reflection engine to compile daily mindfulness reflection cards and multi-tier periodic reviews. By default, it operates 100% offline using a locally running AI model (Ollama) so no analytical data ever leaves your computer, while also offering an optional, strictly-disclosed Bring-Your-Own-Key (BYOK) cloud mode for instant setup on lighter hardware.
+LifeMirror Desktop is a serene, privacy-first desktop companion for conscious craft. It captures continuous operating system window focus and browser tab activity natively, secures it in a 100% local encrypted SQLCipher database, visualizes your day as a living serpentine **"S-Curve" river timeline**, and automatically synthesizes your craft into a 100% offline, Obsidian-compatible **Knowledge Vault & Autonomous LLM Wiki**.
+
+Designed at the intersection of technology and the liberal arts, LifeMirror replaces punitive corporate surveillance trackers with a mindful, tactile instrument that honors human focus. Every millisecond of dwell time is recorded in pure Rust at <0.01% CPU with zero listening ports, zero background network telemetry, and full keyboard-first acoustic haptics.
+
+---
+
+## ✨ 1.0 Gold Master Highlights
+
+* **🌊 Living S-Curve River Timeline & The Estuary of Time**:
+  Your day is visualized as an organic, flowing serpentine river. The active moment pulses with harmonic dual-wave concentric ripples (`animate-ping` / `animate-pulse`), a glowing emerald specular halo, and a live `FLOWING · {duration}` badge ticking in real time.
+* **🎹 Keyboard Instrument Haptics & Tactile Audio**:
+  Navigate your entire day without touching the mouse:
+  - `J` / `K` to glide down and up the river.
+  - `Space` to inspect session journeys.
+  - `Escape` to close drawers and modals.
+  - `⌘M` to toggle the tactile Web Audio synthesizer (warm woodblock ticks, golden hour closure chimes, celebration flourishes).
+  - `⌘D` to enter the distraction-free **Zen Sanctum** with ambient floating focus capsule.
+* **⚡ Universal ⌘K Celestial Spotlight**:
+  Global command palette accessible from anywhere—even inside Zen Mode. Jump between today's river, the Morning Prelude, Evening Epilogue, Sound toggle, and search historical episodes and memories with instant arrow navigation.
+* **🌅 The Morning Prelude & Daily Intention Lifeline**:
+  Start every morning with clarity. Set your daily intention using 1-click presets (`⚡ Deep Architecture Refactor`, `🎨 Design & Polish UI`, `🐛 Bug Triage & Hardening`, `📝 Writing & Strategy`) or custom goals. The intention anchors to the river header and floats inside the Zen Sanctum HUD.
+* **📸 "Proof of Craft" High-Resolution Flow Postcard Exporter**:
+  Export breathtaking 1200x675 (16:9 Retina) dark-mode visual artifacts of your day and week. Powered by a zero-dependency HTML5 Canvas 2D engine featuring ambient auroras, serpentine milestone paths, purity metrics, top craft chapters, and literary reflections. Includes 1-click clipboard copy and PNG download.
+* **🛡️ 1-Click Privacy Scalpel in Session Drawer**:
+  Surgical privacy enforcement without digging through settings. Click the `[ 🛡️ ]` button on any episode or journey row to instantly add the domain to your SQLCipher exclusion list and physically purge raw logs.
+* **🌟 The Friday Afternoon Tapestry (Weekly Opus)**:
+  Clicking `✨ Synthesize Week` compiles your 7-day journey, reads the synthesis from your Obsidian vault, and inaugurates **The Weekly Opus Tapestry** modal with cinematic weekly reels and weekly flow postcards.
+* **✨ User-Controlled Grouping ("Episodes" vs. "Moments")**:
+  Toggle between curated, cohesive chapters of craft (`✨ Episodes`) with tactile deck bloom and micro-DNA strands, or unbundle into granular single activities (`⚡ Moments`).
+* **🌱 Day 1 Zero-State Grace & Interactive Studio Demo River**:
+  On a fresh morning or upon first launch, click `[ ✨ Experience Interactive River (Demo) ]` to immediately explore a 3-node simulated river (`Figma`, `Cursor`, `Chrome`) with full keyboard haptics and a non-destructive exit banner.
+* **📅 Fluid Native Date Picker & Calendar Ribbon**:
+  Seamless temporal navigation with native date picker integration, quick chevron stepping, and instant `Today` jump.
+* **🔒 Zero-Port Local Cryptography & SQLCipher Vault**:
+  100% offline AES-256 encrypted database with rolling backup retention, automated recovery trials, and physical disk-page erasure (`PRAGMA secure_delete = ON`).
 
 ---
 
