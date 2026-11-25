@@ -146,6 +146,7 @@ html.app-hidden *::after {
     width: auto;
     height: 100%;
     min-height: 0;
+    contain: layout style;
   }
 
   .sidebar-panel-wrapper {
@@ -153,5 +154,6 @@ html.app-hidden *::after {
     height: 100%;
     min-height: 0;
     overflow: hidden;
+    contain: layout style;
   }
 }

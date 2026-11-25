@@ -381,8 +381,67 @@ export function SCurveTimeline({
 }: SCurveTimelineProps) {
   const rowHeight = 200;
   const width = 800;
-  const colXs = [130, 400, 670];
-  const colPercentages = ['16.25%', '50%', '83.75%'];
+
+  const timelineScrollContainerRef = useRef<HTMLDivElement>(null);
+  const [containerInnerWidth, setContainerInnerWidth] = useState<number>(800);
+
+  useEffect(() => {
+    const el = timelineScrollContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) {
+          setContainerInnerWidth(Math.round(w));
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const { colPercentages, colXs, cardWidthStyle } = useMemo(() => {
+    // If container is spacious (>= 750px):
+    if (containerInnerWidth >= 750) {
+      return {
+        colPercentages: ['16.25%', '50%', '83.75%'],
+        colXs: [130, 400, 670],
+        cardWidthStyle: {
+          width: '28%',
+          minWidth: '160px',
+          maxWidth: '260px',
+          minHeight: '100px'
+        }
+      };
+    }
+    // If container is medium (560px - 749px):
+    if (containerInnerWidth >= 560) {
+      // Pull side columns inward so cards don't clip against edges
+      const sidePct = 21;
+      return {
+        colPercentages: [`${sidePct}%`, '50%', `${100 - sidePct}%`],
+        colXs: [800 * (sidePct / 100), 400, 800 * ((100 - sidePct) / 100)],
+        cardWidthStyle: {
+          width: '27%',
+          minWidth: '145px',
+          maxWidth: '210px',
+          minHeight: '90px'
+        }
+      };
+    }
+    // If container is compact (< 560px):
+    const sidePct = 23.5;
+    return {
+      colPercentages: [`${sidePct}%`, '50%', `${100 - sidePct}%`],
+      colXs: [800 * (sidePct / 100), 400, 800 * ((100 - sidePct) / 100)],
+      cardWidthStyle: {
+        width: '26%',
+        minWidth: '130px',
+        maxWidth: '175px',
+        minHeight: '85px'
+      }
+    };
+  }, [containerInnerWidth]);
 
   const [selectedNode, setSelectedNode] = useState<TimelineNode | null>(null);
   const [_isHovering, setIsHovering] = useState<number | null>(null);
@@ -1046,7 +1105,10 @@ export function SCurveTimeline({
 
   return (
     <div className="relative w-full h-full flex">
-      <div className="flex-1 relative w-full h-full overflow-y-auto py-10 px-4 select-none flex justify-center">
+      <div 
+        ref={timelineScrollContainerRef}
+        className="flex-1 relative w-full h-full overflow-y-auto py-10 px-4 select-none flex justify-center"
+      >
         {processedNodes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[360px] px-6 py-12 text-center">
             <div className="glass-card rounded-3xl p-8 max-w-md w-full mx-auto border border-violet-500/20 shadow-2xl backdrop-blur-xl">
@@ -1259,10 +1321,7 @@ export function SCurveTimeline({
                       left: colPercentages[col],
                       top: `${nodeY + 22}px`,
                       transform: 'translateX(-50%)',
-                      width: '28%',
-                      minWidth: '160px',
-                      maxWidth: '260px',
-                      minHeight: '100px'
+                      ...cardWidthStyle
                     }}
                     onClick={(e) => {
                       if (node.isGroupedSession || node.isMemoryNode) {

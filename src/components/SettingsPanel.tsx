@@ -596,10 +596,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       {/* Segmented Tab Navigation: The Sacred Trio + Origin */}
       <div className="grid grid-cols-4 gap-1 p-1 mb-5 bg-[var(--bg-color)]/60 rounded-xl border border-[var(--border-color)] shrink-0">
         {[
-          { id: "general", label: "Rhythm & Senses", icon: Clock },
-          { id: "focus", label: "Sanctum & Privacy", icon: Shield },
-          { id: "ai", label: "The Biographer", icon: Sparkles },
-          { id: "about", label: "Origin & Vault", icon: BookOpen },
+          { id: "general", label: "Rhythm & Senses", shortLabel: "Rhythm", icon: Clock },
+          { id: "focus", label: "Sanctum & Privacy", shortLabel: "Focus", icon: Shield },
+          { id: "ai", label: "The Biographer", shortLabel: "AI", icon: Sparkles },
+          { id: "about", label: "Origin & Vault", shortLabel: "Vault", icon: BookOpen },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -607,6 +607,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as SettingsTab)}
+              title={tab.label}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-1 sm:px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 isActive
                   ? "bg-violet-600 text-white shadow-sm shadow-violet-600/30"
@@ -614,7 +615,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               }`}
             >
               <Icon className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden min-[480px]:inline truncate">{tab.label}</span>
+              <span className="truncate">
+                <span className="hidden 2xl:inline">{tab.label}</span>
+                <span className="2xl:hidden">{tab.shortLabel}</span>
+              </span>
             </button>
           );
         })}

@@ -201,7 +201,8 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
               }`}
             >
               <BookOpen className="w-3.5 h-3.5 shrink-0" />
-              <span>Knowledge Vault</span>
+              <span className="hidden min-[480px]:inline">Knowledge Vault</span>
+              <span className="min-[480px]:hidden">Vault</span>
             </button>
           </div>
 
@@ -264,7 +265,7 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                <span className="text-xs font-bold text-[var(--text-color)] min-w-[125px] text-center font-mono whitespace-nowrap select-none px-1">
+                <span className="text-xs font-bold text-[var(--text-color)] min-w-[95px] sm:min-w-[125px] text-center font-mono whitespace-nowrap select-none px-1">
                   {getPeriodLabel()}
                 </span>
                 <button
@@ -316,7 +317,12 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                   ? "✨ Synthesize Month"
                   : viewMode === "weekly"
                   ? "✨ Synthesize Week"
-                  : "🌅 Evening Epilogue"}
+                  : (
+                    <>
+                      <span className="hidden min-[540px]:inline">🌅 Evening Epilogue</span>
+                      <span className="min-[540px]:hidden">🌅 Epilogue</span>
+                    </>
+                  )}
               </span>
             </button>
 

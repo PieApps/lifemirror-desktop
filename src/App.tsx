@@ -269,20 +269,51 @@ function App() {
     });
   }, [isZenMode, settings.isIncognito, isSoundEnabled, data, settings, toggleSound]);
 
-  // Resizable main sidepanel state (min 320px, max 750px, persisted)
+  // Resizable main sidepanel state (min 300px, max 750px, persisted)
   const [sidepanelWidth, setSidepanelWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("lifemirror_main_sidepanel_width");
-      return saved ? Math.max(320, Math.min(750, parseInt(saved, 10))) : 460;
+      return saved ? Math.max(300, Math.min(750, parseInt(saved, 10))) : 460;
     } catch {
       return 460;
     }
   });
   const [isResizingSidepanel, setIsResizingSidepanel] = useState<boolean>(false);
+  const sidepanelWidthRef = useRef(sidepanelWidth);
+  sidepanelWidthRef.current = sidepanelWidth;
+
+  // Window resize listener: prevent sidebar from crushing timeline below minimum safe width
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const container = document.getElementById("main-app-layout-container");
+      if (!container) return;
+      const containerWidth = container.getBoundingClientRect().width;
+      if (containerWidth > 0 && typeof window !== "undefined" && window.innerWidth >= 640) {
+        // Guarantee timeline maintains at least 380px
+        const maxAllowed = Math.max(280, Math.min(750, containerWidth - 380));
+        if (sidepanelWidthRef.current > maxAllowed) {
+          setSidepanelWidth(maxAllowed);
+          try {
+            localStorage.setItem("lifemirror_main_sidepanel_width", String(maxAllowed));
+          } catch {}
+        }
+      }
+    };
+
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, []);
 
   const startResizingSidepanel = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizingSidepanel(true);
+  };
+
+  const handleResetSidepanelWidth = () => {
+    setSidepanelWidth(460);
+    try {
+      localStorage.setItem("lifemirror_main_sidepanel_width", "460");
+    } catch {}
   };
 
   useEffect(() => {
@@ -292,19 +323,27 @@ function App() {
       const container = document.getElementById("main-app-layout-container");
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      const newWidth = Math.max(320, Math.min(Math.min(750, rect.width - 480), rect.right - e.clientX));
-      setSidepanelWidth(newWidth);
+      const minTimelineWidth = 380;
+      const maxSidebarWidth = Math.max(280, Math.min(750, rect.width - minTimelineWidth));
+      const minSidebarWidth = Math.min(300, maxSidebarWidth);
+
+      const targetWidth = rect.right - e.clientX;
+      const clampedWidth = Math.max(minSidebarWidth, Math.min(maxSidebarWidth, targetWidth));
+      sidepanelWidthRef.current = clampedWidth;
+      setSidepanelWidth(clampedWidth);
     };
 
     const handleMouseUp = () => {
       setIsResizingSidepanel(false);
-      localStorage.setItem("lifemirror_main_sidepanel_width", String(sidepanelWidth));
+      try {
+        localStorage.setItem("lifemirror_main_sidepanel_width", String(sidepanelWidthRef.current));
+      } catch {}
     };
 
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
-    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       document.body.style.cursor = "";
@@ -312,7 +351,7 @@ function App() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isResizingSidepanel, sidepanelWidth]);
+  }, [isResizingSidepanel]);
 
   const handleAILockedClick = (featureName: string) => {
     setLockedFeatureName(featureName);
@@ -576,21 +615,25 @@ function App() {
             {/* Flexible Resizer Divider Bar between Timeline and Sidepanel */}
             <div
               onMouseDown={startResizingSidepanel}
-              className={`hidden sm:flex items-center justify-center w-2 -mx-1 cursor-col-resize select-none shrink-0 transition-colors z-20 group relative ${
+              onDoubleClick={handleResetSidepanelWidth}
+              className={`hidden sm:flex items-center justify-center w-2.5 -mx-1.5 cursor-col-resize select-none shrink-0 transition-colors z-20 group relative ${
                 isResizingSidepanel ? "bg-violet-600/30" : "hover:bg-violet-500/20"
               }`}
-              title="Drag to resize sidepanel width"
+              title="Drag to resize · Double-click to reset (460px)"
             >
               <div className={`w-0.5 h-12 rounded-full transition-colors ${
                 isResizingSidepanel ? "bg-violet-600" : "bg-[var(--border-color)] group-hover:bg-violet-500"
               }`} />
               {/* Invisible hit padding */}
-              <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+              <div className="absolute inset-y-0 -left-2 -right-2 cursor-col-resize" />
             </div>
 
             {/* Sidebar */}
             <div 
-              style={{ width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${sidepanelWidth}px` : undefined }}
+              style={{ 
+                width: typeof window !== "undefined" && window.innerWidth >= 640 ? `${sidepanelWidth}px` : undefined,
+                maxWidth: 'min(750px, calc(100% - 360px))'
+              }}
               className="sidebar-panel-wrapper space-y-3 sm:space-y-6 flex flex-col sm:h-full sm:overflow-hidden sm:pr-1 sm:pb-6"
             >
               {settings.showSettings ? (
